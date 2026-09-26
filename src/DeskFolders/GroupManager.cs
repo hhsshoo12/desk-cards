@@ -38,10 +38,27 @@ internal sealed class GroupManager
             _cfg.Save();
             foreach (var card in _cards.Values)
             {
-                card.SnapToGrid();
+                card.FitToScreen();
                 SavePosition(card);
             }
         }
+    }
+
+    /// <summary>사용자가 조절한 카드 크기(배율 적용 전 DIP). 없으면 기본 크기를 쓴다.</summary>
+    public Size? GetCardSize(string name) =>
+        _cfg.Sizes.TryGetValue(name, out var s) && s.Length == 2 ? new Size(s[0], s[1]) : null;
+
+    public void SaveCardSize(CardWindow card, double w, double h)
+    {
+        _cfg.Sizes[card.Group.Name] = new[] { Math.Round(w, 1), Math.Round(h, 1) };
+        _cfg.Save();
+    }
+
+    /// <summary>편집 모드는 한 번에 카드 하나만.</summary>
+    public void EndOtherEdits(CardWindow except)
+    {
+        foreach (var c in _cards.Values)
+            if (c != except) c.EndEdit();
     }
 
     public void Start()
@@ -110,8 +127,8 @@ internal sealed class GroupManager
         card.Closed += OnCardClosed;
         _cards[group.Name] = card;
         card.Show();
-        // 저장된 위치든 새 자리든 바탕화면 칸에 맞춘다(아이콘 크기를 바꿨을 수도 있다).
-        card.SnapToGrid();
+        // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
+        card.FitToScreen();
         SavePosition(card);
         return card;
     }
@@ -194,6 +211,7 @@ internal sealed class GroupManager
         _cards.Remove(oldName);
         _cards[newName] = card;
         _cfg.Positions.Remove(oldName);
+        if (_cfg.Sizes.Remove(oldName, out var size)) _cfg.Sizes[newName] = size;
         var p = card.ActualPosition;
         _cfg.Positions[newName] = new[] { p.X, p.Y };
         _cfg.Save();
@@ -221,6 +239,7 @@ internal sealed class GroupManager
             return;
         }
         _cfg.Positions.Remove(g.Name);
+        _cfg.Sizes.Remove(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
     }
@@ -245,12 +264,12 @@ internal sealed class GroupManager
         var wa = SystemParameters.WorkArea;
         var taken = _cards.Values.Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
 
-        if (DesktopGrid.TryGet(out _, out _, out int cx, out int cy))
         {
-            // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다.
+            // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다. 새 카드는 기본 크기다.
             double s = Native.GetDpiForSystem() / 96.0;
             double k = FollowWindowsScale ? s : 1;
-            int wPx = (int)Math.Round(DesktopGrid.CardCols * cx * k), hPx = (int)Math.Round(DesktopGrid.CardRows * cy * k);
+            var baseSize = CardWindow.DefaultBaseSize(s);
+            int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
             var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
             var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
             for (int i = nx; i >= 0; i -= 2)

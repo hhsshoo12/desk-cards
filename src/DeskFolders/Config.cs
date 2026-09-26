@@ -10,6 +10,9 @@ internal sealed class Config
 {
     public Dictionary<string, double[]> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>사용자가 조절한 카드 크기(배율 적용 전 DIP). 그룹 이름 → [가로, 세로].</summary>
+    public Dictionary<string, double[]> Sizes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>카드 크기에 Windows 배율(125% 등)을 곱할지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
 
@@ -26,6 +29,7 @@ internal sealed class Config
                 if (cfg != null)
                 {
                     cfg.Positions = new Dictionary<string, double[]>(cfg.Positions, StringComparer.OrdinalIgnoreCase);
+                    cfg.Sizes = new Dictionary<string, double[]>(cfg.Sizes ?? new(), StringComparer.OrdinalIgnoreCase);
                     return cfg;
                 }
             }
