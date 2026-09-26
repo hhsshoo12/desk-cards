@@ -13,7 +13,7 @@ namespace DeskCards;
 
 /// <summary>
 /// 바탕화면에 붙어 있는 그룹 카드 하나(2×2 미리보기).
-/// 평소에는 고정이고, 펼친 창의 설정에서 '위치 옮기기 · 크기 조절'을 고르면 편집 모드가 된다.
+/// 평소에는 고정이고, 설정이나 우클릭 메뉴에서 편집을 시작하면(편집 막대) 옮기고 크기를 바꿀 수 있다.
 /// </summary>
 internal partial class CardWindow : Window
 {
@@ -27,7 +27,7 @@ internal partial class CardWindow : Window
     private readonly GroupManager _mgr;
     private Point _downPos;
     private object? _downTarget;
-    private bool _pending, _editing;
+    private bool _pending, _editing, _selected;
     private CardLayout _layout = new();
     private double _iconSize = 40;
     private Native.POINT _moveCursorStart;
@@ -52,7 +52,6 @@ internal partial class CardWindow : Window
         Drop += OnDrop;
         ContextMenu = BuildMenu();
 
-        DoneButton.MouseLeftButtonUp += (_, e) => { EndEdit(); e.Handled = true; };
         GripCorner.DragStarted += (_, _) => OnGripStart();
         GripCorner.DragDelta += (_, _) => OnGripDelta();
         GripCorner.DragCompleted += (_, _) => OnGripDone();
@@ -115,12 +114,13 @@ internal partial class CardWindow : Window
 
     // ----- 입력 -----
     // 평소: 아이콘 클릭 = 실행, 빈 곳 클릭 = 펼치기, 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
-    // 편집 모드: 아무 데나 끌기 = 격자에 맞춰 이동, 가장자리/모서리 끌기 = 크기 조절.
+    // 편집 모드: 누르기 = 고르기, 아무 데나 끌기 = 자유 이동(안내선), 오른쪽 아래 모서리 끌기 = 크기 조절.
 
     private void OnDown(object sender, MouseButtonEventArgs e)
     {
         var src = e.OriginalSource as DependencyObject;
-        if (IsWithin<Thumb>(src) || IsWithin(src, DoneButton))
+        if (_editing) _mgr.Select(this);
+        if (IsWithin<Thumb>(src))
         {
             _pending = false;
             return;
@@ -175,23 +175,16 @@ internal partial class CardWindow : Window
         return false;
     }
 
-    private static bool IsWithin(DependencyObject? d, DependencyObject target)
-    {
-        for (; d != null; d = Parent(d))
-            if (d == target) return true;
-        return false;
-    }
-
     private static DependencyObject? Parent(DependencyObject d) =>
         d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
 
     // ----- 편집 모드 -----
 
+    /// <summary>편집 모드로. 켜고 끄는 건 GroupManager.BeginEditMode/EndEditMode가 모든 카드에 한꺼번에 한다.</summary>
     public void BeginEdit()
     {
-        _mgr.EndOtherEdits(this);
         _editing = true;
-        DoneButton.Visibility = GripCorner.Visibility = Visibility.Visible;
+        GripCorner.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
         UpdateBorder(false);
     }
@@ -199,10 +192,30 @@ internal partial class CardWindow : Window
     public void EndEdit()
     {
         if (!_editing) return;
-        _editing = false;
-        DoneButton.Visibility = GripCorner.Visibility = Visibility.Collapsed;
+        _editing = _selected = false;
+        GripCorner.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder(false);
+        _mgr.SavePosition(this);
+    }
+
+    /// <summary>편집 막대의 작업 대상으로 골랐는지. 고른 카드는 테두리가 굵어진다.</summary>
+    public void SetSelected(bool on)
+    {
+        _selected = on && _editing;
+        UpdateBorder(false);
+    }
+
+    /// <summary>화살표 키로 조금씩 옮긴다(물리 픽셀). 작업 영역 밖으로는 나가지 않는다.</summary>
+    public void Nudge(int dx, int dy)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
+        int w = r.Right - r.Left, h = r.Bottom - r.Top;
+        var wa = DesktopGrid.WorkAreaAt(r.Left + w / 2, r.Top + h / 2);
+        int x = Math.Max(wa.Left, Math.Min(r.Left + dx, wa.Right - w));
+        int y = Math.Max(wa.Top, Math.Min(r.Top + dy, wa.Bottom - h));
+        Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
         _mgr.SavePosition(this);
     }
 
@@ -308,13 +321,26 @@ internal partial class CardWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>드롭 대상이거나 편집 중이면 강조 테두리.</summary>
+    /// <summary>드롭 대상이거나 편집 중이면 강조 테두리. 편집 중에 고른 카드는 더 굵게.</summary>
     private void UpdateBorder(bool dropTarget)
     {
-        if (dropTarget || _editing)
+        // 고른 카드는 배경화면 색에 묻히지 않도록 강조색으로 은은하게 빛나게 한다.
+        var glow = (System.Windows.Media.Effects.DropShadowEffect)Card.Effect;
+        bool strong = dropTarget || _selected;
+        glow.Color = strong && TryFindResource("Accent") is SolidColorBrush accent ? accent.Color : Colors.Black;
+        glow.ShadowDepth = strong ? 0 : 2;
+        glow.BlurRadius = strong ? 18 : 10;
+        glow.Opacity = strong ? 0.9 : 0.22;
+
+        if (strong)
         {
             Card.SetResourceReference(Border.BorderBrushProperty, "Accent");
-            Card.BorderThickness = new Thickness(2);
+            Card.BorderThickness = new Thickness(2.5);
+        }
+        else if (_editing)
+        {
+            Card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            Card.BorderThickness = new Thickness(1.5);
         }
         else
         {
@@ -329,12 +355,14 @@ internal partial class CardWindow : Window
     {
         var m = new ContextMenu();
         m.Items.Add(Item("펼치기", () => ExpandedWindow.Open(this, _mgr)));
-        m.Items.Add(Item("위치 옮기기 · 크기 조절", BeginEdit));
+        m.Items.Add(Item("카드 편집 (이동 · 크기 · 삭제)", () => _mgr.BeginEditMode(this)));
         m.Items.Add(Item("이름 바꾸기", () => ExpandedWindow.Open(this, _mgr, editTitle: true)));
         m.Items.Add(Item("폴더 열기", () => FileOps.OpenFolder(Group.Folder)));
         m.Items.Add(new Separator());
         m.Items.Add(Item("새 그룹", () => _mgr.NewGroup()));
         m.Items.Add(Item("그룹 삭제 (항목은 바탕화면으로)", () => _mgr.DeleteGroup(this)));
+        m.Items.Add(new Separator());
+        m.Items.Add(Item("설정", () => SettingsWindow.Open(_mgr, this)));
         return m;
     }
 

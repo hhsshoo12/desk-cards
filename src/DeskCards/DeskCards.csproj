@@ -16,4 +16,9 @@
     <Version>0.1.0</Version>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- 설정 창의 앱 아이콘 -->
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
 </Project>

@@ -34,11 +34,6 @@ internal partial class ExpandedWindow : Window
     private DateTime _animStart;
     private bool _animating;
 
-    // 설정 화면
-    private const double SettingRowH = 40;
-    private const double TabBarH = 48;
-    private bool _settings;
-
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle)
     {
         InitializeComponent();
@@ -57,7 +52,7 @@ internal partial class ExpandedWindow : Window
         Deactivated += (_, _) => { if (!_busy) SafeClose(); };
         PreviewKeyDown += OnKey;
         PreviewMouseWheel += OnWheel;
-        GearButton.Click += (_, _) => ShowSettings(!_settings);
+        GearButton.Click += (_, _) => { SafeClose(); SettingsWindow.Open(_mgr, _card); };
         ItemsPanel.PreviewMouseLeftButtonDown += OnDown;
         ItemsPanel.PreviewMouseMove += OnMove;
         ItemsPanel.PreviewMouseLeftButtonUp += OnUp;
@@ -102,7 +97,7 @@ internal partial class ExpandedWindow : Window
         ItemsPanel.Children.Clear();
         foreach (var entry in Group.Items)
             ItemsPanel.Children.Add(MakeTile(entry));
-        Empty.Visibility = Group.Items.Count == 0 && !_settings ? Visibility.Visible : Visibility.Collapsed;
+        Empty.Visibility = Group.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         // 한 번에 4×3까지 보이고, 넘치면 3줄 단위 페이지로 위아래 스크롤한다.
         int rows = Math.Max(1, (int)Math.Ceiling(Group.Items.Count / (double)Columns));
@@ -110,17 +105,7 @@ internal partial class ExpandedWindow : Window
         double viewH = Math.Min(rows, RowsPerPage) * TileH;
         ItemsPanel.MinHeight = _pages > 1 ? _pages * PageH : 0; // 마지막 페이지도 딱 맞게 멈추도록
         Scroller.Height = viewH;
-        double height = TitleH + viewH + BottomPad;
-        if (_settings)
-        {
-            // 설정은 한 페이지(4×3) 높이까지만 늘리고, 넘치면 안에서 스크롤한다.
-            SettingsPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            double maxView = RowsPerPage * TileH + BottomPad - 20;
-            double view = Math.Min(SettingsPanel.DesiredSize.Height, maxView);
-            SettingsScroller.Height = view;
-            height = Math.Max(height, TitleH + TabBarH + view + 20);
-        }
-        Height = height;
+        Height = TitleH + viewH + BottomPad;
 
         _page = Math.Min(_page, _pages - 1);
         StopScrollAnimation();
@@ -131,7 +116,7 @@ internal partial class ExpandedWindow : Window
     private void BuildDots()
     {
         Dots.Children.Clear();
-        Dots.Visibility = _pages > 1 && !_settings ? Visibility.Visible : Visibility.Collapsed;
+        Dots.Visibility = _pages > 1 ? Visibility.Visible : Visibility.Collapsed;
         for (int i = 0; i < _pages; i++)
         {
             int index = i;
@@ -162,7 +147,6 @@ internal partial class ExpandedWindow : Window
 
     private void OnWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_settings) return; // 설정 화면은 스크롤 뷰어가 직접 굴린다.
         e.Handled = true;
         if (_pages <= 1) return;
         // 터치패드는 작은 값이 여러 번 오므로 한 칸(120)이 모일 때마다 한 페이지씩 넘긴다.
@@ -264,351 +248,6 @@ internal partial class ExpandedWindow : Window
         return mi;
     }
 
-    // ----- 설정 화면 -----
-
-    private void ShowSettings(bool on)
-    {
-        _settings = on;
-        Scroller.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        SettingsScroller.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-        TabBar.Visibility = SettingsScroller.Visibility;
-        GearGlyph.SetResourceReference(TextBlock.ForegroundProperty, on ? "Accent" : "Fg");
-        if (on) BuildSettings();
-        Rebuild();
-        KeepOnScreen();
-    }
-
-    private static readonly string[] Tabs = { "카드", "그룹", "전체" };
-    private static int _tab; // 마지막으로 본 탭을 기억한다.
-
-    private void BuildSettings()
-    {
-        BuildTabs();
-        SettingsPanel.Children.Clear();
-        _section = null;
-
-        switch (_tab)
-        {
-            case 0:
-                AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
-                AddPercent("", "크기");
-                var layout = _card.CurrentLayout;
-                AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
-                AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
-                break;
-            case 1:
-                AddSetting("", "이름 바꾸기", null, () => { ShowSettings(false); TitleBox.Focus(); });
-                AddSetting("", "폴더 열기", null, () => { FileOps.OpenFolder(Group.Folder); SafeClose(); });
-                AddSetting("", "새 그룹 만들기", null, () => { SafeClose(); _mgr.NewGroup(); });
-                AddSetting("", "이 그룹 삭제", null, () =>
-                {
-                    _busy = true; // 확인 창이 떠도 펼침 창이 닫히지 않게
-                    _mgr.DeleteGroup(_card);
-                    _busy = false;
-                    SafeClose();
-                });
-                break;
-            default:
-                AddSetting("", "Windows 배율 따라가기", _mgr.FollowWindowsScale ? "켬" : "끔", () =>
-                {
-                    _mgr.FollowWindowsScale = !_mgr.FollowWindowsScale;
-                    BuildSettings();
-                });
-                break;
-        }
-    }
-
-    /// <summary>설정 화면 위쪽 메뉴명. 누르면 그 메뉴의 설정만 보여 준다.</summary>
-    private void BuildTabs()
-    {
-        TabBar.Children.Clear();
-        for (int i = 0; i < Tabs.Length; i++)
-        {
-            int index = i;
-            bool on = i == _tab;
-            var text = new TextBlock
-            {
-                Text = Tabs[i],
-                FontSize = 14,
-                FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal,
-                HorizontalAlignment = HorizontalAlignment.Center,
-            };
-            text.SetResourceReference(TextBlock.ForegroundProperty, on ? "Fg" : "SubFg");
-            var bar = new Border
-            {
-                Width = 16,
-                Height = 3,
-                CornerRadius = new CornerRadius(1.5),
-                Margin = new Thickness(0, 5, 0, 0),
-                Visibility = on ? Visibility.Visible : Visibility.Hidden,
-            };
-            bar.SetResourceReference(Border.BackgroundProperty, "Accent");
-            var stack = new StackPanel { Margin = new Thickness(12, 7, 12, 3) };
-            stack.Children.Add(text);
-            stack.Children.Add(bar);
-
-            var tab = new Border
-            {
-                CornerRadius = new CornerRadius(6),
-                Background = Brushes.Transparent,
-                Cursor = Cursors.Hand,
-                Child = stack,
-            };
-            tab.MouseEnter += (_, _) => tab.SetResourceReference(Border.BackgroundProperty, "HoverBg");
-            tab.MouseLeave += (_, _) => tab.Background = Brushes.Transparent;
-            tab.MouseLeftButtonUp += (_, e) =>
-            {
-                e.Handled = true;
-                if (index == _tab) return;
-                _tab = index;
-                BuildSettings();
-                SettingsScroller.ScrollToVerticalOffset(0);
-                Rebuild();
-                KeepOnScreen();
-            };
-            TabBar.Children.Add(tab);
-        }
-    }
-
-    private StackPanel? _section;
-
-    /// <summary>둥근 묶음 카드. 설정 줄은 이 안에 들어간다.</summary>
-    private void AddSection()
-    {
-        _section = new StackPanel();
-        var card = new Border
-        {
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(4, 2, 4, 2),
-            Child = _section,
-        };
-        card.SetResourceReference(Border.BackgroundProperty, "SectionBg");
-        card.SetResourceReference(Border.BorderBrushProperty, "SectionLine");
-        SettingsPanel.Children.Add(card);
-    }
-
-    /// <summary>묶음에 줄을 넣고, 앞 줄과는 얇은 선으로 나눈다.</summary>
-    private void AddRow(UIElement row)
-    {
-        if (_section == null) AddSection();
-        if (_section!.Children.Count > 0)
-        {
-            var line = new Border { Height = 1, Margin = new Thickness(40, 0, 8, 0) };
-            line.SetResourceReference(Border.BackgroundProperty, "SectionLine");
-            _section.Children.Add(line);
-        }
-        _section.Children.Add(row);
-    }
-
-    private void AddSetting(string glyph, string text, string? trailing, Action act)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var icon = new TextBlock
-        {
-            Text = glyph,
-            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = 15,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var label = new TextBlock { Text = text, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        Grid.SetColumn(label, 1);
-        grid.Children.Add(icon);
-        grid.Children.Add(label);
-        if (trailing != null)
-        {
-            var tail = new TextBlock { Text = trailing, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
-            tail.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-            Grid.SetColumn(tail, 2);
-            grid.Children.Add(tail);
-        }
-
-        var row = new Border
-        {
-            Height = SettingRowH - 4,
-            Margin = new Thickness(0, 2, 0, 2),
-            CornerRadius = new CornerRadius(6),
-            Background = Brushes.Transparent,
-            Cursor = Cursors.Hand,
-            Child = grid,
-        };
-        row.MouseEnter += (_, _) => row.SetResourceReference(Border.BackgroundProperty, "HoverBg");
-        row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
-        row.MouseLeftButtonUp += (_, e) => { e.Handled = true; act(); };
-        AddRow(row);
-    }
-
-    /// <summary>카드 크기(%) 줄. [−]/[+]는 5%씩, 숫자 칸을 눌러 직접 입력할 수도 있다.</summary>
-    private void AddPercent(string glyph, string text)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var icon = new TextBlock
-        {
-            Text = glyph,
-            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = 15,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var label = new TextBlock { Text = text, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        Grid.SetColumn(label, 1);
-
-        var box = new TextBox
-        {
-            Text = _card.SizePercent.ToString(),
-            FontSize = 14,
-            Width = 44,
-            MaxLength = 3,
-            TextAlignment = TextAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Center,
-            VerticalContentAlignment = VerticalAlignment.Center,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(0, 2, 1, 2),
-        };
-        box.SetResourceReference(TextBox.ForegroundProperty, "Fg");
-        box.SetResourceReference(TextBox.CaretBrushProperty, "Fg");
-        box.SetResourceReference(TextBox.BorderBrushProperty, "SectionLine");
-        var unit = new TextBlock { Text = "%", FontSize = 14, Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
-        unit.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-
-        void Apply(int percent) => box.Text = _card.SetSizePercent(Math.Clamp(percent, 10, 999)).ToString();
-        void Commit()
-        {
-            if (int.TryParse(box.Text.Trim().TrimEnd('%'), out int v)) Apply(v);
-            else box.Text = _card.SizePercent.ToString();
-        }
-        box.PreviewTextInput += (_, e) => e.Handled = !e.Text.All(char.IsDigit);
-        box.GotKeyboardFocus += (_, _) => box.SelectAll();
-        box.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            if (box.IsKeyboardFocusWithin) return;
-            e.Handled = true;
-            box.Focus();
-        };
-        box.KeyDown += (_, e) =>
-        {
-            if (e.Key != Key.Enter) return;
-            e.Handled = true;
-            Commit();
-            box.SelectAll();
-        };
-        box.LostKeyboardFocus += (_, _) => Commit();
-
-        Button Step(string g, int dir)
-        {
-            var b = new Button
-            {
-                Style = (Style)FindResource("IconButton"),
-                Content = new TextBlock { Text = g, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 11 },
-            };
-            b.Click += (_, _) =>
-            {
-                // 5% 단위로 맞춰 가며 움직인다(103 → 105, 103 → 100).
-                int cur = _card.SizePercent;
-                int next = dir > 0 ? (cur / 5 + 1) * 5 : (cur % 5 == 0 ? cur - 5 : cur / 5 * 5);
-                Apply(next);
-            };
-            return b;
-        }
-
-        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) };
-        stepper.Children.Add(Step("", -1)); // −
-        stepper.Children.Add(box);
-        stepper.Children.Add(unit);
-        stepper.Children.Add(Step("", +1)); // +
-        Grid.SetColumn(stepper, 2);
-
-        grid.Children.Add(icon);
-        grid.Children.Add(label);
-        grid.Children.Add(stepper);
-        AddRow(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
-    }
-
-    /// <summary>[−] 값 [+] 로 1~8을 고르는 설정 줄.</summary>
-    private void AddStepper(string glyph, string text, int value, Action<int> set)
-    {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var icon = new TextBlock
-        {
-            Text = glyph,
-            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = 15,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var label = new TextBlock { Text = text, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
-        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        Grid.SetColumn(label, 1);
-
-        var num = new TextBlock
-        {
-            Text = value.ToString(),
-            FontSize = 14,
-            Width = 28,
-            TextAlignment = TextAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        num.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-
-        int current = value;
-        Button Step(string g, int delta)
-        {
-            var b = new Button
-            {
-                Style = (Style)FindResource("IconButton"),
-                Content = new TextBlock { Text = g, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 11 },
-            };
-            b.Click += (_, _) =>
-            {
-                int next = Math.Clamp(current + delta, CardLayout.MinCells, CardLayout.MaxCells);
-                if (next == current) return;
-                current = next;
-                num.Text = current.ToString();
-                set(current);
-            };
-            return b;
-        }
-
-        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) };
-        stepper.Children.Add(Step("", -1)); // −
-        stepper.Children.Add(num);
-        stepper.Children.Add(Step("", +1)); // +
-        Grid.SetColumn(stepper, 2);
-
-        grid.Children.Add(icon);
-        grid.Children.Add(label);
-        grid.Children.Add(stepper);
-        AddRow(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
-    }
-
-    /// <summary>설정 화면으로 바뀌며 창이 길어졌을 때 화면 아래로 넘치지 않게 올린다.</summary>
-    private void KeepOnScreen()
-    {
-        var dpi = VisualTreeHelper.GetDpi(this);
-        var wa = System.Windows.Forms.Screen.FromHandle(new WindowInteropHelper(this).Handle).WorkingArea;
-        double waT = wa.Top / dpi.DpiScaleY, waB = wa.Bottom / dpi.DpiScaleY;
-        Top = Math.Max(waT + 8, Math.Min(Top, waB - Height - 8));
-    }
-
     private void PlaceNearCard()
     {
         // 카드 가운데를 기준으로 펼치고, 모니터 작업 영역 안으로 맞춘다.
@@ -673,7 +312,7 @@ internal partial class ExpandedWindow : Window
 
     private void OnKey(object sender, KeyEventArgs e)
     {
-        if (!TitleBox.IsKeyboardFocused && !_settings)
+        if (!TitleBox.IsKeyboardFocused)
         {
             int dir = e.Key switch { Key.Down or Key.PageDown => 1, Key.Up or Key.PageUp => -1, _ => 0 };
             if (dir != 0) { GoToPage(_page + dir); e.Handled = true; return; }

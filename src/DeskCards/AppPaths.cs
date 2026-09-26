@@ -58,7 +58,26 @@ internal static class AppPaths
         }
         catch
         {
-            // 자동 실행은 트레이 메뉴에서 다시 켤 수 있다.
+            // 자동 실행은 설정에서 다시 켤 수 있다.
+        }
+    }
+}
+
+/// <summary>Windows 시작 시 실행(HKCU Run 값).</summary>
+internal static class AutoStart
+{
+    public static bool Enabled
+    {
+        get
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(AppPaths.RunKey);
+            return key?.GetValue(AppPaths.RunName) != null;
+        }
+        set
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(AppPaths.RunKey);
+            if (value) key.SetValue(AppPaths.RunName, $"\"{Environment.ProcessPath}\"");
+            else key.DeleteValue(AppPaths.RunName, false);
         }
     }
 }

@@ -52,13 +52,6 @@
                 </TextBlock.Effect>
             </TextBlock>
 
-            <!-- 편집 끝내기 -->
-            <Border x:Name="DoneButton" Visibility="Collapsed" Width="26" Height="26" CornerRadius="13"
-                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,6,0"
-                    Background="{DynamicResource Accent}" Cursor="Hand" ToolTip="편집 끝내기">
-                <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
-                           Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
-            </Border>
         </Grid>
 
         <!-- 편집 모드 크기 조절: 비율을 유지한 채 통째로 키우고 줄이므로 모서리 하나만 둔다. -->

@@ -28,6 +28,31 @@ internal sealed class GroupManager
     public string Root { get; }
     public IEnumerable<GroupModel> Groups => _cards.Values.Select(c => c.Group);
 
+    /// <summary>카드 목록, 이름 순.</summary>
+    public IReadOnlyList<CardWindow> Cards =>
+        _cards.Values.OrderBy(c => c.Group.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    /// <summary>그룹이 생기거나 없어지거나, 이름·모양·설정이 바뀌었을 때(설정 창 갱신용).</summary>
+    public event Action? Changed;
+
+    /// <summary>편집 모드가 켜지고 꺼지거나 고른 카드가 바뀌었을 때.</summary>
+    public event Action? EditChanged;
+
+    private void RaiseChanged() => Changed?.Invoke();
+
+    /// <summary>카드를 옮기거나 크기를 바꿀 때 안내선을 보여 주고 줄에 맞출지.</summary>
+    public bool ShowGuides
+    {
+        get => _cfg.ShowGuides;
+        set
+        {
+            if (_cfg.ShowGuides == value) return;
+            _cfg.ShowGuides = SmartGuides.Enabled = value;
+            _cfg.Save();
+            RaiseChanged();
+        }
+    }
+
     /// <summary>
     /// 켜져 있으면 Windows 배율이 바뀔 때 카드도 같은 비율로 따라 커지고 작아진다.
     /// 켜고 끄는 순간에는 지금 보이는 크기를 그대로 두고, 크기 조절은 어느 쪽이든 할 수 있다.
@@ -56,6 +81,7 @@ internal sealed class GroupManager
                 card.FitToScreen();
                 SavePosition(card);
             }
+            RaiseChanged();
         }
     }
 
@@ -103,6 +129,7 @@ internal sealed class GroupManager
         l.Zoom = Math.Round(l.Zoom, 3);
         _cfg.Layouts[card.Group.Name] = l;
         _cfg.Save();
+        RaiseChanged();
     }
 
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
@@ -112,16 +139,45 @@ internal sealed class GroupManager
             .Where(r => r.Right > r.Left)
             .ToList();
 
-    /// <summary>편집 모드는 한 번에 카드 하나만.</summary>
-    public void EndOtherEdits(CardWindow except)
+    // ----- 편집 모드 -----
+    // 모든 카드를 한꺼번에 옮기고 크기를 바꿀 수 있게 하고, 화면 위쪽에 편집 막대를 띄운다.
+    // 막대의 이름 바꾸기·칸 수·삭제 등은 '고른 카드'(마지막으로 누른 카드)에 적용된다.
+
+    public bool Editing { get; private set; }
+    public CardWindow? Selected { get; private set; }
+
+    public void BeginEditMode(CardWindow? select = null)
     {
-        foreach (var c in _cards.Values)
-            if (c != except) c.EndEdit();
+        if (!Editing)
+        {
+            Editing = true;
+            foreach (var c in _cards.Values) c.BeginEdit();
+            EditBar.Open(this);
+        }
+        Select(select ?? Selected);
+    }
+
+    public void EndEditMode()
+    {
+        if (!Editing) return;
+        Editing = false;
+        Selected = null;
+        foreach (var c in _cards.Values) c.EndEdit();
+        EditBar.CloseBar();
+        EditChanged?.Invoke();
+    }
+
+    public void Select(CardWindow? card)
+    {
+        Selected = card;
+        foreach (var c in _cards.Values) c.SetSelected(c == card);
+        EditChanged?.Invoke();
     }
 
     public void Start()
     {
         MigrateScale();
+        SmartGuides.Enabled = _cfg.ShowGuides;
         Directory.CreateDirectory(Root);
         if (!ListGroupFolders().Any()) Directory.CreateDirectory(Path.Combine(Root, "새 그룹"));
         Reconcile();
@@ -188,6 +244,7 @@ internal sealed class GroupManager
             string name = Path.GetFileName(folder);
             if (!_cards.ContainsKey(name)) CreateCard(folder);
         }
+        RaiseChanged();
     }
 
     private CardWindow CreateCard(string folder)
@@ -213,6 +270,7 @@ internal sealed class GroupManager
         // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
         card.FitToScreen();
         SavePosition(card);
+        if (Editing) card.BeginEdit();
         return card;
     }
 
@@ -235,6 +293,7 @@ internal sealed class GroupManager
     private void RemoveCard(string name)
     {
         if (!_cards.Remove(name, out var card)) return;
+        if (Selected == card) Select(null);
         ExpandedWindow.CloseFor(card);
         card.ClosingByManager = true;
         card.Close();
@@ -248,13 +307,16 @@ internal sealed class GroupManager
         _cfg.Save();
     }
 
-    public void NewGroup()
+    /// <summary>빈 그룹을 만들고 이름을 바로 입력할 수 있게 펼친다. 편집 중이면 새 카드를 고른다.</summary>
+    public CardWindow? NewGroup(bool openTitle = true)
     {
         string path = FileOps.Unique(Root, "새 그룹");
         Directory.CreateDirectory(path);
         Reconcile();
-        if (_cards.TryGetValue(Path.GetFileName(path), out var card))
-            ExpandedWindow.Open(card, this, editTitle: true);
+        if (!_cards.TryGetValue(Path.GetFileName(path), out var card)) return null;
+        if (Editing) Select(card);
+        if (openTitle) ExpandedWindow.Open(card, this, editTitle: true);
+        return card;
     }
 
     public bool RenameGroup(CardWindow card, string newName)
@@ -299,17 +361,20 @@ internal sealed class GroupManager
         _cfg.Positions[newName] = new[] { p.X, p.Y };
         _cfg.Save();
         card.Group.MovedTo(dest);
+        RaiseChanged();
+        EditChanged?.Invoke();
         return true;
     }
 
-    public void DeleteGroup(CardWindow card)
+    /// <summary>그룹을 지운다. 항목이 있으면 확인하고 바탕화면으로 옮긴다. 지웠으면 true.</summary>
+    public bool DeleteGroup(CardWindow card)
     {
         var g = card.Group;
         if (g.Items.Count > 0)
         {
             var r = MessageBox.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {g.Items.Count}개는 바탕화면으로 옮겨져요.",
                 "Desk Cards", MessageBoxButton.OKCancel, MessageBoxImage.Question);
-            if (r != MessageBoxResult.OK) return;
+            if (r != MessageBoxResult.OK) return false;
             foreach (var e in g.Items.ToList()) FileOps.MoveTo(e.Path, FileOps.UserDesktop);
         }
         try
@@ -319,17 +384,20 @@ internal sealed class GroupManager
         catch (Exception ex)
         {
             MessageBox.Show($"폴더를 지우지 못했어요: {ex.Message}", "Desk Cards");
-            return;
+            return false;
         }
         _cfg.Positions.Remove(g.Name);
         _cfg.Layouts.Remove(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
+        RaiseChanged();
+        return true;
     }
 
     public void Shutdown()
     {
         _shuttingDown = true;
+        EndEditMode();
         _rootWatcher?.Dispose();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);
     }

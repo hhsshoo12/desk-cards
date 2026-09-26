@@ -24,16 +24,21 @@ internal static class SmartGuides
 
     private static GuideOverlay? _overlay;
 
+    /// <summary>안내선·자동 맞춤을 쓸지. 편집 막대나 설정에서 끄고 켠다.</summary>
+    public static bool Enabled { get; set; } = true;
+
+    private static bool Off => !Enabled || (Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0;
+
     /// <summary>
     /// 끌고 있는 위치(x, y)와 크기로 붙을 위치를 정한다. 작업 영역 밖으로는 나가지 않는다.
-    /// Alt를 누르고 있으면 붙지 않는다.
+    /// 꺼져 있거나 Alt를 누르고 있으면 붙지 않는다.
     /// </summary>
     public static (int X, int Y, List<Line> Lines) Snap(int x, int y, int w, int h,
         IReadOnlyList<Native.RECT> others, System.Drawing.Rectangle wa, double dpiScale)
     {
         x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
         y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
-        if ((Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0) return (x, y, new List<Line>());
+        if (Off) return (x, y, new List<Line>());
 
         var (xs, ys) = Targets(others, wa);
 
@@ -55,7 +60,7 @@ internal static class SmartGuides
     {
         int x = start.Left, y = start.Top;
         double w0 = start.Right - start.Left, h0 = start.Bottom - start.Top;
-        if ((Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0) return (g, new List<Line>());
+        if (Off) return (g, new List<Line>());
 
         var (xs, ys) = Targets(others, wa);
         double threshold = SnapDip * dpiScale;

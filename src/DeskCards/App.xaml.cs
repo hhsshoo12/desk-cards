@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
@@ -13,13 +12,17 @@ public partial class App : Application
     private Mutex? _mutex;
     private GroupManager? _mgr;
     private Forms.NotifyIcon? _tray;
+    private EventWaitHandle? _showSettings;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _mutex = new Mutex(true, "DeskCards.SingleInstance", out bool created);
+        _showSettings = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskCards.ShowSettings");
         if (!created)
         {
+            // 이미 실행 중이면(시작 메뉴 바로가기를 다시 누르는 등) 그쪽에 설정 창을 띄우라고 알리고 끝낸다.
+            _showSettings.Set();
             Shutdown();
             return;
         }
@@ -36,19 +39,24 @@ public partial class App : Application
         _mgr = new GroupManager();
         _mgr.Start();
         CreateTray();
+
+        var listener = new Thread(() =>
+        {
+            while (_showSettings.WaitOne())
+                Dispatcher.BeginInvoke(() => { if (_mgr != null) SettingsWindow.Open(_mgr); });
+        }) { IsBackground = true };
+        listener.Start();
     }
 
     private void CreateTray()
     {
         var menu = new Forms.ContextMenuStrip();
+        var settings = new Forms.ToolStripMenuItem("설정", null, (_, _) => SettingsWindow.Open(_mgr!));
+        settings.Font = new Drawing.Font(settings.Font, Drawing.FontStyle.Bold);
+        menu.Items.Add(settings);
+        menu.Items.Add("카드 편집 (이동 · 크기 · 삭제)", null, (_, _) => _mgr!.BeginEditMode());
         menu.Items.Add("새 그룹", null, (_, _) => _mgr!.NewGroup());
         menu.Items.Add("그룹 폴더 열기", null, (_, _) => FileOps.OpenFolder(_mgr!.Root));
-        var startup = new Forms.ToolStripMenuItem("Windows 시작 시 실행") { Checked = IsStartupEnabled(), CheckOnClick = true };
-        startup.CheckedChanged += (_, _) => SetStartup(startup.Checked);
-        menu.Items.Add(startup);
-        var scale = new Forms.ToolStripMenuItem("카드 크기: Windows 배율 따라가기") { Checked = _mgr!.FollowWindowsScale, CheckOnClick = true };
-        scale.CheckedChanged += (_, _) => _mgr!.FollowWindowsScale = scale.Checked;
-        menu.Items.Add(scale);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("종료", null, (_, _) => Quit());
 
@@ -59,7 +67,7 @@ public partial class App : Application
             Visible = true,
             ContextMenuStrip = menu,
         };
-        _tray.DoubleClick += (_, _) => FileOps.OpenFolder(_mgr!.Root);
+        _tray.DoubleClick += (_, _) => SettingsWindow.Open(_mgr!);
     }
 
     private void Quit()
@@ -74,19 +82,6 @@ public partial class App : Application
         _tray?.Dispose();
         _mutex?.Dispose();
         base.OnExit(e);
-    }
-
-    private static bool IsStartupEnabled()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(AppPaths.RunKey);
-        return key?.GetValue(AppPaths.RunName) != null;
-    }
-
-    private static void SetStartup(bool on)
-    {
-        using var key = Registry.CurrentUser.CreateSubKey(AppPaths.RunKey);
-        if (on) key.SetValue(AppPaths.RunName, $"\"{Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName}\"");
-        else key.DeleteValue(AppPaths.RunName, false);
     }
 
     /// <summary>2×2 타일 모양 트레이 아이콘을 그린다.</summary>
