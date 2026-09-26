@@ -20,6 +20,8 @@ internal partial class CardWindow : Window
     private Point _downPos;
     private object? _downTarget;
     private bool _pending, _altDown;
+    private Native.POINT _moveCursorStart;
+    private Native.RECT _moveWindowStart;
 
     public CardWindow(GroupModel group, GroupManager mgr)
     {
@@ -226,11 +228,21 @@ internal partial class CardWindow : Window
                 Marshal.StructureToPtr(wp, lParam, false);
             }
         }
+        else if (msg == Native.WM_ENTERSIZEMOVE)
+        {
+            Native.GetCursorPos(out _moveCursorStart);
+            Native.GetWindowRect(hwnd, out _moveWindowStart);
+        }
         else if (msg == Native.WM_MOVING)
         {
             // 끄는 동안에도 바탕화면 아이콘처럼 칸 단위로 움직인다.
+            // 시스템이 주는 제안 위치는 직전(이미 칸에 맞춘) 위치 + 작은 이동량이라 매번 같은 칸으로
+            // 반올림돼 버린다. 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
             var r = Marshal.PtrToStructure<Native.RECT>(lParam);
-            var (x, y) = SnapWindowPx(r.Left, r.Top);
+            Native.GetCursorPos(out var cur);
+            int wantX = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
+            int wantY = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
+            var (x, y) = SnapWindowPx(wantX, wantY);
             int w = r.Right - r.Left, h = r.Bottom - r.Top;
             Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
             handled = true;

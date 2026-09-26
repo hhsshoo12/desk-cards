@@ -14,6 +14,16 @@ internal static class Native
 
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_MOVING = 0x0216;
+    public const int WM_ENTERSIZEMOVE = 0x0231;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT
+    {
+        public int X, Y;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT pt);
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOZORDER = 0x0004;
