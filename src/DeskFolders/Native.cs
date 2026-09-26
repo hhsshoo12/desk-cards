@@ -42,6 +42,11 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
+    public const int VK_MENU = 0x12; // Alt
+
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct BITMAP
     {

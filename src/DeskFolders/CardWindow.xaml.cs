@@ -19,7 +19,7 @@ internal partial class CardWindow : Window
     private readonly GroupManager _mgr;
     private Point _downPos;
     private object? _downTarget;
-    private bool _pending;
+    private bool _pending, _altDown;
 
     public CardWindow(GroupModel group, GroupManager mgr)
     {
@@ -87,12 +87,14 @@ internal partial class CardWindow : Window
         return b;
     }
 
-    // ----- 입력: 클릭 = 실행/펼치기, 끌기 = 항목 꺼내기/카드 이동 -----
+    // ----- 입력: 클릭 = 실행/펼치기, 끌기 = 항목 꺼내기/카드 이동, Alt+끌기 = 어디서든 카드 이동 -----
 
     private void OnDown(object sender, MouseButtonEventArgs e)
     {
         _downPos = e.GetPosition(this);
         _downTarget = FindTag(e.OriginalSource as DependencyObject);
+        // 카드는 활성화되지 않는 창이라 WPF 키보드 상태 대신 실제 키 상태를 본다.
+        _altDown = (Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0;
         _pending = true;
     }
 
@@ -104,7 +106,7 @@ internal partial class CardWindow : Window
             Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         _pending = false;
 
-        if (_downTarget is ShellEntry entry)
+        if (_downTarget is ShellEntry entry && !_altDown)
         {
             FileOps.DragOut(this, entry.Path);
         }
@@ -120,6 +122,7 @@ internal partial class CardWindow : Window
     {
         if (!_pending) return;
         _pending = false;
+        if (_altDown) return; // Alt를 누른 채 움직이지 않고 뗀 건 실수로 보고 아무것도 안 한다.
         if (_downTarget is ShellEntry entry) FileOps.Launch(entry.Path);
         else ExpandedWindow.Open(this, _mgr);
     }
