@@ -8,6 +8,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Product>Desk Cards</Product>
+    <Company>hhsshoo12</Company>
     <AssemblyName>DeskFolders</AssemblyName>
     <RootNamespace>DeskFolders</RootNamespace>
     <Version>0.1.0</Version>
