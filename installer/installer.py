@@ -38,6 +38,7 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
+CREATE_BREAKAWAY_FROM_JOB = 0x01000000
 
 
 # ----- 경로·환경 -----
@@ -366,8 +367,17 @@ def schedule_cleanup() -> None:
     f = _moved_uninstaller
     # timeout은 콘솔 없는 프로세스에서 바로 끝나 버리므로 ping으로 기다린다. 몇 번 다시 시도한다.
     cmd = " & ".join([f'ping -n 3 127.0.0.1 >nul & del /f /q "{f}" >nul 2>&1'] * 5)
-    subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS,
-                     close_fds=True, cwd=str(f.parent))
+    # DETACHED_PROCESS로 띄우면 cmd에 콘솔이 없어 그 안의 ping이 새 콘솔 창을 연다.
+    # 숨긴 콘솔(CREATE_NO_WINDOW)을 주면 ping도 그 콘솔을 물려받아 아무 창도 뜨지 않는다.
+    # 제거 프로그램을 부른 쪽(작업 개체)이 끝날 때 같이 죽지 않도록 가능하면 빠져나온다.
+    for flags in (CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW):
+        try:
+            # 목록으로 넘기면 안쪽 따옴표가 \"로 바뀌어 cmd가 못 알아듣는다. 명령줄을 통째로 넘긴다.
+            subprocess.Popen(f'cmd /s /c "{cmd}"', creationflags=flags, close_fds=True, cwd=str(f.parent),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except OSError:
+            continue
 
 
 # ----- 화면 -----
