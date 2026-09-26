@@ -52,6 +52,9 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForSystem();
+
     public const int VK_MENU = 0x12; // Alt
 
     [DllImport("user32.dll")]

@@ -4,11 +4,14 @@ using System.Runtime.InteropServices;
 namespace DeskFolders;
 
 /// <summary>
-/// 바탕화면 아이콘 격자(탐색기의 SysListView32 칸 간격)를 읽어 카드 위치를 칸에 맞춘다.
-/// 모든 좌표는 물리 픽셀(화면 좌표)이다.
+/// 바탕화면 아이콘 격자(탐색기의 SysListView32 칸 간격)를 읽는다.
+/// 칸은 목록 창의 왼쪽 위(보통 주 모니터 0,0)에서 시작해 간격만큼 반복된다. 모든 값은 물리 픽셀이다.
 /// </summary>
 internal static class DesktopGrid
 {
+    /// <summary>카드 하나가 차지하는 칸 수(가로×세로).</summary>
+    public const int CardCols = 2, CardRows = 2;
+
     private const int LVM_GETITEMSPACING = 0x1000 + 51;
 
     private static int _cx, _cy, _ox, _oy;
@@ -21,21 +24,24 @@ internal static class DesktopGrid
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     /// <summary>
-    /// 내용 영역(x, y, w, h)이 차지할 칸들(가로·세로 올림) 한가운데 오도록
-    /// 가장 가까운 칸 위치로 옮긴 내용 영역의 왼쪽 위를 돌려준다.
+    /// (x, y)에 놓인 w×h 영역을 가장 가까운 칸 모서리에 맞추고, 그 모니터의 작업 영역
+    /// (작업 표시줄 제외) 밖으로 나가면 칸 단위로 안쪽으로 당긴다.
     /// </summary>
     public static (int X, int Y) Snap(int x, int y, int w, int h)
     {
         if (!TryGet(out int ox, out int oy, out int cx, out int cy)) return (x, y);
-        int cols = Math.Max(1, (int)Math.Ceiling(w / (double)cx));
-        int rows = Math.Max(1, (int)Math.Ceiling(h / (double)cy));
-        int padX = (cols * cx - w) / 2, padY = (rows * cy - h) / 2;
-        int fx = ox + (int)Math.Round((x - padX - ox) / (double)cx) * cx;
-        int fy = oy + (int)Math.Round((y - padY - oy) / (double)cy) * cy;
-        return (fx + padX, fy + padY);
+        int sx = ox + (int)Math.Round((x - ox) / (double)cx) * cx;
+        int sy = oy + (int)Math.Round((y - oy) / (double)cy) * cy;
+
+        var wa = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(x + w / 2, y + h / 2)).WorkingArea;
+        while (sx + w > wa.Right && sx - cx >= wa.Left) sx -= cx;
+        while (sx < wa.Left) sx += cx;
+        while (sy + h > wa.Bottom && sy - cy >= wa.Top) sy -= cy;
+        while (sy < wa.Top) sy += cy;
+        return (sx, sy);
     }
 
-    private static bool TryGet(out int ox, out int oy, out int cx, out int cy)
+    public static bool TryGet(out int ox, out int oy, out int cx, out int cy)
     {
         // 끄는 동안 WM_MOVING마다 불리므로 잠깐 캐시한다.
         long now = Environment.TickCount64;

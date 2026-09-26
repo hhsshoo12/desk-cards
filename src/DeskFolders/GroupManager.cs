@@ -127,7 +127,8 @@ internal sealed class GroupManager
 
     public void SavePosition(CardWindow card)
     {
-        _cfg.Positions[card.Group.Name] = new[] { card.Left, card.Top };
+        var p = card.ActualPosition;
+        _cfg.Positions[card.Group.Name] = new[] { p.X, p.Y };
         _cfg.Save();
     }
 
@@ -177,7 +178,8 @@ internal sealed class GroupManager
         _cards.Remove(oldName);
         _cards[newName] = card;
         _cfg.Positions.Remove(oldName);
-        _cfg.Positions[newName] = new[] { card.Left, card.Top };
+        var p = card.ActualPosition;
+        _cfg.Positions[newName] = new[] { p.X, p.Y };
         _cfg.Save();
         card.Group.MovedTo(dest);
         return true;
@@ -225,7 +227,25 @@ internal sealed class GroupManager
     {
         // 주 모니터 오른쪽 위부터 아래로, 다음 열은 왼쪽으로 채운다.
         var wa = SystemParameters.WorkArea;
-        var taken = _cards.Values.Select(c => new Rect(c.Left, c.Top, CardW, CardH)).ToList();
+        var taken = _cards.Values.Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
+
+        if (DesktopGrid.TryGet(out int ox, out int oy, out int cx, out int cy))
+        {
+            // 바탕화면 칸 단위(카드 = 2×2칸)로 오른쪽 위부터 찾는다.
+            double s = Native.GetDpiForSystem() / 96.0;
+            double w = DesktopGrid.CardCols * cx / s, h = DesktopGrid.CardRows * cy / s;
+            int lastCol = (int)Math.Floor((wa.Right * s - ox) / cx) - DesktopGrid.CardCols;
+            for (int col = lastCol; col >= 0; col -= DesktopGrid.CardCols)
+            {
+                for (int row = 0; (oy + (row + DesktopGrid.CardRows) * cy) / s <= wa.Bottom; row += DesktopGrid.CardRows)
+                {
+                    var r = new Rect((ox + col * cx) / s, (oy + row * cy) / s, w, h);
+                    var probe = new Rect(r.X + 4, r.Y + 4, w - 8, h - 8);
+                    if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
+                }
+            }
+        }
+
         for (int col = 0; col < 20; col++)
         {
             for (double y = wa.Top + 16; y + CardH <= wa.Bottom; y += CardH)

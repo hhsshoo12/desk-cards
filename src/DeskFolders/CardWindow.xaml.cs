@@ -202,6 +202,7 @@ internal partial class CardWindow : Window
         long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
         Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE));
         AttachToDesktop(hwnd);
+        ApplyGridSize();
 
         if (_taskbarCreatedMsg == 0) _taskbarCreatedMsg = Native.RegisterWindowMessage("TaskbarCreated");
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
@@ -257,12 +258,32 @@ internal partial class CardWindow : Window
 
     // ----- 바탕화면 격자 맞춤 -----
 
-    /// <summary>창 안에서 실제로 보이는 영역(카드 + 이름). XAML의 Grid 여백/크기와 맞춘다.</summary>
-    private static readonly Rect ContentRect = new(14, 6, 168, 194);
+    /// <summary>
+    /// 창을 바탕화면 아이콘 2×2칸 크기로 맞추고, 그 안에 정사각형 카드와 이름을 배치한다.
+    /// 여백은 아이콘이 칸 안에서 떨어진 정도(위 약 5px, 좌우 약 4px)에 맞췄다.
+    /// </summary>
+    private void ApplyGridSize()
+    {
+        if (!DesktopGrid.TryGet(out _, out _, out int cx, out int cy)) return;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
 
-    /// <summary>현재 위치를 가장 가까운 바탕화면 칸에 맞춘다.</summary>
+        double w = DesktopGrid.CardCols * cx, h = DesktopGrid.CardRows * cy; // px
+        double top = 5 * sy, labelH = 30 * sy, gap = 4 * sy;
+        double side = Math.Min(w - 8 * sx, h - top - labelH - gap);
+        double insetX = (w - side) / 2;
+
+        Width = w / sx;
+        Height = h / sy;
+        Layout.Margin = new Thickness(insetX / sx, top / sy, insetX / sx, 0);
+        BodyRow.Height = new GridLength(side / sy);
+        Cells.Margin = new Thickness(side / sy * 0.085);
+    }
+
+    /// <summary>크기를 칸에 맞추고 현재 위치를 가장 가까운 바탕화면 칸에 맞춘다.</summary>
     public void SnapToGrid()
     {
+        ApplyGridSize();
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
         var (x, y) = SnapWindowPx(r.Left, r.Top);
@@ -271,13 +292,26 @@ internal partial class CardWindow : Window
                 Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
     }
 
+    // 창 왼쪽 위 = 2×2칸 영역의 왼쪽 위이므로 그대로 칸 모서리에 맞추면 된다.
     private (int X, int Y) SnapWindowPx(int winX, int winY)
     {
         var dpi = VisualTreeHelper.GetDpi(this);
-        int offX = (int)Math.Round(ContentRect.X * dpi.DpiScaleX), offY = (int)Math.Round(ContentRect.Y * dpi.DpiScaleY);
-        int w = (int)Math.Round(ContentRect.Width * dpi.DpiScaleX), h = (int)Math.Round(ContentRect.Height * dpi.DpiScaleY);
-        var (cx, cy) = DesktopGrid.Snap(winX + offX, winY + offY, w, h);
-        return (cx - offX, cy - offY);
+        return DesktopGrid.Snap(winX, winY, (int)Math.Round(Width * dpi.DpiScaleX), (int)Math.Round(Height * dpi.DpiScaleY));
+    }
+
+    /// <summary>
+    /// 실제 창 위치(DIP). SetWindowPos나 끌기로 옮긴 직후에는 WPF의 Left/Top이 늦게 갱신될 수 있어
+    /// 저장할 때는 이 값을 쓴다.
+    /// </summary>
+    public Point ActualPosition
+    {
+        get
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return new Point(Left, Top);
+            var dpi = VisualTreeHelper.GetDpi(this);
+            return new Point(r.Left / dpi.DpiScaleX, r.Top / dpi.DpiScaleY);
+        }
     }
 
     protected override void OnClosed(EventArgs e)
