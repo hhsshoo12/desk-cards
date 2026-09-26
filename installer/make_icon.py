@@ -7,7 +7,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 COLORS = ["#4CC2FF", "#FFB900", "#6CCB5F", "#FF6F61"]
-OUT = Path(__file__).resolve().parent.parent / "src" / "DeskFolders" / "app.ico"
+OUT = Path(__file__).resolve().parent.parent / "src" / "DeskCards" / "app.ico"
 
 
 def tile_image(size: int) -> Image.Image:

@@ -11,8 +11,8 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <Product>Desk Cards</Product>
     <Company>hhsshoo12</Company>
-    <AssemblyName>DeskFolders</AssemblyName>
-    <RootNamespace>DeskFolders</RootNamespace>
+    <AssemblyName>DeskCards</AssemblyName>
+    <RootNamespace>DeskCards</RootNamespace>
     <Version>0.1.0</Version>
   </PropertyGroup>
 

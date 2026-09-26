@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>
 /// 바탕화면 아이콘 격자(탐색기의 SysListView32 칸 간격)를 읽는다.

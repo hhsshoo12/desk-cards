@@ -7,9 +7,26 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 
 ---
 
+## 설치
+
+1. [Releases](https://github.com/hhsshoo12/desk-cards/releases/latest)에서 `DeskCards-Setup-<버전>.exe`를 받습니다.
+2. 실행해서 안내에 따라 [다음]을 누르면 됩니다. 관리자 권한은 필요 없고, .NET을 따로 설치하지 않아도 됩니다.
+   - 설치 위치: 기본은 `%LOCALAPPDATA%\Programs\Desk Cards`
+   - 추가 작업: 시작 메뉴 바로가기, 바탕화면 바로가기, Windows 시작 시 자동 실행
+3. 새 버전이 나오면 새 설치 파일을 그냥 실행하세요. 만들어 둔 그룹과 카드 위치·크기는 그대로 남습니다.
+
+> Windows SmartScreen이 "Windows의 PC 보호" 창을 띄우면 **추가 정보 → 실행**을 누르세요. 서명되지 않은 개인 프로젝트라 처음 한 번 뜰 수 있습니다.
+
+### 제거
+
+**설정 → 앱 → 설치된 앱**에서 "Desk Cards"를 찾아 제거합니다.
+그룹 폴더(`내 사용자 폴더\DeskCards`)와 그 안의 바로가기는 지우지 않으니, 필요 없으면 직접 지우세요.
+
+---
+
 ## 시작하기
 
-1. `DeskFolders.exe`를 실행합니다. (지금은 실행 파일 이름이 DeskFolders입니다.)
+1. 설치가 끝나면 Desk Cards가 실행됩니다.
 2. 바탕화면 오른쪽 위에 빈 카드 **새 그룹**이 하나 생깁니다.
 3. 바탕화면 아이콘이나 시작 메뉴의 앱을 카드 위로 끌어다 놓으면 카드에 들어갑니다.
 4. 작업 표시줄 오른쪽 트레이에 2×2 네모 아이콘이 생깁니다. 앱 메뉴는 여기에 있습니다.
@@ -103,14 +120,17 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 ## 자주 묻는 것
 
 **카드 안의 앱은 실제로 어디에 있나요?**
-그룹 하나는 `내 사용자 폴더\DeskFolders\그룹 이름` 폴더 하나입니다.
+그룹 하나는 `내 사용자 폴더\DeskCards\그룹 이름` 폴더 하나입니다.
 탐색기에서 이 폴더에 파일을 넣거나 폴더를 새로 만들어도 카드에 바로 반영됩니다.
 
 **앱을 지우면 카드 안의 바로가기도 없어지나요?**
 아니요. 앱을 종료하거나 지워도 위 폴더와 그 안의 파일은 그대로 남습니다.
 
 **카드 위치나 크기는 어디에 저장되나요?**
-`%APPDATA%\DeskFolders\config.json`에 저장됩니다. 이 파일을 지우면 위치와 크기가 처음 상태로 돌아갑니다. 그룹과 앱은 그대로입니다.
+`%APPDATA%\DeskCards\config.json`에 저장됩니다. 이 파일을 지우면 위치와 크기가 처음 상태로 돌아갑니다. 그룹과 앱은 그대로입니다.
+
+**예전 이름(DeskFolders)으로 쓰던 그룹은요?**
+처음 실행할 때 `DeskFolders` 폴더를 `DeskCards`로 자동으로 옮깁니다. 그룹과 설정은 그대로 이어집니다.
 
 **탐색기가 재시작되면요?**
 카드가 잠깐 사라졌다가 몇 초 안에 다시 나타납니다.
@@ -120,12 +140,21 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 ## 요구 사항
 
 - Windows 11 22H2 이상 권장 (그 이전 버전에서도 동작하지만 펼친 창의 반투명 효과는 나오지 않습니다)
-- [.NET 10 데스크톱 런타임](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ## 직접 빌드하기
 
+[.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)가 필요합니다.
+
 ```
-dotnet build src/DeskFolders -c Release
+dotnet build src/DeskCards -c Release
 ```
 
-실행 파일은 `src/DeskFolders/bin/Release/net10.0-windows/DeskFolders.exe`에 생깁니다.
+실행 파일은 `src/DeskCards/bin/Release/net10.0-windows/DeskCards.exe`에 생깁니다.
+
+설치 파일까지 만들려면 Python 3(+ Tkinter)이 더 필요합니다.
+
+```
+pwsh -File installer/build.ps1
+```
+
+`installer/dist/DeskCards-Setup-<버전>.exe`가 생깁니다.

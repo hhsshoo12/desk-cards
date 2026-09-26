@@ -7,8 +7,8 @@ $ErrorActionPreference = 'Stop'
 
 $here = $PSScriptRoot
 $root = Split-Path $here -Parent
-$proj = Join-Path $root 'src\DeskFolders\DeskFolders.csproj'
-$icon = Join-Path $root 'src\DeskFolders\app.ico'
+$proj = Join-Path $root 'src\DeskCards\DeskCards.csproj'
+$icon = Join-Path $root 'src\DeskCards\app.ico'
 $payload = Join-Path $here 'payload'
 $venv = Join-Path $here '.venv'
 
@@ -24,7 +24,7 @@ dotnet publish $proj -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:EnableCompressionInSingleFile=true -p:DebugType=none -o $payload
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish 실패' }
-Get-ChildItem $payload -Exclude 'DeskFolders.exe' | Remove-Item -Recurse -Force
+Get-ChildItem $payload -Exclude 'DeskCards.exe' | Remove-Item -Recurse -Force
 Set-Content (Join-Path $payload 'version.txt') $version -NoNewline -Encoding utf8
 
 Write-Host '== PyInstaller 준비'

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Windows;
@@ -6,13 +6,10 @@ using Microsoft.Win32;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 public partial class App : Application
 {
-    private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunName = "DeskFolders";
-
     private Mutex? _mutex;
     private GroupManager? _mgr;
     private Forms.NotifyIcon? _tray;
@@ -20,12 +17,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _mutex = new Mutex(true, "DeskFolders.SingleInstance", out bool created);
+        _mutex = new Mutex(true, "DeskCards.SingleInstance", out bool created);
         if (!created)
         {
             Shutdown();
             return;
         }
+
+        // 예전 이름(DeskFolders)의 그룹·설정 폴더를 옮긴다. 설정을 읽기 전에 해야 한다.
+        AppPaths.Migrate();
 
         Theme.Apply();
         SystemEvents.UserPreferenceChanged += (_, a) =>
@@ -55,7 +55,7 @@ public partial class App : Application
         _tray = new Forms.NotifyIcon
         {
             Icon = MakeTrayIcon(),
-            Text = "DeskFolders",
+            Text = "Desk Cards",
             Visible = true,
             ContextMenuStrip = menu,
         };
@@ -78,15 +78,15 @@ public partial class App : Application
 
     private static bool IsStartupEnabled()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-        return key?.GetValue(RunName) != null;
+        using var key = Registry.CurrentUser.OpenSubKey(AppPaths.RunKey);
+        return key?.GetValue(AppPaths.RunName) != null;
     }
 
     private static void SetStartup(bool on)
     {
-        using var key = Registry.CurrentUser.CreateSubKey(RunKey);
-        if (on) key.SetValue(RunName, $"\"{Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName}\"");
-        else key.DeleteValue(RunName, false);
+        using var key = Registry.CurrentUser.CreateSubKey(AppPaths.RunKey);
+        if (on) key.SetValue(AppPaths.RunName, $"\"{Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule!.FileName}\"");
+        else key.DeleteValue(AppPaths.RunName, false);
     }
 
     /// <summary>2×2 타일 모양 트레이 아이콘을 그린다.</summary>

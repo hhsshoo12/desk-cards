@@ -1,11 +1,11 @@
-<Window x:Class="DeskFolders.ExpandedWindow"
+<Window x:Class="DeskCards.ExpandedWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:ClassModifier="internal"
         WindowStyle="SingleBorderWindow" ResizeMode="NoResize" ShowInTaskbar="False"
         Background="Transparent" AllowDrop="True"
         FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic"
-        UseLayoutRounding="True" Title="DeskFolders">
+        UseLayoutRounding="True" Title="Desk Cards">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="0"
                       CornerRadius="0" UseAeroCaptionButtons="False" />

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>그룹 카드 위치를 %APPDATA%\DeskFolders\config.json에 저장한다. 그룹 내용 자체는 실제 폴더가 원본이다.</summary>
 internal sealed class Config
@@ -29,7 +29,7 @@ internal sealed class Config
     public int ScaleVersion { get; set; }
 
     private static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskFolders", "config.json");
+        AppPaths.ConfigDir, "config.json");
 
     public static Config Load()
     {

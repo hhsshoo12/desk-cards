@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 internal static class Native
 {

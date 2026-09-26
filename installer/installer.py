@@ -28,9 +28,11 @@ from tkinter import filedialog, font as tkfont, messagebox, ttk
 
 APP_NAME = "Desk Cards"
 APP_ID = "DeskCards"  # 제거 목록 레지스트리 키 이름
-EXE_NAME = "DeskFolders.exe"
+EXE_NAME = "DeskCards.exe"
+OLD_EXE_NAMES = ("DeskFolders.exe",)  # 예전 이름. 업데이트·제거할 때 같이 정리한다.
 UNINSTALLER_NAME = "uninstall.exe"
-RUN_VALUE = "DeskFolders"  # 앱의 'Windows 시작 시 실행'과 같은 이름
+RUN_VALUE = "DeskCards"  # 앱의 'Windows 시작 시 실행'과 같은 이름
+OLD_RUN_VALUES = ("DeskFolders",)
 PUBLISHER = "hhsshoo12"
 URL = "https://github.com/hhsshoo12/desk-cards"
 
@@ -78,12 +80,19 @@ def default_install_dir() -> Path:
     return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "Programs" / APP_NAME
 
 
+def _new_or_old(base: Path) -> Path:
+    """앱은 처음 실행될 때 예전 이름(DeskFolders) 폴더를 DeskCards로 옮긴다. 아직 안 옮겨졌으면 예전 폴더."""
+    new, old = base / "DeskCards", base / "DeskFolders"
+    return old if old.exists() and not new.exists() else new
+
+
 def groups_dir() -> Path:
-    return Path.home() / "DeskFolders"
+    return _new_or_old(Path.home())
 
 
-def config_dir() -> Path:
-    return Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "DeskFolders"
+def config_dirs() -> list[Path]:
+    base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    return [base / "DeskCards", base / "DeskFolders"]
 
 
 def installed_info() -> tuple[Path | None, str | None]:
@@ -117,9 +126,9 @@ def free_space(path: Path) -> int | None:
 
 def app_running() -> bool:
     try:
-        out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {EXE_NAME}", "/NH"],
-                             capture_output=True, text=True, creationflags=CREATE_NO_WINDOW).stdout
-        return EXE_NAME.lower() in out.lower()
+        out = subprocess.run(["tasklist", "/NH", "/FO", "CSV"],
+                             capture_output=True, text=True, creationflags=CREATE_NO_WINDOW).stdout.lower()
+        return any(f'"{n.lower()}"' in out for n in (EXE_NAME, *OLD_EXE_NAMES))
     except OSError:
         return False
 
@@ -127,7 +136,8 @@ def app_running() -> bool:
 def stop_app() -> None:
     if not app_running():
         return
-    subprocess.run(["taskkill", "/IM", EXE_NAME, "/F"], capture_output=True, creationflags=CREATE_NO_WINDOW)
+    for name in (EXE_NAME, *OLD_EXE_NAMES):
+        subprocess.run(["taskkill", "/IM", name, "/F"], capture_output=True, creationflags=CREATE_NO_WINDOW)
     for _ in range(50):
         if not app_running():
             return
@@ -203,6 +213,10 @@ def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun:
             job.progress(5 + 75 * done / total)
     os.replace(tmp, exe)
     job.log(f"  {human_size(total)} 복사함")
+    for old in OLD_EXE_NAMES:
+        if (target / old).exists():
+            job.status(f"예전 이름의 파일 지우기: {old}")
+            (target / old).unlink()
 
     if getattr(sys, "frozen", False):
         job.status(f"제거 프로그램 복사: {UNINSTALLER_NAME}")
@@ -240,6 +254,11 @@ def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun:
         winreg.SetValueEx(k, "InstallDate", 0, winreg.REG_SZ, time.strftime("%Y%m%d"))
 
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+        for old in OLD_RUN_VALUES:
+            try:
+                winreg.DeleteValue(k, old)
+            except FileNotFoundError:
+                pass
         if autorun:
             job.status("Windows 시작 시 자동 실행 켜기")
             winreg.SetValueEx(k, RUN_VALUE, 0, winreg.REG_SZ, f'"{exe}"')
@@ -267,7 +286,11 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
     job.status("Windows 시작 시 자동 실행 끄기")
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
-            winreg.DeleteValue(k, RUN_VALUE)
+            for name in (RUN_VALUE, *OLD_RUN_VALUES):
+                try:
+                    winreg.DeleteValue(k, name)
+                except FileNotFoundError:
+                    pass
     except FileNotFoundError:
         pass
 
@@ -278,10 +301,11 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
         pass
     job.progress(55)
 
-    exe = target / EXE_NAME
-    if exe.exists():
-        job.status(f"파일 지우기: {exe}")
-        exe.unlink()
+    for name in (EXE_NAME, *OLD_EXE_NAMES):
+        exe = target / name
+        if exe.exists():
+            job.status(f"파일 지우기: {exe}")
+            exe.unlink()
     remove_start_traces(job, target)
     job.progress(70)
 
@@ -309,9 +333,11 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
         job.log(f"  설치 폴더에 다른 파일이 있어 폴더는 남겨 둡니다: {target}")
     job.progress(80)
 
-    if remove_config and config_dir().exists():
-        job.status(f"카드 설정 지우기: {config_dir()}")
-        shutil.rmtree(config_dir(), ignore_errors=True)
+    if remove_config:
+        for d in config_dirs():
+            if d.exists():
+                job.status(f"카드 설정 지우기: {d}")
+                shutil.rmtree(d, ignore_errors=True)
     job.progress(90)
 
     job.progress(100)
@@ -730,7 +756,7 @@ class Wizard(tk.Tk):
             messagebox.showwarning(self.title(), "같은 이름의 파일이 있어요. 다른 폴더를 골라 주세요.", parent=self)
             return False
         if p.is_dir():
-            others = [c.name for c in p.iterdir() if c.name.lower() not in (EXE_NAME.lower(), UNINSTALLER_NAME.lower())]
+            others = [c.name for c in p.iterdir() if c.name.lower() not in {n.lower() for n in (EXE_NAME, UNINSTALLER_NAME, *OLD_EXE_NAMES)}]
             if others and not messagebox.askyesno(
                     self.title(), f"이 폴더에 이미 다른 파일이 있어요.\n{p}\n\n그래도 여기에 설치할까요?", parent=self):
                 return False

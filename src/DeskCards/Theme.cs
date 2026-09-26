@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 internal static class Theme
 {

@@ -9,7 +9,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>
 /// 바탕화면에 붙어 있는 그룹 카드 하나(2×2 미리보기).

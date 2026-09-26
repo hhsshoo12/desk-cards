@@ -6,7 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 internal static class FileOps
 {
@@ -31,7 +31,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "DeskFolders", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(ex.Message, "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -97,7 +97,7 @@ internal static class FileOps
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{Path.GetFileName(p)}: {ex.Message}", "DeskFolders", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show($"{Path.GetFileName(p)}: {ex.Message}", "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -111,7 +111,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "DeskFolders", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(ex.Message, "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 

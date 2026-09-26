@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>셸에서 파일/바로가기의 고해상도 아이콘을 가져온다.</summary>
 internal static class ShellIcons

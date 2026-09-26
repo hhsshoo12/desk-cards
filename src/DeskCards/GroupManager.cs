@@ -5,7 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>그룹 루트 폴더의 하위 폴더마다 카드 창을 하나씩 띄우고 동기화한다.</summary>
 internal sealed class GroupManager
@@ -20,7 +20,7 @@ internal sealed class GroupManager
 
     public GroupManager()
     {
-        Root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "DeskFolders");
+        Root = AppPaths.GroupsRoot;
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
     }
@@ -261,7 +261,7 @@ internal sealed class GroupManager
     {
         if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || newName.Trim('.').Length == 0)
         {
-            MessageBox.Show("이름에 쓸 수 없는 문자가 있어요: \\ / : * ? \" < > |", "DeskFolders");
+            MessageBox.Show("이름에 쓸 수 없는 문자가 있어요: \\ / : * ? \" < > |", "Desk Cards");
             return false;
         }
         string oldName = card.Group.Name;
@@ -269,7 +269,7 @@ internal sealed class GroupManager
         bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && Directory.Exists(dest))
         {
-            MessageBox.Show($"'{newName}' 그룹이 이미 있어요.", "DeskFolders");
+            MessageBox.Show($"'{newName}' 그룹이 이미 있어요.", "Desk Cards");
             return false;
         }
         try
@@ -287,7 +287,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "DeskFolders");
+            MessageBox.Show(ex.Message, "Desk Cards");
             return false;
         }
 
@@ -308,7 +308,7 @@ internal sealed class GroupManager
         if (g.Items.Count > 0)
         {
             var r = MessageBox.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {g.Items.Count}개는 바탕화면으로 옮겨져요.",
-                "DeskFolders", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+                "Desk Cards", MessageBoxButton.OKCancel, MessageBoxImage.Question);
             if (r != MessageBoxResult.OK) return;
             foreach (var e in g.Items.ToList()) FileOps.MoveTo(e.Path, FileOps.UserDesktop);
         }
@@ -318,7 +318,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"폴더를 지우지 못했어요: {ex.Message}", "DeskFolders");
+            MessageBox.Show($"폴더를 지우지 못했어요: {ex.Message}", "Desk Cards");
             return;
         }
         _cfg.Positions.Remove(g.Name);

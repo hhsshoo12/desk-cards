@@ -6,7 +6,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>
 /// 카드를 자유롭게 옮기되, 다른 카드나 화면 가운데와 줄이 맞으면 살짝 붙고 보라색 안내선을 보여 준다.

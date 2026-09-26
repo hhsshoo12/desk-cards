@@ -1,4 +1,4 @@
-<Window x:Class="DeskFolders.CardWindow"
+<Window x:Class="DeskCards.CardWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:ClassModifier="internal"
@@ -6,7 +6,7 @@
         ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         Width="152" Height="176" AllowDrop="True"
         FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic"
-        UseLayoutRounding="True" Title="DeskFolders Card">
+        UseLayoutRounding="True" Title="Desk Cards Card">
     <Window.Resources>
         <!-- 편집 모드의 크기 조절 손잡이. 완전 투명이면 레이어드 창에서 클릭이 통과하므로 알파 1을 준다. -->
         <Style x:Key="CornerGrip" TargetType="Thumb">

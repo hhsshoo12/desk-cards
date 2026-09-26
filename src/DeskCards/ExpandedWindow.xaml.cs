@@ -8,7 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
-namespace DeskFolders;
+namespace DeskCards;
 
 /// <summary>카드를 눌렀을 때 펼쳐지는 전체 목록 창(아크릴 배경).</summary>
 internal partial class ExpandedWindow : Window
