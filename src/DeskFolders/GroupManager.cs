@@ -44,13 +44,15 @@ internal sealed class GroupManager
         }
     }
 
-    /// <summary>사용자가 조절한 카드 크기(배율 적용 전 DIP). 없으면 기본 크기를 쓴다.</summary>
-    public Size? GetCardSize(string name) =>
-        _cfg.Sizes.TryGetValue(name, out var s) && s.Length == 2 ? new Size(s[0], s[1]) : null;
+    /// <summary>카드 모양(칸 수·확대 비율). 저장된 게 없으면 2×2, 100%.</summary>
+    public CardLayout GetLayout(string name) =>
+        _cfg.Layouts.TryGetValue(name, out var l) ? l.Normalized() : new CardLayout();
 
-    public void SaveCardSize(CardWindow card, double w, double h)
+    public void SaveLayout(CardWindow card, CardLayout layout)
     {
-        _cfg.Sizes[card.Group.Name] = new[] { Math.Round(w, 1), Math.Round(h, 1) };
+        var l = layout.Normalized();
+        l.Zoom = Math.Round(l.Zoom, 3);
+        _cfg.Layouts[card.Group.Name] = l;
         _cfg.Save();
     }
 
@@ -211,7 +213,7 @@ internal sealed class GroupManager
         _cards.Remove(oldName);
         _cards[newName] = card;
         _cfg.Positions.Remove(oldName);
-        if (_cfg.Sizes.Remove(oldName, out var size)) _cfg.Sizes[newName] = size;
+        if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         var p = card.ActualPosition;
         _cfg.Positions[newName] = new[] { p.X, p.Y };
         _cfg.Save();
@@ -239,7 +241,7 @@ internal sealed class GroupManager
             return;
         }
         _cfg.Positions.Remove(g.Name);
-        _cfg.Sizes.Remove(g.Name);
+        _cfg.Layouts.Remove(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
     }
@@ -268,7 +270,7 @@ internal sealed class GroupManager
             // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다. 새 카드는 기본 크기다.
             double s = Native.GetDpiForSystem() / 96.0;
             double k = FollowWindowsScale ? s : 1;
-            var baseSize = CardWindow.DefaultBaseSize(s);
+            var baseSize = CardWindow.BaseSize(new CardLayout(), s);
             int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
             var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
             var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);

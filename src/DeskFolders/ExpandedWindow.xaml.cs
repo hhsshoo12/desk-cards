@@ -271,6 +271,9 @@ internal partial class ExpandedWindow : Window
     {
         SettingsPanel.Children.Clear();
         AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
+        var layout = _card.CurrentLayout;
+        AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
+        AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
         AddSetting("", "이름 바꾸기", null, () => { ShowSettings(false); TitleBox.Focus(); });
         AddSetting("", "폴더 열기", null, () => { FileOps.OpenFolder(Group.Folder); SafeClose(); });
         AddSetting("", "새 그룹 만들기", null, () => { SafeClose(); _mgr.NewGroup(); });
@@ -330,6 +333,68 @@ internal partial class ExpandedWindow : Window
         row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
         row.MouseLeftButtonUp += (_, e) => { e.Handled = true; act(); };
         SettingsPanel.Children.Add(row);
+    }
+
+    /// <summary>[−] 값 [+] 로 1~8을 고르는 설정 줄.</summary>
+    private void AddStepper(string glyph, string text, int value, Action<int> set)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var icon = new TextBlock
+        {
+            Text = glyph,
+            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = 15,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        var label = new TextBlock { Text = text, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        Grid.SetColumn(label, 1);
+
+        var num = new TextBlock
+        {
+            Text = value.ToString(),
+            FontSize = 14,
+            Width = 28,
+            TextAlignment = TextAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        num.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+
+        int current = value;
+        Button Step(string g, int delta)
+        {
+            var b = new Button
+            {
+                Style = (Style)FindResource("IconButton"),
+                Content = new TextBlock { Text = g, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 11 },
+            };
+            b.Click += (_, _) =>
+            {
+                int next = Math.Clamp(current + delta, CardLayout.MinCells, CardLayout.MaxCells);
+                if (next == current) return;
+                current = next;
+                num.Text = current.ToString();
+                set(current);
+            };
+            return b;
+        }
+
+        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) };
+        stepper.Children.Add(Step("", -1)); // −
+        stepper.Children.Add(num);
+        stepper.Children.Add(Step("", +1)); // +
+        Grid.SetColumn(stepper, 2);
+
+        grid.Children.Add(icon);
+        grid.Children.Add(label);
+        grid.Children.Add(stepper);
+        SettingsPanel.Children.Add(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
     }
 
     /// <summary>설정 화면으로 바뀌며 창이 길어졌을 때 화면 아래로 넘치지 않게 올린다.</summary>

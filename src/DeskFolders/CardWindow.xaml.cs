@@ -20,7 +20,6 @@ internal partial class CardWindow : Window
 
     // 배율 적용 전 기준 단위(DIP)의 배치 값
     public const double Inset = 4, TopPad = 4, LabelH = 28;
-    private const double MinW = 110, MinH = 130;
 
     private static uint _taskbarCreatedMsg;
 
@@ -28,7 +27,8 @@ internal partial class CardWindow : Window
     private Point _downPos;
     private object? _downTarget;
     private bool _pending, _editing;
-    private double _baseW, _baseH, _iconSize = 40;
+    private CardLayout _layout = new();
+    private double _iconSize = 40;
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
 
@@ -51,25 +51,28 @@ internal partial class CardWindow : Window
         ContextMenu = BuildMenu();
 
         DoneButton.MouseLeftButtonUp += (_, e) => { EndEdit(); e.Handled = true; };
-        foreach (var grip in new[] { GripRight, GripBottom, GripCorner })
-        {
-            grip.DragDelta += OnGripDelta;
-            grip.DragCompleted += (_, _) => OnGripDone();
-        }
+        GripCorner.DragDelta += OnGripDelta;
+        GripCorner.DragCompleted += (_, _) => OnGripDone();
     }
 
     public GroupModel Group { get; }
     public bool ClosingByManager { get; set; }
     public bool IsEditing => _editing;
+    public CardLayout CurrentLayout => _layout;
 
     public void Rebuild()
     {
         Label.Text = Group.Name;
         Cells.Children.Clear();
+        Cells.Columns = _layout.Cols;
+        Cells.Rows = _layout.Rows;
         var items = Group.Items;
         Placeholder.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-        int direct = items.Count > 4 ? 3 : items.Count;
+        // 칸이 모자라면 마지막 칸을 '더보기' 묶음으로 쓴다.
+        int slots = _layout.Cols * _layout.Rows;
+        bool overflow = items.Count > slots;
+        int direct = overflow ? slots - 1 : items.Count;
         for (int i = 0; i < direct; i++)
         {
             var img = new Image { Source = items[i].Icon, Width = _iconSize, Height = _iconSize };
@@ -77,11 +80,11 @@ internal partial class CardWindow : Window
             Cells.Children.Add(MakeCell(img, items[i], items[i].Name));
         }
 
-        if (items.Count > 4)
+        if (overflow)
         {
             double mini = _iconSize * 0.48;
             var grid = new UniformGrid { Rows = 2, Columns = 2, Width = mini * 2 + 8, Height = mini * 2 + 8 };
-            foreach (var e in items.Skip(3).Take(4))
+            foreach (var e in items.Skip(direct).Take(4))
             {
                 var img = new Image { Source = e.Icon, Width = mini, Height = mini, Margin = new Thickness(2) };
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
@@ -185,7 +188,7 @@ internal partial class CardWindow : Window
     {
         _mgr.EndOtherEdits(this);
         _editing = true;
-        DoneButton.Visibility = GripRight.Visibility = GripBottom.Visibility = GripCorner.Visibility = Visibility.Visible;
+        DoneButton.Visibility = GripCorner.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
         UpdateBorder(false);
     }
@@ -194,7 +197,7 @@ internal partial class CardWindow : Window
     {
         if (!_editing) return;
         _editing = false;
-        DoneButton.Visibility = GripRight.Visibility = GripBottom.Visibility = GripCorner.Visibility = Visibility.Collapsed;
+        DoneButton.Visibility = GripCorner.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder(false);
         _mgr.SavePosition(this);
@@ -202,19 +205,34 @@ internal partial class CardWindow : Window
 
     private void OnGripDelta(object sender, DragDeltaEventArgs e)
     {
-        // 손잡이는 배율 변환 밖(창 좌표)에 있으므로 이동량을 배율로 나눠 기준 단위로 바꾼다.
-        double k = ScaleFactor;
+        // 비율 고정: 가로·세로 늘어난 비율의 평균만큼 카드 전체를 키우거나 줄인다.
+        // (손잡이가 창 모서리와 함께 움직이므로 이동량은 매번 직전 대비 증분이다.)
+        double grow = (e.HorizontalChange / Width + e.VerticalChange / Height) / 2;
+        double zoom = _layout.Zoom * (1 + grow);
+
+        // 작업 영역 밖으로 커지지 않게 한다.
         var wa = WorkAreaDip();
         var p = ActualPosition;
-        double bw = _baseW, bh = _baseH;
-        if (sender != GripBottom) bw = Math.Clamp(_baseW + e.HorizontalChange / k, MinW, Math.Max(MinW, (wa.Right - p.X) / k));
-        if (sender != GripRight) bh = Math.Clamp(_baseH + e.VerticalChange / k, MinH, Math.Max(MinH, (wa.Bottom - p.Y) / k));
-        LayoutFor(bw, bh);
+        var size = BaseSize(_layout, VisualTreeHelper.GetDpi(this).DpiScaleX);
+        double k = ScaleFactor;
+        double maxZoom = Math.Min((wa.Right - p.X) / (size.Width * k), (wa.Bottom - p.Y) / (size.Height * k));
+        _layout.Zoom = Math.Clamp(zoom, CardLayout.MinZoom, Math.Max(CardLayout.MinZoom, Math.Min(CardLayout.MaxZoom, maxZoom)));
+        LayoutFor();
     }
 
     private void OnGripDone()
     {
-        _mgr.SaveCardSize(this, _baseW, _baseH);
+        _mgr.SaveLayout(this, _layout);
+        FitToScreen();
+        _mgr.SavePosition(this);
+    }
+
+    /// <summary>미리보기 칸 수를 바꾼다(카드 비율이 따라 바뀐다).</summary>
+    public void SetGrid(int cols, int rows)
+    {
+        _layout.Cols = Math.Clamp(cols, CardLayout.MinCells, CardLayout.MaxCells);
+        _layout.Rows = Math.Clamp(rows, CardLayout.MinCells, CardLayout.MaxCells);
+        _mgr.SaveLayout(this, _layout);
         FitToScreen();
         _mgr.SavePosition(this);
     }
@@ -351,40 +369,47 @@ internal partial class CardWindow : Window
     private double ScaleFactor => _mgr.FollowWindowsScale ? VisualTreeHelper.GetDpi(this).DpiScaleX : 1;
 
     /// <summary>
-    /// 기본 크기(배율 적용 전): 가로는 바탕화면 아이콘 2칸, 세로는 정사각형 카드 + 이름 줄.
+    /// 미리보기 칸 하나의 기준 크기(배율 적용 전 DIP). 기본 2×2 카드의 가로가 바탕화면 아이콘 2칸이 되도록 잡는다.
     /// </summary>
-    public static Size DefaultBaseSize(double dpiScale)
+    private static double CellBase(double dpiScale)
     {
         double w = 152;
         if (DesktopGrid.TryGet(out _, out _, out int cx, out _)) w = DesktopGrid.CardCols * cx / dpiScale;
-        return new Size(w, TopPad + (w - 2 * Inset) + LabelH);
+        return (w - 2 * Inset) / 2;
     }
 
-    /// <summary>저장된 크기(없으면 기본 크기)에 배율을 곱해 적용한다.</summary>
+    /// <summary>확대 비율·Windows 배율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
+    public static Size BaseSize(CardLayout layout, double dpiScale)
+    {
+        double cell = CellBase(dpiScale);
+        return new Size(layout.Cols * cell + 2 * Inset, TopPad + layout.Rows * cell + LabelH);
+    }
+
+    /// <summary>저장된 모양(칸 수·확대 비율)을 불러와 적용한다.</summary>
     public void ApplySize()
     {
-        var size = _mgr.GetCardSize(Group.Name) ?? DefaultBaseSize(VisualTreeHelper.GetDpi(this).DpiScaleX);
-        LayoutFor(size.Width, size.Height);
+        _layout = _mgr.GetLayout(Group.Name);
+        LayoutFor();
     }
 
-    private void LayoutFor(double bw, double bh)
+    private void LayoutFor()
     {
-        _baseW = bw;
-        _baseH = bh;
-        double k = ScaleFactor;
-        Width = bw * k;
-        Height = bh * k;
-        // 아이콘·글자·모서리까지 같은 비율로 커지도록 내용 전체에 배율을 건다(여백은 변환 밖이라 직접 곱한다).
-        Layout.LayoutTransform = k == 1 ? Transform.Identity : new ScaleTransform(k, k);
-        Layout.Margin = new Thickness(Inset * k, TopPad * k, Inset * k, 0);
+        var size = BaseSize(_layout, VisualTreeHelper.GetDpi(this).DpiScaleX);
+        // 비율 고정 확대: Windows 배율 × 카드 확대 비율을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
+        double t = ScaleFactor * _layout.Zoom;
+        Width = size.Width * t;
+        Height = size.Height * t;
+        Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
+        Layout.Margin = new Thickness(Inset * t, TopPad * t, Inset * t, 0); // 여백은 변환 밖이라 직접 곱한다
 
-        // 아이콘 크기는 칸 크기를 따라간다(기본 크기에서 40).
-        double bodyW = bw - 2 * Inset, bodyH = bh - TopPad - LabelH;
-        double pad = Math.Min(bodyW, bodyH) * 0.085;
+        // 기준 단위에서 칸 크기는 항상 같으므로 아이콘도 같다(기본 72 → 40).
+        double cell = size.Width - 2 * Inset;
+        cell /= _layout.Cols;
+        double pad = cell * 0.17;
         Cells.Margin = new Thickness(pad);
-        double cell = Math.Min((bodyW - 2 * pad) / 2, (bodyH - 2 * pad) / 2) - 6;
-        double icon = Math.Clamp(Math.Round(cell * 0.74), 16, 128);
-        if (Math.Abs(icon - _iconSize) > 0.5)
+        double inner = (cell * _layout.Cols - 2 * pad) / _layout.Cols - 6;
+        double icon = Math.Clamp(Math.Round(inner * 0.74), 16, 128);
+        if (Math.Abs(icon - _iconSize) > 0.5 || Cells.Columns != _layout.Cols || Cells.Rows != _layout.Rows)
         {
             _iconSize = icon;
             Rebuild();

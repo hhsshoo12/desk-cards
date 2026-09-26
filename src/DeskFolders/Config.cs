@@ -10,8 +10,8 @@ internal sealed class Config
 {
     public Dictionary<string, double[]> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>사용자가 조절한 카드 크기(배율 적용 전 DIP). 그룹 이름 → [가로, 세로].</summary>
-    public Dictionary<string, double[]> Sizes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
+    public Dictionary<string, CardLayout> Layouts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>카드 크기에 Windows 배율(125% 등)을 곱할지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
@@ -29,7 +29,7 @@ internal sealed class Config
                 if (cfg != null)
                 {
                     cfg.Positions = new Dictionary<string, double[]>(cfg.Positions, StringComparer.OrdinalIgnoreCase);
-                    cfg.Sizes = new Dictionary<string, double[]>(cfg.Sizes ?? new(), StringComparer.OrdinalIgnoreCase);
+                    cfg.Layouts = new Dictionary<string, CardLayout>(cfg.Layouts ?? new(), StringComparer.OrdinalIgnoreCase);
                     return cfg;
                 }
             }
@@ -53,4 +53,24 @@ internal sealed class Config
             // 저장 실패는 치명적이지 않다.
         }
     }
+}
+
+/// <summary>
+/// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.
+/// </summary>
+internal sealed class CardLayout
+{
+    public const int MinCells = 1, MaxCells = 8;
+    public const double MinZoom = 0.5, MaxZoom = 4;
+
+    public int Cols { get; set; } = 2;
+    public int Rows { get; set; } = 2;
+    public double Zoom { get; set; } = 1;
+
+    public CardLayout Normalized() => new()
+    {
+        Cols = Math.Clamp(Cols, MinCells, MaxCells),
+        Rows = Math.Clamp(Rows, MinCells, MaxCells),
+        Zoom = Math.Clamp(Zoom, MinZoom, MaxZoom),
+    };
 }
