@@ -280,26 +280,94 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
     if exe.exists():
         job.status(f"파일 지우기: {exe}")
         exe.unlink()
-    job.progress(75)
+    remove_tile_properties(job, target)
+    job.progress(70)
+
+    # 지금 실행 중인 uninstall.exe는 지울 수 없지만 옮길 수는 있다. TEMP로 빼낸 뒤 설치 폴더를 바로 지운다.
+    global _moved_uninstaller
+    me = Path(sys.executable).resolve()
+    if getattr(sys, "frozen", False) and me.parent == target.resolve():
+        dest = Path(os.environ.get("TEMP", str(Path.home()))) / f"{APP_ID}-uninstall-{os.getpid()}.exe"
+        try:
+            os.replace(me, dest)
+            _moved_uninstaller = dest
+        except OSError as e:
+            job.log(f"  제거 프로그램을 옮기지 못했어요: {e}")
+    for f in (target / UNINSTALLER_NAME,):
+        try:
+            f.unlink()
+        except OSError:
+            pass
+    try:
+        target.rmdir()  # 빈 폴더만 지운다. 사용자가 넣어 둔 다른 파일이 있으면 폴더는 남긴다.
+        job.status(f"설치 폴더 지우기: {target}")
+    except FileNotFoundError:
+        pass
+    except OSError:
+        job.log(f"  설치 폴더에 다른 파일이 있어 폴더는 남겨 둡니다: {target}")
+    job.progress(80)
 
     if remove_config and config_dir().exists():
         job.status(f"카드 설정 지우기: {config_dir()}")
         shutil.rmtree(config_dir(), ignore_errors=True)
     job.progress(90)
 
-    # 지금 실행 중인 uninstall.exe는 스스로 못 지우므로, 창을 닫은 뒤 지우도록 예약한다.
-    # 설치 폴더에 다른 파일이 있으면 폴더는 남긴다(rmdir은 빈 폴더만 지운다).
-    job.status(f"설치 폴더 정리 예약: {target}")
     job.progress(100)
     job.status("제거를 마쳤어요.")
 
 
-def schedule_cleanup(target: Path) -> None:
-    uninstaller = target / UNINSTALLER_NAME
-    cmd = (f'timeout /t 3 /nobreak >nul & del /f /q "{uninstaller}" >nul 2>&1 '
-           f'& rmdir "{target}" >nul 2>&1')
+_moved_uninstaller: Path | None = None
+
+
+def remove_tile_properties(job: Job, target: Path) -> None:
+    """시작 메뉴가 바로가기마다 만들어 두는 타일 기록(Start\\TileProperties\\W~<경로>)을 지운다."""
+    base = r"Software\Microsoft\Windows\CurrentVersion\Start\TileProperties"
+    needle = str(target).lower().rstrip("\\")
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, base) as k:
+            names = []
+            i = 0
+            while True:
+                try:
+                    names.append(winreg.EnumKey(k, i))
+                except OSError:
+                    break
+                i += 1
+    except OSError:
+        return
+    for name in names:
+        if needle in name.lower():
+            job.status(f"시작 메뉴 타일 기록 지우기: {name}")
+            delete_key_tree(base + "\\" + name)
+
+
+def delete_key_tree(path: str) -> None:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as k:
+            subs = []
+            i = 0
+            while True:
+                try:
+                    subs.append(winreg.EnumKey(k, i))
+                except OSError:
+                    break
+                i += 1
+        for sub in subs:
+            delete_key_tree(path + "\\" + sub)
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, path)
+    except OSError:
+        pass
+
+
+def schedule_cleanup() -> None:
+    """TEMP로 옮겨 둔 제거 프로그램을 창이 닫힌 뒤 지운다(실행 중에는 지울 수 없어서)."""
+    if _moved_uninstaller is None:
+        return
+    f = _moved_uninstaller
+    # timeout은 콘솔 없는 프로세스에서 바로 끝나 버리므로 ping으로 기다린다. 몇 번 다시 시도한다.
+    cmd = " & ".join([f'ping -n 3 127.0.0.1 >nul & del /f /q "{f}" >nul 2>&1'] * 5)
     subprocess.Popen(["cmd", "/c", cmd], creationflags=CREATE_NO_WINDOW | DETACHED_PROCESS,
-                     close_fds=True, cwd=str(Path(os.environ.get("TEMP", "C:\\"))))
+                     close_fds=True, cwd=str(f.parent))
 
 
 # ----- 화면 -----
@@ -762,8 +830,7 @@ class Wizard(tk.Tk):
 
     def finish(self) -> None:
         if self.uninstall:
-            if getattr(sys, "frozen", False):
-                schedule_cleanup(self.target)
+            schedule_cleanup()
         elif self.launch_var.get():
             exe = self.target / EXE_NAME
             subprocess.Popen([str(exe)], cwd=str(self.target), creationflags=DETACHED_PROCESS, close_fds=True)
