@@ -55,6 +55,26 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern uint GetDpiForSystem();
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+
+    [DllImport("shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    /// <summary>
+    /// 주 모니터의 지금 배율(125% = 1.25). GetDpiForSystem은 로그인 때 값에 머물러 있어서
+    /// 실행 중에 Windows 배율을 바꾸면 이걸로 읽어야 한다.
+    /// </summary>
+    public static double PrimaryScale()
+    {
+        const uint MONITOR_DEFAULTTOPRIMARY = 1;
+        const int MDT_EFFECTIVE_DPI = 0;
+        var mon = MonitorFromPoint(new POINT(), MONITOR_DEFAULTTOPRIMARY);
+        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, out uint x, out _) == 0 && x > 0)
+            return x / 96.0;
+        return GetDpiForSystem() / 96.0;
+    }
+
     public const int VK_MENU = 0x12; // Alt
 
     [DllImport("user32.dll")]

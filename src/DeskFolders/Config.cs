@@ -13,8 +13,20 @@ internal sealed class Config
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
     public Dictionary<string, CardLayout> Layouts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>카드 크기에 Windows 배율(125% 등)을 곱할지. 기본 켜짐.</summary>
+    /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
+
+    /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
+    public double CellSize { get; set; }
+
+    /// <summary>따라가기를 끈 순간의 Windows 배율. 꺼져 있는 동안은 이 배율일 때의 실제 크기를 유지한다.</summary>
+    public double FixedScale { get; set; }
+
+    /// <summary>새 카드의 확대 비율.</summary>
+    public double DefaultZoom { get; set; }
+
+    /// <summary>배율 계산 방식 버전. 2부터 Zoom에 Windows 배율이 포함된다.</summary>
+    public int ScaleVersion { get; set; }
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskFolders", "config.json");

@@ -28,12 +28,27 @@ internal sealed class GroupManager
     public string Root { get; }
     public IEnumerable<GroupModel> Groups => _cards.Values.Select(c => c.Group);
 
+    /// <summary>
+    /// 켜져 있으면 Windows 배율이 바뀔 때 카드도 같은 비율로 따라 커지고 작아진다.
+    /// 켜고 끄는 순간에는 지금 보이는 크기를 그대로 두고, 크기 조절은 어느 쪽이든 할 수 있다.
+    /// </summary>
     public bool FollowWindowsScale
     {
         get => _cfg.FollowWindowsScale;
         set
         {
             if (_cfg.FollowWindowsScale == value) return;
+            if (value)
+            {
+                // 고정해 두었던 크기를 지금 배율 기준 확대 비율로 옮겨 담는다.
+                foreach (var card in _cards.Values)
+                    card.RebaseZoom(_cfg.FixedScale / card.DpiScale);
+                _cfg.DefaultZoom *= _cfg.FixedScale / Native.PrimaryScale();
+            }
+            else
+            {
+                _cfg.FixedScale = Native.PrimaryScale();
+            }
             _cfg.FollowWindowsScale = value;
             _cfg.Save();
             foreach (var card in _cards.Values)
@@ -44,9 +59,43 @@ internal sealed class GroupManager
         }
     }
 
-    /// <summary>카드 모양(칸 수·확대 비율). 저장된 게 없으면 2×2, 100%.</summary>
+    /// <summary>
+    /// 카드 확대 비율에 추가로 곱할 값. 따라가기가 켜져 있으면 1(WPF가 배율대로 키워 준다),
+    /// 꺼져 있으면 배율이 바뀐 만큼 되돌려 실제 크기를 유지한다.
+    /// </summary>
+    public double ZoomFactor(double dpiScale) => FollowWindowsScale ? 1 : _cfg.FixedScale / dpiScale;
+
+    /// <summary>미리보기 칸 하나의 기준 크기(DIP).</summary>
+    public double CellSize => _cfg.CellSize;
+
+    /// <summary>예전 설정(Zoom에 배율이 따로 곱해지던 방식)을 지금 방식으로 바꾸고, 빠진 값을 채운다.</summary>
+    private void MigrateScale()
+    {
+        double s = Native.PrimaryScale();
+        bool dirty = false;
+        if (_cfg.CellSize <= 0)
+        {
+            _cfg.CellSize = CardWindow.MeasureCellSize(Native.GetDpiForSystem() / 96.0);
+            dirty = true;
+        }
+        if (_cfg.ScaleVersion < 2)
+        {
+            // 예전: 켜짐이면 크기 = 배율 × Zoom. 이제는 배율을 Zoom에 담아 둔다.
+            if (_cfg.FollowWindowsScale)
+                foreach (var l in _cfg.Layouts.Values) l.Zoom = Math.Round(l.Zoom * s, 3);
+            _cfg.DefaultZoom = _cfg.FollowWindowsScale ? s : 1;
+            _cfg.FixedScale = s;
+            _cfg.ScaleVersion = 2;
+            dirty = true;
+        }
+        if (_cfg.FixedScale <= 0) { _cfg.FixedScale = s; dirty = true; }
+        if (_cfg.DefaultZoom <= 0) { _cfg.DefaultZoom = _cfg.FollowWindowsScale ? s : 1; dirty = true; }
+        if (dirty) _cfg.Save();
+    }
+
+    /// <summary>카드 모양(칸 수·확대 비율). 저장된 게 없으면 2×2, 기본 확대 비율.</summary>
     public CardLayout GetLayout(string name) =>
-        _cfg.Layouts.TryGetValue(name, out var l) ? l.Normalized() : new CardLayout();
+        _cfg.Layouts.TryGetValue(name, out var l) ? l.Normalized() : new CardLayout { Zoom = _cfg.DefaultZoom }.Normalized();
 
     public void SaveLayout(CardWindow card, CardLayout layout)
     {
@@ -65,6 +114,7 @@ internal sealed class GroupManager
 
     public void Start()
     {
+        MigrateScale();
         Directory.CreateDirectory(Root);
         if (!ListGroupFolders().Any()) Directory.CreateDirectory(Path.Combine(Root, "새 그룹"));
         Reconcile();
@@ -268,9 +318,9 @@ internal sealed class GroupManager
 
         {
             // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다. 새 카드는 기본 크기다.
-            double s = Native.GetDpiForSystem() / 96.0;
-            double k = FollowWindowsScale ? s : 1;
-            var baseSize = CardWindow.BaseSize(new CardLayout(), s);
+            double s = Native.PrimaryScale();
+            double k = _cfg.DefaultZoom * ZoomFactor(s);
+            var baseSize = CardWindow.BaseSize(new CardLayout(), CellSize);
             int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
             var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
             var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);

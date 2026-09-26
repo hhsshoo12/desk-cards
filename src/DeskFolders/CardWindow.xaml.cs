@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -7,6 +7,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace DeskFolders;
 
@@ -213,7 +214,7 @@ internal partial class CardWindow : Window
         // 작업 영역 밖으로 커지지 않게 한다.
         var wa = WorkAreaDip();
         var p = ActualPosition;
-        var size = BaseSize(_layout, VisualTreeHelper.GetDpi(this).DpiScaleX);
+        var size = BaseSize(_layout, _mgr.CellSize);
         double k = ScaleFactor;
         double maxZoom = Math.Min((wa.Right - p.X) / (size.Width * k), (wa.Bottom - p.Y) / (size.Height * k));
         _layout.Zoom = Math.Clamp(zoom, CardLayout.MinZoom, Math.Max(CardLayout.MinZoom, Math.Min(CardLayout.MaxZoom, maxZoom)));
@@ -365,24 +366,39 @@ internal partial class CardWindow : Window
 
     // ----- 크기 / 위치 -----
 
-    /// <summary>'Windows 배율 따라가기'가 켜져 있으면 모니터 배율(125% = 1.25), 아니면 1.</summary>
-    private double ScaleFactor => _mgr.FollowWindowsScale ? VisualTreeHelper.GetDpi(this).DpiScaleX : 1;
+    /// <summary>이 카드가 있는 모니터의 지금 배율(125% = 1.25).</summary>
+    public double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+
+    /// <summary>확대 비율에 곱할 값. 따라가기를 끈 동안 Windows 배율이 바뀌어도 실제 크기를 유지한다.</summary>
+    private double ScaleFactor => _mgr.ZoomFactor(DpiScale);
 
     /// <summary>
-    /// 미리보기 칸 하나의 기준 크기(배율 적용 전 DIP). 기본 2×2 카드의 가로가 바탕화면 아이콘 2칸이 되도록 잡는다.
+    /// 미리보기 칸 하나의 기준 크기(DIP)를 바탕화면 아이콘 간격으로 잰다. 기본 2×2 카드의 가로가 아이콘 2칸이 된다.
+    /// 처음 한 번만 재서 설정에 고정한다(배율을 바꾼 직후에는 아이콘 간격이 늦게 바뀌어 값이 흔들린다).
     /// </summary>
-    private static double CellBase(double dpiScale)
+    public static double MeasureCellSize(double dpiScale)
     {
         double w = 152;
         if (DesktopGrid.TryGet(out _, out _, out int cx, out _)) w = DesktopGrid.CardCols * cx / dpiScale;
         return (w - 2 * Inset) / 2;
     }
 
-    /// <summary>확대 비율·Windows 배율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
-    public static Size BaseSize(CardLayout layout, double dpiScale)
+    /// <summary>확대 비율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
+    public static Size BaseSize(CardLayout layout, double cell) =>
+        new(layout.Cols * cell + 2 * Inset, TopPad + layout.Rows * cell + LabelH);
+
+    /// <summary>따라가기를 켜고 끌 때 보이는 크기가 그대로 남도록 확대 비율을 옮겨 담는다.</summary>
+    public void RebaseZoom(double factor)
     {
-        double cell = CellBase(dpiScale);
-        return new Size(layout.Cols * cell + 2 * Inset, TopPad + layout.Rows * cell + LabelH);
+        _layout.Zoom *= factor;
+        _mgr.SaveLayout(this, _layout);
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        // Windows 배율이 바뀌면 크기를 다시 계산하고 화면 안으로 맞춘다.
+        Dispatcher.BeginInvoke(() => { FitToScreen(); _mgr.SavePosition(this); }, DispatcherPriority.Background);
     }
 
     /// <summary>저장된 모양(칸 수·확대 비율)을 불러와 적용한다.</summary>
@@ -394,8 +410,8 @@ internal partial class CardWindow : Window
 
     private void LayoutFor()
     {
-        var size = BaseSize(_layout, VisualTreeHelper.GetDpi(this).DpiScaleX);
-        // 비율 고정 확대: Windows 배율 × 카드 확대 비율을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
+        var size = BaseSize(_layout, _mgr.CellSize);
+        // 비율 고정 확대: 카드 확대 비율(배율 보정 포함)을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
         double t = ScaleFactor * _layout.Zoom;
         Width = size.Width * t;
         Height = size.Height * t;
