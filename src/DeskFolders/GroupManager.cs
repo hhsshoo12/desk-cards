@@ -245,19 +245,21 @@ internal sealed class GroupManager
         var wa = SystemParameters.WorkArea;
         var taken = _cards.Values.Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
 
-        if (DesktopGrid.TryGet(out int ox, out int oy, out int cx, out int cy))
+        if (DesktopGrid.TryGet(out _, out _, out int cx, out int cy))
         {
-            // 바탕화면 칸 단위(카드 = 2×2칸)로 오른쪽 위부터 찾는다.
+            // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다.
             double s = Native.GetDpiForSystem() / 96.0;
             double k = FollowWindowsScale ? s : 1;
-            double w = DesktopGrid.CardCols * cx / s * k, h = DesktopGrid.CardRows * cy / s * k;
-            int lastCol = (int)Math.Floor((wa.Right * s - ox) / cx) - DesktopGrid.CardCols;
-            for (int col = lastCol; col >= 0; col -= DesktopGrid.CardCols)
+            int wPx = (int)Math.Round(DesktopGrid.CardCols * cx * k), hPx = (int)Math.Round(DesktopGrid.CardRows * cy * k);
+            var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
+            var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
+            for (int i = nx; i >= 0; i -= 2)
             {
-                for (int row = 0; (oy + (row + DesktopGrid.CardRows) * cy) / s <= wa.Bottom; row += DesktopGrid.CardRows)
+                for (int j = 0; j <= ny; j += 2)
                 {
-                    var r = new Rect((ox + col * cx) / s, (oy + row * cy) / s, w, h);
-                    var probe = new Rect(r.X + 4, r.Y + 4, w - 8, h - 8);
+                    var (px, py) = DesktopGrid.CellAt(waPx, wPx, hPx, i, j);
+                    var r = new Rect(px / s, py / s, wPx / s, hPx / s);
+                    var probe = new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
                     if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
                 }
             }
