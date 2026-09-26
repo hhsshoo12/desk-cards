@@ -15,9 +15,9 @@ internal partial class ExpandedWindow : Window
 {
     private const int Columns = 4;
     private const int RowsPerPage = 3;
-    private const double TileW = 120, TileH = 104;
+    private const double TileW = 96, TileH = 104;
     private const double PageH = RowsPerPage * TileH;
-    private const double SidePad = 32, TitleH = 80, BottomPad = 28;
+    private const double SidePad = 26, TitleH = 80, BottomPad = 28;
 
     private static ExpandedWindow? _current;
 
