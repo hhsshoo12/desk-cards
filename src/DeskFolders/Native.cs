@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 
 namespace DeskFolders;
@@ -15,6 +15,7 @@ internal static class Native
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_MOVING = 0x0216;
     public const int WM_ENTERSIZEMOVE = 0x0231;
+    public const int WM_EXITSIZEMOVE = 0x0232;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT

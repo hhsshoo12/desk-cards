@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -104,6 +104,13 @@ internal sealed class GroupManager
         _cfg.Layouts[card.Group.Name] = l;
         _cfg.Save();
     }
+
+    /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
+    public IReadOnlyList<Native.RECT> CardRects(CardWindow except) =>
+        _cards.Values.Where(c => c != except)
+            .Select(c => Native.GetWindowRect(new System.Windows.Interop.WindowInteropHelper(c).Handle, out var r) ? r : default)
+            .Where(r => r.Right > r.Left)
+            .ToList();
 
     /// <summary>편집 모드는 한 번에 카드 하나만.</summary>
     public void EndOtherEdits(CardWindow except)

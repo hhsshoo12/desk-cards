@@ -32,6 +32,7 @@ internal partial class CardWindow : Window
     private double _iconSize = 40;
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
+    private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
 
     public CardWindow(GroupModel group, GroupManager mgr)
     {
@@ -342,20 +343,28 @@ internal partial class CardWindow : Window
         {
             Native.GetCursorPos(out _moveCursorStart);
             Native.GetWindowRect(hwnd, out _moveWindowStart);
+            _moveOthers = _mgr.CardRects(except: this);
         }
         else if (msg == Native.WM_MOVING)
         {
-            // 끄는 동안 격자 칸 단위로 움직인다.
-            // 시스템이 주는 제안 위치는 직전(이미 칸에 맞춘) 위치 + 작은 이동량이라 매번 같은 칸으로
-            // 반올림돼 버린다. 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
+            // 자유 이동 + 스마트 가이드: 다른 카드·화면 가운데와 줄이 맞으면 살짝 붙고 안내선을 보여 준다.
+            // 시스템이 주는 제안 위치는 직전(이미 붙은) 위치 기준이라 한번 붙으면 빠져나오지 못한다.
+            // 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
             var r = Marshal.PtrToStructure<Native.RECT>(lParam);
             Native.GetCursorPos(out var cur);
             int w = r.Right - r.Left, h = r.Bottom - r.Top;
-            var (x, y) = DesktopGrid.Snap(_moveWindowStart.Left + (cur.X - _moveCursorStart.X),
-                                          _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y), w, h);
+            int fx = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
+            int fy = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
+            var wa = DesktopGrid.WorkAreaAt(fx + w / 2, fy + h / 2);
+            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h, _moveOthers, wa, Native.MonitorScaleOf(hwnd));
+            SmartGuides.Show(wa, lines);
             Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
             handled = true;
             return new IntPtr(1);
+        }
+        else if (msg == Native.WM_EXITSIZEMOVE)
+        {
+            SmartGuides.Hide();
         }
         else if (msg == _taskbarCreatedMsg && _taskbarCreatedMsg != 0)
         {
