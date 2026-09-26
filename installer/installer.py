@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import ctypes
+import json
 import os
 import queue
 import shutil
@@ -281,7 +282,7 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
     if exe.exists():
         job.status(f"파일 지우기: {exe}")
         exe.unlink()
-    remove_tile_properties(job, target)
+    remove_start_traces(job, target)
     job.progress(70)
 
     # 지금 실행 중인 uninstall.exe는 지울 수 없지만 옮길 수는 있다. TEMP로 빼낸 뒤 설치 폴더를 바로 지운다.
@@ -320,41 +321,85 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
 _moved_uninstaller: Path | None = None
 
 
-def remove_tile_properties(job: Job, target: Path) -> None:
-    """시작 메뉴가 바로가기마다 만들어 두는 타일 기록(Start\\TileProperties\\W~<경로>)을 지운다."""
-    base = r"Software\Microsoft\Windows\CurrentVersion\Start\TileProperties"
+def remove_start_traces(job: Job | None, target: Path) -> None:
+    r"""
+    시작 메뉴가 이 앱에 대해 남기는 기록을 지운다.
+    - Start\TileProperties\W~<설치 경로>...: 바로가기마다 만드는 타일 기록
+    - AppListBackup\ListOfEventDrivenBackedUpTiles_*: 앱이 사라질 때 핀 복원용으로 남기는 백업.
+      다른 앱 기록이 섞여 있을 수 있으므로, 목록의 타일이 전부 이 앱 것일 때만 지운다.
+    Windows가 바로가기 삭제를 조금 늦게 알아채고 다시 쓰기도 해서, 제거 중과 [마침] 때 두 번 부른다.
+    """
+    def say(text: str) -> None:
+        if job:
+            job.status(text)
+
     needle = str(target).lower().rstrip("\\")
+
+    base = r"Software\Microsoft\Windows\CurrentVersion\Start\TileProperties"
+    for name in enum_keys(base):
+        if needle in name.lower():
+            say(f"시작 메뉴 타일 기록 지우기: {name}")
+            delete_key_tree(base + "\\" + name)
+
+    backup = r"Software\Microsoft\Windows\CurrentVersion\AppListBackup"
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, base) as k:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, backup, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            doomed = []
+            i = 0
+            while True:
+                try:
+                    name, value, _kind = winreg.EnumValue(k, i)
+                except OSError:
+                    break
+                i += 1
+                if name.startswith("ListOfEventDrivenBackedUpTiles") and only_our_tiles(value, needle):
+                    doomed.append(name)
+            for name in doomed:
+                say(f"시작 메뉴 타일 백업 지우기: {name}")
+                try:
+                    winreg.DeleteValue(k, name)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+def only_our_tiles(value: object, needle: str) -> bool:
+    if isinstance(value, bytes):
+        value = value.decode("utf-16-le", errors="ignore").rstrip("\x00")
+    if not isinstance(value, str):
+        return False
+    try:
+        tiles = json.loads(value)
+    except ValueError:
+        return False
+    if isinstance(tiles, dict):
+        tiles = [tiles]
+    if not isinstance(tiles, list) or not tiles:
+        return False
+    ids = [t.get("tileId", "") if isinstance(t, dict) else "" for t in tiles]
+    return all(needle in str(i).lower() for i in ids)
+
+
+def enum_keys(path: str) -> list[str]:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as k:
             names = []
             i = 0
             while True:
                 try:
                     names.append(winreg.EnumKey(k, i))
                 except OSError:
-                    break
+                    return names
                 i += 1
     except OSError:
-        return
-    for name in names:
-        if needle in name.lower():
-            job.status(f"시작 메뉴 타일 기록 지우기: {name}")
-            delete_key_tree(base + "\\" + name)
+        return []
 
 
 def delete_key_tree(path: str) -> None:
+    for sub in enum_keys(path):
+        delete_key_tree(path + "\\" + sub)
     try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as k:
-            subs = []
-            i = 0
-            while True:
-                try:
-                    subs.append(winreg.EnumKey(k, i))
-                except OSError:
-                    break
-                i += 1
-        for sub in subs:
-            delete_key_tree(path + "\\" + sub)
         winreg.DeleteKey(winreg.HKEY_CURRENT_USER, path)
     except OSError:
         pass
@@ -840,6 +885,8 @@ class Wizard(tk.Tk):
 
     def finish(self) -> None:
         if self.uninstall:
+            # 제거하는 사이 시작 메뉴가 다시 써 둔 기록이 있으면 한 번 더 지운다.
+            remove_start_traces(None, self.target)
             schedule_cleanup()
         elif self.launch_var.get():
             exe = self.target / EXE_NAME
