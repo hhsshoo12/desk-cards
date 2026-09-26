@@ -36,6 +36,7 @@ internal partial class ExpandedWindow : Window
 
     // 설정 화면
     private const double SettingRowH = 40;
+    private const double TabBarH = 48;
     private bool _settings;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle)
@@ -117,7 +118,7 @@ internal partial class ExpandedWindow : Window
             double maxView = RowsPerPage * TileH + BottomPad - 20;
             double view = Math.Min(SettingsPanel.DesiredSize.Height, maxView);
             SettingsScroller.Height = view;
-            height = Math.Max(height, TitleH + view + 20);
+            height = Math.Max(height, TitleH + TabBarH + view + 20);
         }
         Height = height;
 
@@ -270,60 +271,109 @@ internal partial class ExpandedWindow : Window
         _settings = on;
         Scroller.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
         SettingsScroller.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        TabBar.Visibility = SettingsScroller.Visibility;
         GearGlyph.SetResourceReference(TextBlock.ForegroundProperty, on ? "Accent" : "Fg");
         if (on) BuildSettings();
         Rebuild();
         KeepOnScreen();
     }
 
+    private static readonly string[] Tabs = { "카드", "그룹", "전체" };
+    private static int _tab; // 마지막으로 본 탭을 기억한다.
+
     private void BuildSettings()
     {
-        double offset = SettingsScroller.VerticalOffset;
+        BuildTabs();
         SettingsPanel.Children.Clear();
+        _section = null;
 
-        AddSection("카드");
-        AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
-        var layout = _card.CurrentLayout;
-        AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
-        AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
-
-        AddSection("그룹");
-        AddSetting("", "이름 바꾸기", null, () => { ShowSettings(false); TitleBox.Focus(); });
-        AddSetting("", "폴더 열기", null, () => { FileOps.OpenFolder(Group.Folder); SafeClose(); });
-        AddSetting("", "새 그룹 만들기", null, () => { SafeClose(); _mgr.NewGroup(); });
-        AddSetting("", "이 그룹 삭제", null, () =>
+        switch (_tab)
         {
-            _busy = true; // 확인 창이 떠도 펼침 창이 닫히지 않게
-            _mgr.DeleteGroup(_card);
-            _busy = false;
-            SafeClose();
-        });
+            case 0:
+                AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
+                var layout = _card.CurrentLayout;
+                AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
+                AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
+                break;
+            case 1:
+                AddSetting("", "이름 바꾸기", null, () => { ShowSettings(false); TitleBox.Focus(); });
+                AddSetting("", "폴더 열기", null, () => { FileOps.OpenFolder(Group.Folder); SafeClose(); });
+                AddSetting("", "새 그룹 만들기", null, () => { SafeClose(); _mgr.NewGroup(); });
+                AddSetting("", "이 그룹 삭제", null, () =>
+                {
+                    _busy = true; // 확인 창이 떠도 펼침 창이 닫히지 않게
+                    _mgr.DeleteGroup(_card);
+                    _busy = false;
+                    SafeClose();
+                });
+                break;
+            default:
+                AddSetting("", "Windows 배율 따라가기", _mgr.FollowWindowsScale ? "켬" : "끔", () =>
+                {
+                    _mgr.FollowWindowsScale = !_mgr.FollowWindowsScale;
+                    BuildSettings();
+                });
+                break;
+        }
+    }
 
-        AddSection("모든 카드");
-        AddSetting("", "Windows 배율 따라가기", _mgr.FollowWindowsScale ? "켬" : "끔", () =>
+    /// <summary>설정 화면 위쪽 메뉴명. 누르면 그 메뉴의 설정만 보여 준다.</summary>
+    private void BuildTabs()
+    {
+        TabBar.Children.Clear();
+        for (int i = 0; i < Tabs.Length; i++)
         {
-            _mgr.FollowWindowsScale = !_mgr.FollowWindowsScale;
-            BuildSettings();
-        });
+            int index = i;
+            bool on = i == _tab;
+            var text = new TextBlock
+            {
+                Text = Tabs[i],
+                FontSize = 14,
+                FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            text.SetResourceReference(TextBlock.ForegroundProperty, on ? "Fg" : "SubFg");
+            var bar = new Border
+            {
+                Width = 16,
+                Height = 3,
+                CornerRadius = new CornerRadius(1.5),
+                Margin = new Thickness(0, 5, 0, 0),
+                Visibility = on ? Visibility.Visible : Visibility.Hidden,
+            };
+            bar.SetResourceReference(Border.BackgroundProperty, "Accent");
+            var stack = new StackPanel { Margin = new Thickness(12, 7, 12, 3) };
+            stack.Children.Add(text);
+            stack.Children.Add(bar);
 
-        SettingsScroller.ScrollToVerticalOffset(offset);
+            var tab = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                Child = stack,
+            };
+            tab.MouseEnter += (_, _) => tab.SetResourceReference(Border.BackgroundProperty, "HoverBg");
+            tab.MouseLeave += (_, _) => tab.Background = Brushes.Transparent;
+            tab.MouseLeftButtonUp += (_, e) =>
+            {
+                e.Handled = true;
+                if (index == _tab) return;
+                _tab = index;
+                BuildSettings();
+                SettingsScroller.ScrollToVerticalOffset(0);
+                Rebuild();
+                KeepOnScreen();
+            };
+            TabBar.Children.Add(tab);
+        }
     }
 
     private StackPanel? _section;
 
-    /// <summary>제목 + 둥근 묶음 카드. 이후 추가하는 설정 줄은 이 묶음 안에 들어간다.</summary>
-    private void AddSection(string title)
+    /// <summary>둥근 묶음 카드. 설정 줄은 이 안에 들어간다.</summary>
+    private void AddSection()
     {
-        var header = new TextBlock
-        {
-            Text = title,
-            FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(4, SettingsPanel.Children.Count == 0 ? 0 : 14, 0, 6),
-        };
-        header.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-        SettingsPanel.Children.Add(header);
-
         _section = new StackPanel();
         var card = new Border
         {
@@ -337,10 +387,10 @@ internal partial class ExpandedWindow : Window
         SettingsPanel.Children.Add(card);
     }
 
-    /// <summary>현재 묶음에 줄을 넣고, 앞 줄과는 얇은 선으로 나눈다.</summary>
+    /// <summary>묶음에 줄을 넣고, 앞 줄과는 얇은 선으로 나눈다.</summary>
     private void AddRow(UIElement row)
     {
-        if (_section == null) AddSection("");
+        if (_section == null) AddSection();
         if (_section!.Children.Count > 0)
         {
             var line = new Border { Height = 1, Margin = new Thickness(40, 0, 8, 0) };

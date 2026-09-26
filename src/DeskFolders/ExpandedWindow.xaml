@@ -64,8 +64,10 @@
             <StackPanel x:Name="Dots" Grid.Row="1" HorizontalAlignment="Right" VerticalAlignment="Center"
                         Margin="0,0,7,28" />
 
-            <!-- 설정: 섹션별 묶음. 길어지면 창은 그대로 두고 안에서 스크롤한다. -->
-            <ScrollViewer x:Name="SettingsScroller" Grid.Row="1" Margin="0,0,0,20" VerticalAlignment="Top"
+            <!-- 설정: 위쪽 메뉴명을 누르면 그 메뉴의 설정만 아래에 뜬다. 길어지면 안에서 스크롤한다. -->
+            <StackPanel x:Name="TabBar" Grid.Row="1" Orientation="Horizontal" Height="48"
+                        Margin="12,0,12,0" VerticalAlignment="Top" Visibility="Collapsed" />
+            <ScrollViewer x:Name="SettingsScroller" Grid.Row="1" Margin="0,48,0,20" VerticalAlignment="Top"
                           VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled"
                           Focusable="False" Visibility="Collapsed">
                 <StackPanel x:Name="SettingsPanel" Margin="20,0,20,4" />
