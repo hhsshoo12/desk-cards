@@ -30,6 +30,8 @@ internal partial class CardWindow : Window
     private bool _pending, _editing, _selected;
     private CardLayout _layout = new();
     private double _iconSize = 40;
+    private double _appliedScale = 1;
+    private bool _closed;
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
     private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
@@ -163,19 +165,19 @@ internal partial class CardWindow : Window
         while (d != null && d != this)
         {
             if (d is Border { Tag: not null } b) return b.Tag;
-            d = Parent(d);
+            d = GetParent(d);
         }
         return null;
     }
 
     private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject
     {
-        for (; d != null; d = Parent(d))
+        for (; d != null; d = GetParent(d))
             if (d is T) return true;
         return false;
     }
 
-    private static DependencyObject? Parent(DependencyObject d) =>
+    private static DependencyObject? GetParent(DependencyObject d) =>
         d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
 
     // ----- 편집 모드 -----
@@ -227,7 +229,7 @@ internal partial class CardWindow : Window
         Native.GetCursorPos(out _moveCursorStart);
         Native.GetWindowRect(hwnd, out _moveWindowStart);
         _moveOthers = _mgr.CardRects(except: this);
-        _gripZoom = _layout.Zoom;
+        _gripZoom = _appliedScale / ScaleFactor;
     }
 
     private void OnGripDelta()
@@ -271,7 +273,7 @@ internal partial class CardWindow : Window
     /// 설정에 보여 주는 카드 크기(%). 기준 크기 대비 지금 보이는 크기로, Windows 배율을 따라가는 중이면
     /// 125% 배율에서 기본 카드는 125%가 된다.
     /// </summary>
-    public int SizePercent => (int)Math.Round(_layout.Zoom * ScaleFactor * 100);
+    public int SizePercent => (int)Math.Round(_appliedScale * 100);
 
     /// <summary>카드 크기를 %로 정한다. 화면에 들어가지 않으면 들어가는 만큼만 키운다. 실제 적용된 값을 돌려준다.</summary>
     public int SetSizePercent(int percent)
@@ -288,8 +290,8 @@ internal partial class CardWindow : Window
     {
         _layout.Cols = Math.Clamp(cols, CardLayout.MinCells, CardLayout.MaxCells);
         _layout.Rows = Math.Clamp(rows, CardLayout.MinCells, CardLayout.MaxCells);
-        _mgr.SaveLayout(this, _layout);
         FitToScreen();
+        _mgr.SaveLayout(this, _layout);
         _mgr.SavePosition(this);
     }
 
@@ -469,6 +471,7 @@ internal partial class CardWindow : Window
     public void RebaseZoom(double factor)
     {
         _layout.Zoom *= factor;
+        _layout = _layout.Normalized();
         _mgr.SaveLayout(this, _layout);
     }
 
@@ -490,7 +493,7 @@ internal partial class CardWindow : Window
     {
         base.OnDpiChanged(oldDpi, newDpi);
         // Windows 배율이 바뀌면 크기를 다시 계산하고 화면 안으로 맞춘다.
-        Dispatcher.BeginInvoke(() => { FitToScreen(); _mgr.SavePosition(this); }, DispatcherPriority.Background);
+        Dispatcher.BeginInvoke(() => { if (!_closed) { FitToScreen(); _mgr.SavePosition(this); } }, DispatcherPriority.Background);
     }
 
     /// <summary>저장된 모양(칸 수·확대 비율)을 불러와 적용한다.</summary>
@@ -505,6 +508,11 @@ internal partial class CardWindow : Window
         var size = BaseSize(_layout, _mgr.CellSize);
         // 비율 고정 확대: 카드 확대 비율(배율 보정 포함)을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
         double t = ScaleFactor * _layout.Zoom;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        var wa = System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this);
+        t = Math.Min(t, Math.Min(wa.Width / (size.Width * dpi.DpiScaleX), wa.Height / (size.Height * dpi.DpiScaleY)));
+        _appliedScale = t;
         Width = size.Width * t;
         Height = size.Height * t;
         Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
@@ -527,7 +535,7 @@ internal partial class CardWindow : Window
     /// <summary>크기를 다시 적용하고, 작업 영역 밖으로 나갔으면 안쪽으로 당긴다.</summary>
     public void FitToScreen()
     {
-        ApplySize();
+        LayoutFor();
         var hwnd = new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
         var dpi = VisualTreeHelper.GetDpi(this);
@@ -557,6 +565,7 @@ internal partial class CardWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         Group.Changed -= Rebuild;
         base.OnClosed(e);
     }

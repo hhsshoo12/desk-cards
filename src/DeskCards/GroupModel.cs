@@ -29,6 +29,7 @@ internal sealed class GroupModel : IDisposable
 {
     private FileSystemWatcher? _watcher;
     private readonly DispatcherTimer _debounce;
+    private bool _disposed;
 
     public GroupModel(string folder)
     {
@@ -46,14 +47,20 @@ internal sealed class GroupModel : IDisposable
 
     public void Reload()
     {
+        if (_disposed) return;
         var list = new List<ShellEntry>();
         try
         {
             foreach (var p in Directory.EnumerateFileSystemEntries(Folder))
             {
-                var attr = File.GetAttributes(p);
-                if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
-                list.Add(new ShellEntry(p));
+                try
+                {
+                    var attr = File.GetAttributes(p);
+                    if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
+                    list.Add(new ShellEntry(p));
+                }
+                catch (IOException) { } // 한 항목이 사라져도 나머지는 표시한다.
+                catch (UnauthorizedAccessException) { }
             }
         }
         catch
@@ -86,6 +93,12 @@ internal sealed class GroupModel : IDisposable
             _watcher.Deleted += h;
             _watcher.Changed += h;
             _watcher.Renamed += (_, _) => Bump();
+            _watcher.Error += (_, _) => _debounce.Dispatcher.BeginInvoke(() =>
+            {
+                if (_disposed) return;
+                Watch();
+                Reload();
+            });
             _watcher.EnableRaisingEvents = true;
         }
         catch
@@ -94,10 +107,16 @@ internal sealed class GroupModel : IDisposable
         }
     }
 
-    private void Bump() => _debounce.Dispatcher.BeginInvoke(() => { _debounce.Stop(); _debounce.Start(); });
+    private void Bump() => _debounce.Dispatcher.BeginInvoke(() =>
+    {
+        if (_disposed) return;
+        _debounce.Stop();
+        _debounce.Start();
+    });
 
     public void Dispose()
     {
+        _disposed = true;
         _watcher?.Dispose();
         _debounce.Stop();
     }

@@ -53,7 +53,7 @@ def resource(rel: str) -> Path:
 
 def read_version() -> str:
     try:
-        return resource("payload/version.txt").read_text(encoding="utf-8").strip()
+        return resource("payload/version.txt").read_text(encoding="utf-8-sig").strip()
     except OSError:
         return "0.0.0"
 
@@ -64,7 +64,9 @@ PAYLOAD_EXE = resource(f"payload/{EXE_NAME}")
 
 def shell_folder(csidl: int) -> Path:
     buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
-    ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf)
+    result = ctypes.windll.shell32.SHGetFolderPathW(None, csidl, None, 0, buf)
+    if result != 0 or not buf.value:
+        raise OSError(f"Windows 폴더 위치를 읽지 못했어요 (CSIDL={csidl}, HRESULT={result}).")
     return Path(buf.value)
 
 
@@ -142,6 +144,21 @@ def stop_app() -> None:
         if not app_running():
             return
         time.sleep(0.1)
+    raise RuntimeError(f"{APP_NAME}를 종료하지 못했어요. 앱을 닫은 뒤 다시 시도해 주세요.")
+
+
+def autorun_enabled() -> bool:
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
+            for name in (RUN_VALUE, *OLD_RUN_VALUES):
+                try:
+                    winreg.QueryValueEx(key, name)
+                    return True
+                except FileNotFoundError:
+                    pass
+    except FileNotFoundError:
+        pass
+    return False
 
 
 def make_shortcut(link: Path, target: Path) -> None:
@@ -194,6 +211,9 @@ class Job:
 
 def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun: bool) -> None:
     exe = target / EXE_NAME
+    total = PAYLOAD_EXE.stat().st_size
+    if total == 0:
+        raise RuntimeError("설치할 실행 파일이 비어 있어요.")
 
     job.status(f"실행 중인 {APP_NAME} 종료")
     stop_app()
@@ -203,7 +223,6 @@ def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun:
     target.mkdir(parents=True, exist_ok=True)
 
     job.status(f"파일 복사: {EXE_NAME}")
-    total = PAYLOAD_EXE.stat().st_size
     tmp = exe.with_suffix(".exe.new")
     done = 0
     with open(PAYLOAD_EXE, "rb") as src, open(tmp, "wb") as dst:
@@ -222,7 +241,9 @@ def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun:
         job.status(f"제거 프로그램 복사: {UNINSTALLER_NAME}")
         uninstaller = target / UNINSTALLER_NAME
         if Path(sys.executable).resolve() != uninstaller.resolve():
-            shutil.copy2(sys.executable, uninstaller)
+            uninstaller_tmp = uninstaller.with_suffix(".exe.new")
+            shutil.copy2(sys.executable, uninstaller_tmp)
+            os.replace(uninstaller_tmp, uninstaller)
         uninstall_cmd = f'"{uninstaller}" /uninstall'
     else:
         uninstall_cmd = f'"{sys.executable}" "{Path(__file__).resolve()}" /uninstall'
@@ -247,7 +268,11 @@ def do_install(job: Job, target: Path, start_menu: bool, desktop: bool, autorun:
         winreg.SetValueEx(k, "InstallLocation", 0, winreg.REG_SZ, str(target))
         winreg.SetValueEx(k, "DisplayIcon", 0, winreg.REG_SZ, f"{exe},0")
         winreg.SetValueEx(k, "UninstallString", 0, winreg.REG_SZ, uninstall_cmd)
-        winreg.SetValueEx(k, "QuietUninstallString", 0, winreg.REG_SZ, uninstall_cmd)
+        # 무인 제거를 지원하지 않으므로 대화형 명령을 QuietUninstallString으로 광고하지 않는다.
+        try:
+            winreg.DeleteValue(k, "QuietUninstallString")
+        except FileNotFoundError:
+            pass
         winreg.SetValueEx(k, "NoModify", 0, winreg.REG_DWORD, 1)
         winreg.SetValueEx(k, "NoRepair", 0, winreg.REG_DWORD, 1)
         winreg.SetValueEx(k, "EstimatedSize", 0, winreg.REG_DWORD, total // 1024)
@@ -294,11 +319,6 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
     except FileNotFoundError:
         pass
 
-    job.status("Windows 앱 목록에서 지우기")
-    try:
-        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
-    except FileNotFoundError:
-        pass
     job.progress(55)
 
     for name in (EXE_NAME, *OLD_EXE_NAMES):
@@ -306,6 +326,12 @@ def do_uninstall(job: Job, target: Path, remove_config: bool) -> None:
         if exe.exists():
             job.status(f"파일 지우기: {exe}")
             exe.unlink()
+    # 파일 삭제가 실패하면 설치 등록을 남겨 Windows 설정에서 다시 제거할 수 있게 한다.
+    job.status("Windows 앱 목록에서 지우기")
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
+    except FileNotFoundError:
+        pass
     remove_start_traces(job, target)
     job.progress(70)
 
@@ -363,7 +389,7 @@ def remove_start_traces(job: Job | None, target: Path) -> None:
 
     base = r"Software\Microsoft\Windows\CurrentVersion\Start\TileProperties"
     for name in enum_keys(base):
-        if needle in name.lower():
+        if is_our_tile(name, needle):
             say(f"시작 메뉴 타일 기록 지우기: {name}")
             delete_key_tree(base + "\\" + name)
 
@@ -390,6 +416,15 @@ def remove_start_traces(job: Job | None, target: Path) -> None:
         pass
 
 
+def is_our_tile(value: object, target: str) -> bool:
+    if not isinstance(value, str) or not target:
+        return False
+    identifier = value.lower().removeprefix("w~")
+    folder = target.lower().rstrip("\\")
+    # 경로 부분 문자열만 비교하면 비슷한 이름의 폴더나 다른 앱까지 지울 수 있다.
+    return identifier in {folder + "\\" + name.lower() for name in (EXE_NAME, *OLD_EXE_NAMES)}
+
+
 def only_our_tiles(value: object, needle: str) -> bool:
     if isinstance(value, bytes):
         value = value.decode("utf-16-le", errors="ignore").rstrip("\x00")
@@ -404,7 +439,7 @@ def only_our_tiles(value: object, needle: str) -> bool:
     if not isinstance(tiles, list) or not tiles:
         return False
     ids = [t.get("tileId", "") if isinstance(t, dict) else "" for t in tiles]
-    return all(needle in str(i).lower() for i in ids)
+    return all(is_our_tile(i, needle) for i in ids)
 
 
 def enum_keys(path: str) -> list[str]:
@@ -436,15 +471,19 @@ def schedule_cleanup() -> None:
     if _moved_uninstaller is None:
         return
     f = _moved_uninstaller
-    # timeout은 콘솔 없는 프로세스에서 바로 끝나 버리므로 ping으로 기다린다. 몇 번 다시 시도한다.
-    cmd = " & ".join([f'ping -n 3 127.0.0.1 >nul & del /f /q "{f}" >nul 2>&1'] * 5)
-    # DETACHED_PROCESS로 띄우면 cmd에 콘솔이 없어 그 안의 ping이 새 콘솔 창을 연다.
-    # 숨긴 콘솔(CREATE_NO_WINDOW)을 주면 ping도 그 콘솔을 물려받아 아무 창도 뜨지 않는다.
-    # 제거 프로그램을 부른 쪽(작업 개체)이 끝날 때 같이 죽지 않도록 가능하면 빠져나온다.
+    literal = "'" + str(f).replace("'", "''") + "'"
+    # TEMP 경로에 %, &, 따옴표 등이 있어도 셸이 경로를 명령으로 해석하지 않게 한다.
+    script = (
+        f"$cleanupFile = {literal}; "
+        "for ($attempt = 0; $attempt -lt 30; $attempt++) { "
+        "Start-Sleep -Seconds 2; "
+        "try { Remove-Item -LiteralPath $cleanupFile -Force -ErrorAction Stop; break } catch {} }"
+    )
+    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     for flags in (CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB, CREATE_NO_WINDOW):
         try:
-            # 목록으로 넘기면 안쪽 따옴표가 \"로 바뀌어 cmd가 못 알아듣는다. 명령줄을 통째로 넘긴다.
-            subprocess.Popen(f'cmd /s /c "{cmd}"', creationflags=flags, close_fds=True, cwd=str(f.parent),
+            subprocess.Popen(["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                             creationflags=flags, close_fds=True, cwd=str(f.parent),
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return
         except OSError:
@@ -481,9 +520,9 @@ class Wizard(tk.Tk):
             self.target = self.old_dir or default_install_dir()
 
         self.dir_var = tk.StringVar(value=str(self.target))
-        self.start_menu_var = tk.BooleanVar(value=True)
+        self.start_menu_var = tk.BooleanVar(value=start_menu_link().exists() if self.old_dir else True)
         self.desktop_var = tk.BooleanVar(value=desktop_link().exists())
-        self.autorun_var = tk.BooleanVar(value=True)
+        self.autorun_var = tk.BooleanVar(value=autorun_enabled() if self.old_dir else True)
         self.launch_var = tk.BooleanVar(value=True)
         self.remove_config_var = tk.BooleanVar(value=False)
         self.index = 0

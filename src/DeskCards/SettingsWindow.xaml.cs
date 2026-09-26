@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -34,7 +35,8 @@ internal partial class SettingsWindow : Window
     private PageKind _page = PageKind.Cards;
     private CardWindow? _card;      // 카드 상세 페이지의 대상
     private string? _cardName;      // 그 페이지를 만들 때의 이름(바뀌면 다시 그린다)
-    private bool _hiddenForEdit, _buildQueued;
+    private bool _hiddenForEdit, _buildQueued, _closed;
+    private readonly List<Action> _refreshControls = new();
 
     private SettingsWindow(GroupManager mgr)
     {
@@ -90,6 +92,7 @@ internal partial class SettingsWindow : Window
         if (_page == PageKind.Card && _card != null && _mgr.Cards.Contains(_card) && _card.Group.Name == _cardName)
         {
             UpdateSummary();
+            foreach (var refresh in _refreshControls) refresh();
             return;
         }
         ScheduleBuild();
@@ -98,7 +101,7 @@ internal partial class SettingsWindow : Window
     private void OnEditChanged()
     {
         // 설정에서 편집을 시작해 숨었으면, 편집이 끝날 때 다시 나타난다.
-        if (_mgr.Editing || !_hiddenForEdit) return;
+        if (_mgr.Editing || _mgr.IsShuttingDown || !_hiddenForEdit) return;
         _hiddenForEdit = false;
         Show();
         Activate();
@@ -115,9 +118,9 @@ internal partial class SettingsWindow : Window
     /// <summary>클릭 처리 도중에 화면을 갈아엎지 않도록 한 박자 늦게, 여러 번 와도 한 번만 다시 그린다.</summary>
     private void ScheduleBuild()
     {
-        if (_buildQueued) return;
+        if (_buildQueued || _closed) return;
         _buildQueued = true;
-        Dispatcher.BeginInvoke(() => { _buildQueued = false; Build(); });
+        Dispatcher.BeginInvoke(() => { _buildQueued = false; if (!_closed) Build(); });
     }
 
     private void UpdateSummary() => Summary.Text = $"카드 {_mgr.Cards.Count}개";
@@ -127,6 +130,7 @@ internal partial class SettingsWindow : Window
         if (_page == PageKind.Card && (_card == null || !_mgr.Cards.Contains(_card))) _page = PageKind.Cards;
         double offset = PageScroller.VerticalOffset;
         UpdateSummary();
+        _refreshControls.Clear();
         BuildNav();
         Page.Children.Clear();
         Breadcrumb.Children.Clear();
@@ -185,9 +189,9 @@ internal partial class SettingsWindow : Window
         AddRow(Row("", "이름", "그룹 폴더 이름도 같이 바뀌어요.", NameBox(card)));
         AddRow(Row("", "크기", "기본 크기 대비 비율이에요. [−] [+]는 5%씩, 숫자를 눌러 직접 입력할 수도 있어요.", Percent(card)));
         AddRow(Row("", "미리보기 칸 (가로)", "카드에 아이콘이 몇 칸 보일지 정해요. 넘치는 항목은 마지막 칸에 묶여요.",
-            Stepper(card.CurrentLayout.Cols, v => card.SetGrid(v, card.CurrentLayout.Rows))));
+            Stepper(() => card.CurrentLayout.Cols, v => card.SetGrid(v, card.CurrentLayout.Rows))));
         AddRow(Row("", "미리보기 칸 (세로)", null,
-            Stepper(card.CurrentLayout.Rows, v => card.SetGrid(card.CurrentLayout.Cols, v))));
+            Stepper(() => card.CurrentLayout.Rows, v => card.SetGrid(card.CurrentLayout.Cols, v))));
 
         Header("관리");
         AddRow(Row("", "위치 옮기기 · 크기 조절", "편집 막대를 띄우고 이 카드를 골라 둬요.",
@@ -369,6 +373,27 @@ internal partial class SettingsWindow : Window
             if (right is FrameworkElement r) r.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(right, 2);
             grid.Children.Add(right);
+            if (control != null && click == null)
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                bool? stacked = null;
+                grid.SizeChanged += (_, _) =>
+                {
+                    bool narrow = grid.ActualWidth < 460;
+                    if (stacked == narrow) return;
+                    stacked = narrow;
+                    Grid.SetColumnSpan(texts, narrow ? 2 : 1);
+                    Grid.SetRow(control, narrow ? 1 : 0);
+                    Grid.SetColumn(control, narrow ? 1 : 2);
+                    Grid.SetColumnSpan(control, narrow ? 2 : 1);
+                    if (control is FrameworkElement field)
+                    {
+                        field.HorizontalAlignment = narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+                        field.Margin = new Thickness(0, narrow ? 10 : 0, 0, 0);
+                    }
+                };
+            }
         }
 
         var row = new Border
@@ -438,11 +463,15 @@ internal partial class SettingsWindow : Window
     private Border NameBox(CardWindow card)
     {
         var box = new TextBox { Text = card.Group.Name, MaxLength = 80 };
+        bool committing = false;
         void Commit()
         {
+            if (committing || _closed || !_mgr.Cards.Contains(card)) return;
             string name = box.Text.Trim();
             if (name.Length == 0 || name == card.Group.Name) { box.Text = card.Group.Name; return; }
-            if (!_mgr.RenameGroup(card, name)) box.Text = card.Group.Name;
+            committing = true;
+            try { if (!_mgr.RenameGroup(card, name)) box.Text = card.Group.Name; }
+            finally { committing = false; }
         }
         box.KeyDown += (_, e) =>
         {
@@ -457,9 +486,11 @@ internal partial class SettingsWindow : Window
     private UIElement Percent(CardWindow card)
     {
         var box = new TextBox { Text = card.SizePercent.ToString(), MaxLength = 3, TextAlignment = TextAlignment.Right };
+        _refreshControls.Add(() => { if (!box.IsKeyboardFocusWithin) box.Text = card.SizePercent.ToString(); });
         void Apply(int percent) => box.Text = card.SetSizePercent(Math.Clamp(percent, 10, 999)).ToString();
         void Commit()
         {
+            if (_closed || !_mgr.Cards.Contains(card)) return;
             if (int.TryParse(box.Text.Trim().TrimEnd('%'), out int v)) Apply(v);
             else box.Text = card.SizePercent.ToString();
         }
@@ -496,18 +527,17 @@ internal partial class SettingsWindow : Window
     }
 
     /// <summary>[−] 값 [+] 로 1~8을 고른다.</summary>
-    private UIElement Stepper(int value, Action<int> set)
+    private UIElement Stepper(Func<int> get, Action<int> set)
     {
-        int current = value;
-        var num = new TextBlock { Text = value.ToString(), FontSize = 14, Width = 32, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var num = new TextBlock { Text = get().ToString(), FontSize = 14, Width = 32, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        _refreshControls.Add(() => num.Text = get().ToString());
         num.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         void Step(int delta)
         {
-            int next = Math.Clamp(current + delta, CardLayout.MinCells, CardLayout.MaxCells);
-            if (next == current) return;
-            current = next;
-            num.Text = current.ToString();
-            set(current);
+            int next = Math.Clamp(get() + delta, CardLayout.MinCells, CardLayout.MaxCells);
+            if (next == get()) return;
+            set(next);
+            num.Text = get().ToString();
         }
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(StepButton("", () => Step(-1)));
@@ -557,6 +587,7 @@ internal partial class SettingsWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _closed = true;
         _mgr.Changed -= OnChanged;
         _mgr.EditChanged -= OnEditChanged;
         if (_win == this) _win = null;

@@ -14,7 +14,7 @@ internal static class ShellIcons
     private const int SIIGBF_ICONONLY = 0x4;
     private const int IconPx = 96;
 
-    private static readonly Dictionary<string, ImageSource?> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (long Stamp, ImageSource? Image)> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellItemImageFactory
@@ -33,10 +33,11 @@ internal static class ShellIcons
 
     public static ImageSource? Get(string path)
     {
-        string key = path + "|" + SafeStamp(path);
-        if (Cache.TryGetValue(key, out var cached)) return cached;
+        long stamp = SafeStamp(path);
+        if (Cache.TryGetValue(path, out var cached) && cached.Stamp == stamp) return cached.Image;
         var img = Load(path);
-        Cache[key] = img;
+        if (Cache.Count >= 1024) Cache.Clear();
+        Cache[path] = (stamp, img);
         return img;
     }
 

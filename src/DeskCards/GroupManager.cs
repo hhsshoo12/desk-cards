@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace DeskCards;
 
@@ -12,21 +13,25 @@ internal sealed class GroupManager
 {
     private const double CardW = 196, CardH = 206;
 
-    private readonly Config _cfg = Config.Load();
+    private readonly Config _cfg;
     private readonly Dictionary<string, CardWindow> _cards = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _debounce;
     private FileSystemWatcher? _rootWatcher;
+    private DispatcherTimer? _dpiCheck;
+    private readonly List<DispatcherTimer> _retries = new();
     private bool _shuttingDown;
 
-    public GroupManager()
+    public GroupManager(string? root = null, Config? config = null)
     {
-        Root = AppPaths.GroupsRoot;
+        Root = root ?? AppPaths.GroupsRoot;
+        _cfg = config ?? Config.Load();
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
     }
 
     public string Root { get; }
     public IEnumerable<GroupModel> Groups => _cards.Values.Select(c => c.Group);
+    public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -73,6 +78,8 @@ internal sealed class GroupManager
             else
             {
                 _cfg.FixedScale = Native.PrimaryScale();
+                foreach (var card in _cards.Values)
+                    card.RebaseZoom(card.DpiScale / _cfg.FixedScale);
             }
             _cfg.FollowWindowsScale = value;
             _cfg.Save();
@@ -179,24 +186,56 @@ internal sealed class GroupManager
         MigrateScale();
         SmartGuides.Enabled = _cfg.ShowGuides;
         Directory.CreateDirectory(Root);
-        if (!ListGroupFolders().Any()) Directory.CreateDirectory(Path.Combine(Root, "새 그룹"));
+        if (ListGroupFolders() is { Count: 0 }) Directory.CreateDirectory(FileOps.Unique(Root, "새 그룹"));
         Reconcile();
 
-        _rootWatcher = new FileSystemWatcher(Root) { NotifyFilter = NotifyFilters.DirectoryName, IncludeSubdirectories = false };
+        _rootWatcher = new FileSystemWatcher(Root) { NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.Attributes, IncludeSubdirectories = false };
         FileSystemEventHandler h = (_, _) => Bump();
         _rootWatcher.Created += h;
         _rootWatcher.Deleted += h;
-        _rootWatcher.Renamed += (_, _) => Bump();
+        _rootWatcher.Changed += h;
+        _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
+        _rootWatcher.Error += (_, _) => Bump();
         _rootWatcher.EnableRaisingEvents = true;
 
         // Windows 배율이 바뀌었는데 알림을 못 받은 카드는 새 배율로 다시 만든다.
-        var dpiCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
-        dpiCheck.Tick += (_, _) =>
+        _dpiCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        _dpiCheck.Tick += (_, _) =>
         {
             foreach (var card in _cards.Values.Where(c => c.IsDpiStale).ToList())
                 RecreateCard(card);
         };
-        dpiCheck.Start();
+        _dpiCheck.Start();
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _debounce.Dispatcher.BeginInvoke(() =>
+    {
+        if (_shuttingDown) return;
+        foreach (var card in _cards.Values)
+        {
+            card.FitToScreen();
+            SavePosition(card);
+        }
+        RaiseChanged();
+    });
+
+    private void OnFolderRenamed(RenamedEventArgs e)
+    {
+        if (_shuttingDown) return;
+        string oldName = Path.GetFileName(e.OldFullPath), name = Path.GetFileName(e.FullPath);
+        if (_cards.TryGetValue(oldName, out var card) &&
+            string.Equals(card.Group.Folder, e.OldFullPath, StringComparison.Ordinal) && Directory.Exists(e.FullPath))
+        {
+            _cards.Remove(oldName);
+            _cards[name] = card;
+            if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[name] = position;
+            if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[name] = layout;
+            _cfg.Save();
+            card.Group.MovedTo(e.FullPath);
+            EditChanged?.Invoke();
+        }
+        Bump();
     }
 
     private void RecreateCard(CardWindow card)
@@ -214,9 +253,14 @@ internal sealed class GroupManager
         CreateCard(folder);
     }
 
-    private void Bump() => _debounce.Dispatcher.BeginInvoke(() => { _debounce.Stop(); _debounce.Start(); });
+    private void Bump() => _debounce.Dispatcher.BeginInvoke(() =>
+    {
+        if (_shuttingDown) return;
+        _debounce.Stop();
+        _debounce.Start();
+    });
 
-    private IEnumerable<string> ListGroupFolders()
+    private List<string>? ListGroupFolders()
     {
         try
         {
@@ -226,14 +270,15 @@ internal sealed class GroupManager
         }
         catch
         {
-            return Array.Empty<string>();
+            return null; // 읽기 실패를 빈 폴더로 취급하면 정상 카드까지 모두 닫힌다.
         }
     }
 
     public void Reconcile()
     {
         if (_shuttingDown) return;
-        var folders = ListGroupFolders().ToList();
+        var folders = ListGroupFolders();
+        if (folders == null) return;
         var names = new HashSet<string>(folders.Select(Path.GetFileName)!, StringComparer.OrdinalIgnoreCase);
 
         foreach (var name in _cards.Keys.Where(k => !names.Contains(k)).ToList())
@@ -250,6 +295,7 @@ internal sealed class GroupManager
     private CardWindow CreateCard(string folder)
     {
         var group = new GroupModel(folder);
+        group.Changed += RaiseChanged;
         var card = new CardWindow(group, this);
         if (_cfg.Positions.TryGetValue(group.Name, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
         {
@@ -279,15 +325,22 @@ internal sealed class GroupManager
         if (sender is not CardWindow card || card.ClosingByManager || _shuttingDown) return;
         // 탐색기가 재시작되면 소유자(Progman)와 함께 카드가 파괴된다. 잠시 뒤 다시 띄운다.
         _cards.Remove(card.Group.Name);
+        if (Selected == card) Select(null);
+        ExpandedWindow.CloseFor(card);
+        card.Group.Changed -= RaiseChanged;
         card.Group.Dispose();
         var retry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         retry.Tick += (_, _) =>
         {
+            if (_shuttingDown) { retry.Stop(); return; }
             if (Native.FindWindow("Progman", null) == IntPtr.Zero) return;
             retry.Stop();
+            _retries.Remove(retry);
             Reconcile();
         };
+        _retries.Add(retry);
         retry.Start();
+        RaiseChanged();
     }
 
     private void RemoveCard(string name)
@@ -297,6 +350,7 @@ internal sealed class GroupManager
         ExpandedWindow.CloseFor(card);
         card.ClosingByManager = true;
         card.Close();
+        card.Group.Changed -= RaiseChanged;
         card.Group.Dispose();
     }
 
@@ -321,15 +375,16 @@ internal sealed class GroupManager
 
     public bool RenameGroup(CardWindow card, string newName)
     {
-        if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || newName.Trim('.').Length == 0)
+        if (!FileOps.IsValidGroupName(newName))
         {
-            MessageBox.Show("이름에 쓸 수 없는 문자가 있어요: \\ / : * ? \" < > |", "Desk Cards");
+            MessageBox.Show("사용할 수 없는 폴더 이름이에요. 예약된 이름, 끝의 점·공백, \\ / : * ? \" < > | 문자는 사용할 수 없어요.", "Desk Cards");
             return false;
         }
         string oldName = card.Group.Name;
+        if (oldName == newName) return true;
         string dest = Path.Combine(Root, newName);
         bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
-        if (!caseOnly && Directory.Exists(dest))
+        if (!caseOnly && (Directory.Exists(dest) || File.Exists(dest)))
         {
             MessageBox.Show($"'{newName}' 그룹이 이미 있어요.", "Desk Cards");
             return false;
@@ -338,9 +393,14 @@ internal sealed class GroupManager
         {
             if (caseOnly)
             {
-                string tmp = dest + ".~tmp";
+                string tmp = FileOps.Unique(Root, ".rename-" + Guid.NewGuid().ToString("N"));
                 Directory.Move(card.Group.Folder, tmp);
-                Directory.Move(tmp, dest);
+                try { Directory.Move(tmp, dest); }
+                catch
+                {
+                    Directory.Move(tmp, card.Group.Folder);
+                    throw;
+                }
             }
             else
             {
@@ -370,12 +430,20 @@ internal sealed class GroupManager
     public bool DeleteGroup(CardWindow card)
     {
         var g = card.Group;
-        if (g.Items.Count > 0)
+        string[] entries;
+        try { entries = Directory.GetFileSystemEntries(g.Folder); }
+        catch (Exception ex)
         {
-            var r = MessageBox.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {g.Items.Count}개는 바탕화면으로 옮겨져요.",
+            MessageBox.Show(ex.Message, "Desk Cards");
+            return false;
+        }
+        if (entries.Length > 0)
+        {
+            var r = MessageBox.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
                 "Desk Cards", MessageBoxButton.OKCancel, MessageBoxImage.Question);
             if (r != MessageBoxResult.OK) return false;
-            foreach (var e in g.Items.ToList()) FileOps.MoveTo(e.Path, FileOps.UserDesktop);
+            foreach (var path in entries)
+                if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
         }
         try
         {
@@ -396,7 +464,13 @@ internal sealed class GroupManager
 
     public void Shutdown()
     {
+        if (_shuttingDown) return;
         _shuttingDown = true;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        _debounce.Stop();
+        _dpiCheck?.Stop();
+        foreach (var retry in _retries) retry.Stop();
+        _retries.Clear();
         EndEditMode();
         _rootWatcher?.Dispose();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);

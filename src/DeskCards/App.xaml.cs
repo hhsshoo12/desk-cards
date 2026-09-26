@@ -13,6 +13,9 @@ public partial class App : Application
     private GroupManager? _mgr;
     private Forms.NotifyIcon? _tray;
     private EventWaitHandle? _showSettings;
+    private readonly ManualResetEvent _stopListener = new(false);
+    private Thread? _listener;
+    private Drawing.Icon? _trayIcon;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -31,21 +34,27 @@ public partial class App : Application
         AppPaths.Migrate();
 
         Theme.Apply();
-        SystemEvents.UserPreferenceChanged += (_, a) =>
-        {
-            if (a.Category == UserPreferenceCategory.General) Dispatcher.BeginInvoke(Theme.Apply);
-        };
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         _mgr = new GroupManager();
         _mgr.Start();
         CreateTray();
 
-        var listener = new Thread(() =>
+        _listener = new Thread(() =>
         {
-            while (_showSettings.WaitOne())
+            while (WaitHandle.WaitAny(new WaitHandle[] { _stopListener, _showSettings }) == 1)
+            {
+                if (Dispatcher.HasShutdownStarted) return;
                 Dispatcher.BeginInvoke(() => { if (_mgr != null) SettingsWindow.Open(_mgr); });
+            }
         }) { IsBackground = true };
-        listener.Start();
+        _listener.Start();
+    }
+
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category == UserPreferenceCategory.General && !Dispatcher.HasShutdownStarted)
+            Dispatcher.BeginInvoke(Theme.Apply);
     }
 
     private void CreateTray()
@@ -60,9 +69,10 @@ public partial class App : Application
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("종료", null, (_, _) => Quit());
 
+        _trayIcon = MakeTrayIcon();
         _tray = new Forms.NotifyIcon
         {
-            Icon = MakeTrayIcon(),
+            Icon = _trayIcon,
             Text = "Desk Cards",
             Visible = true,
             ContextMenuStrip = menu,
@@ -72,14 +82,21 @@ public partial class App : Application
 
     private void Quit()
     {
-        _mgr?.Shutdown();
-        if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        _stopListener.Set();
+        _listener?.Join();
+        _showSettings?.Dispose();
+        _stopListener.Dispose();
+        _mgr?.Shutdown();
+        _mgr = null;
+        _tray?.ContextMenuStrip?.Dispose();
         _tray?.Dispose();
+        _trayIcon?.Dispose();
         _mutex?.Dispose();
         base.OnExit(e);
     }
@@ -106,6 +123,12 @@ public partial class App : Application
                 g.FillPath(br, path);
             }
         }
-        return Drawing.Icon.FromHandle(bmp.GetHicon());
+        IntPtr handle = bmp.GetHicon();
+        try
+        {
+            using var borrowed = Drawing.Icon.FromHandle(handle);
+            return (Drawing.Icon)borrowed.Clone();
+        }
+        finally { Native.DestroyIcon(handle); }
     }
 }

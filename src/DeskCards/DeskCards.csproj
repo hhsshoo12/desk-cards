@@ -17,6 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DeskCards.RegressionTests" />
     <!-- 설정 창의 앱 아이콘 -->
     <Resource Include="app.ico" />
   </ItemGroup>

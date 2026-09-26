@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace DeskCards;
@@ -25,7 +26,7 @@ internal static class FileOps
             if (dir != null) psi.WorkingDirectory = dir;
             Process.Start(psi);
         }
-        catch (Win32Exception)
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
             // UAC 취소 등
         }
@@ -49,7 +50,28 @@ internal static class FileOps
     public static bool CanAccept(IDataObject data, string folder)
     {
         if (data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0) return false;
-        return paths.Any(p => !SameDir(Path.GetDirectoryName(p), folder) && !SameDir(p, folder));
+        return paths.Any(p => CanAddPath(p, folder));
+    }
+
+    private static bool CanAddPath(string path, string folder)
+    {
+        try
+        {
+            return (File.Exists(path) || Directory.Exists(path)) &&
+                !SameDir(Path.GetDirectoryName(path), folder) && !SameDir(path, folder) &&
+                !(Directory.Exists(path) && IsUnder(folder, path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    public static bool IsValidGroupName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name != name.Trim() || name.EndsWith('.') ||
+            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return false;
+        string stem = name.Split('.')[0].TrimEnd();
+        return !System.Text.RegularExpressions.Regex.IsMatch(stem,
+            @"^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     }
 
     /// <summary>
@@ -62,7 +84,7 @@ internal static class FileOps
         {
             try
             {
-                if (SameDir(Path.GetDirectoryName(p), folder) || SameDir(p, folder)) continue;
+                if (!CanAddPath(p, folder)) continue;
                 bool isDir = Directory.Exists(p);
                 if (!isDir && !File.Exists(p)) continue;
                 // 그룹 폴더 자신이나 루트를 넣는 건 막는다.
@@ -77,7 +99,7 @@ internal static class FileOps
                     string dest = Unique(folder, Path.GetFileName(p));
                     try
                     {
-                        if (isDir) Directory.Move(p, dest); else File.Move(p, dest);
+                        MovePath(p, dest);
                     }
                     catch (Exception) when (!isDir)
                     {
@@ -102,17 +124,27 @@ internal static class FileOps
         }
     }
 
-    public static void MoveTo(string path, string folder)
+    public static bool MoveTo(string path, string folder)
     {
         try
         {
+            if (SameDir(Path.GetDirectoryName(path), folder)) return true;
             string dest = Unique(folder, Path.GetFileName(path));
-            if (Directory.Exists(path)) Directory.Move(path, dest); else File.Move(path, dest);
+            MovePath(path, dest);
+            return true;
         }
         catch (Exception ex)
         {
             MessageBox.Show(ex.Message, "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
+    }
+
+    private static void MovePath(string source, string destination)
+    {
+        if (Directory.Exists(source))
+            Microsoft.VisualBasic.FileIO.FileSystem.MoveDirectory(source, destination);
+        else File.Move(source, destination);
     }
 
     public static void Recycle(string path)
@@ -155,10 +187,20 @@ internal static class FileOps
     {
         var type = Type.GetTypeFromProgID("WScript.Shell") ?? throw new InvalidOperationException("WScript.Shell 없음");
         dynamic shell = Activator.CreateInstance(type)!;
-        dynamic lnk = shell.CreateShortcut(lnkPath);
-        lnk.TargetPath = target;
-        lnk.WorkingDirectory = Directory.Exists(target) ? target : (Path.GetDirectoryName(target) ?? "");
-        lnk.Save();
+        object? shortcut = null;
+        try
+        {
+            shortcut = shell.CreateShortcut(lnkPath);
+            dynamic lnk = shortcut;
+            lnk.TargetPath = target;
+            lnk.WorkingDirectory = Directory.Exists(target) ? target : (Path.GetDirectoryName(target) ?? "");
+            lnk.Save();
+        }
+        finally
+        {
+            if (shortcut != null) Marshal.ReleaseComObject(shortcut);
+            Marshal.ReleaseComObject(shell);
+        }
     }
 
     private static bool SameDir(string? a, string? b) =>

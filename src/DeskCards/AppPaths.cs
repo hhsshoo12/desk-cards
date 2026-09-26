@@ -52,9 +52,10 @@ internal static class AppPaths
         {
             using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
             if (key?.GetValue(OldName) == null) return;
-            key.DeleteValue(OldName, false);
             string? exe = Environment.ProcessPath;
-            if (exe != null) key.SetValue(RunName, $"\"{exe}\"");
+            if (exe == null) return;
+            if (key.GetValue(RunName) == null) key.SetValue(RunName, $"\"{exe}\"");
+            key.DeleteValue(OldName, false);
         }
         catch
         {

@@ -190,3 +190,13 @@ pwsh -File installer/build.ps1
 ```
 
 `installer/dist/DeskCards-Setup-<버전>.exe`가 생깁니다.
+
+## 회귀 테스트
+
+```powershell
+dotnet run --project tests/DeskCards.RegressionTests -c Release --no-launch-profile
+python -m unittest discover -s tests -p test_installer.py -v
+```
+
+테스트는 임시 폴더를 사용하며 기존 그룹·설정은 변경하지 않습니다. C# 테스트 중에는 테스트 창이 잠깐 나타납니다.
+점검 결과와 검증 범위는 [DEBUGGING.md](DEBUGGING.md)에 정리되어 있습니다.

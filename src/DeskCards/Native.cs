@@ -5,6 +5,8 @@ namespace DeskCards;
 
 internal static class Native
 {
+    [DllImport("user32.dll")]
+    public static extern bool DestroyIcon(IntPtr icon);
     public const int GWL_EXSTYLE = -20;
     public const int GWLP_HWNDPARENT = -8;
     public const int GWL_STYLE = -16;

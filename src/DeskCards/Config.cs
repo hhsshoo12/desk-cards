@@ -31,41 +31,66 @@ internal sealed class Config
     /// <summary>배율 계산 방식 버전. 2부터 Zoom에 Windows 배율이 포함된다.</summary>
     public int ScaleVersion { get; set; }
 
-    private static string FilePath => Path.Combine(
+    private string FilePath = Path.Combine(
         AppPaths.ConfigDir, "config.json");
 
-    public static Config Load()
+    public static Config Load(string? filePath = null)
     {
-        try
+        filePath ??= Path.Combine(AppPaths.ConfigDir, "config.json");
+        foreach (string candidate in new[] { filePath, filePath + ".bak" })
         {
-            if (File.Exists(FilePath))
+            try
             {
-                var cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(FilePath));
+                if (!File.Exists(candidate)) continue;
+                var cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(candidate));
                 if (cfg != null)
                 {
-                    cfg.Positions = new Dictionary<string, double[]>(cfg.Positions, StringComparer.OrdinalIgnoreCase);
-                    cfg.Layouts = new Dictionary<string, CardLayout>(cfg.Layouts ?? new(), StringComparer.OrdinalIgnoreCase);
+                    cfg.FilePath = filePath;
+                    var positions = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (name, p) in cfg.Positions ?? new())
+                        if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
+                    cfg.Positions = positions;
+                    var layouts = new Dictionary<string, CardLayout>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (name, layout) in cfg.Layouts ?? new())
+                        if (layout != null) layouts[name] = layout.Normalized();
+                    cfg.Layouts = layouts;
+                    if (!double.IsFinite(cfg.CellSize) || cfg.CellSize < 16 || cfg.CellSize > 512) cfg.CellSize = 0;
+                    if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
+                    if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
+                    else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
                     return cfg;
                 }
             }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // 주 파일이 손상되었으면 마지막으로 온전히 저장된 사본을 읽는다.
+            }
         }
-        catch
-        {
-            // 손상된 설정은 무시하고 새로 시작한다.
-        }
-        return new Config();
+        return new Config { FilePath = filePath };
     }
 
     public void Save()
     {
+        string temporary = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            byte[] json = JsonSerializer.SerializeToUtf8Bytes(this, new JsonSerializerOptions { WriteIndented = true });
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                stream.Write(json);
+                stream.Flush(flushToDisk: true);
+            }
+            if (File.Exists(FilePath)) File.Replace(temporary, FilePath, FilePath + ".bak");
+            else File.Move(temporary, FilePath);
         }
         catch
         {
             // 저장 실패는 치명적이지 않다.
+        }
+        finally
+        {
+            try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
 }
@@ -86,6 +111,6 @@ internal sealed class CardLayout
     {
         Cols = Math.Clamp(Cols, MinCells, MaxCells),
         Rows = Math.Clamp(Rows, MinCells, MaxCells),
-        Zoom = Math.Clamp(Zoom, MinZoom, MaxZoom),
+        Zoom = double.IsFinite(Zoom) ? Math.Clamp(Zoom, MinZoom, MaxZoom) : 1,
     };
 }

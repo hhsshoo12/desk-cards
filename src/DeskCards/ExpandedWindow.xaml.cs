@@ -26,7 +26,7 @@ internal partial class ExpandedWindow : Window
     private readonly bool _editTitle;
     private Point _downPos;
     private ShellEntry? _downEntry;
-    private bool _pending, _busy, _closing;
+    private bool _pending, _busy, _closing, _committing;
 
     // 페이지 스크롤 상태
     private int _page, _pages = 1, _wheelAcc;
@@ -94,6 +94,7 @@ internal partial class ExpandedWindow : Window
 
     private void Rebuild()
     {
+        if (!TitleBox.IsKeyboardFocusWithin) TitleBox.Text = Group.Name;
         ItemsPanel.Children.Clear();
         foreach (var entry in Group.Items)
             ItemsPanel.Children.Add(MakeTile(entry));
@@ -111,6 +112,7 @@ internal partial class ExpandedWindow : Window
         StopScrollAnimation();
         Scroller.ScrollToVerticalOffset(_page * PageH);
         BuildDots();
+        if (IsLoaded) PlaceNearCard();
     }
 
     private void BuildDots()
@@ -257,8 +259,9 @@ internal partial class ExpandedWindow : Window
         double waL = wa.Left / dpi.DpiScaleX, waT = wa.Top / dpi.DpiScaleY;
         double waR = wa.Right / dpi.DpiScaleX, waB = wa.Bottom / dpi.DpiScaleY;
 
-        double cx = _card.Left + _card.Width / 2;
-        double cy = _card.Top + 8 + 88;
+        var position = _card.ActualPosition;
+        double cx = position.X + _card.Width / 2;
+        double cy = position.Y + 8 + 88;
         double left = cx - Width / 2, top = cy - Height / 2;
         Left = Math.Max(waL + 8, Math.Min(left, waR - Width - 8));
         Top = Math.Max(waT + 8, Math.Min(top, waB - Height - 8));
@@ -327,9 +330,13 @@ internal partial class ExpandedWindow : Window
 
     private void CommitTitle()
     {
+        if (_committing || !_mgr.Cards.Contains(_card)) return;
         string name = TitleBox.Text.Trim();
         if (name.Length == 0 || name == Group.Name) { TitleBox.Text = Group.Name; return; }
-        if (!_mgr.RenameGroup(_card, name)) TitleBox.Text = Group.Name;
+        bool wasBusy = _busy;
+        _committing = _busy = true;
+        try { if (!_mgr.RenameGroup(_card, name)) TitleBox.Text = Group.Name; }
+        finally { _committing = false; _busy = wasBusy; }
     }
 
     // ----- 항목 클릭/끌기 -----
@@ -351,6 +358,7 @@ internal partial class ExpandedWindow : Window
         _busy = true;
         FileOps.DragOut(this, _downEntry.Path);
         _busy = false;
+        if (!IsActive) SafeClose();
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e)
