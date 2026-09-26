@@ -394,6 +394,20 @@ internal partial class CardWindow : Window
         _mgr.SaveLayout(this, _layout);
     }
 
+    /// <summary>
+    /// 모니터 배율이 바뀌었는데 이 창이 그 알림을 못 받아 옛 배율로 그려지고 있는지.
+    /// (바탕화면 층에 붙인 투명 창은 WM_DPICHANGED를 못 받는 경우가 있다.)
+    /// </summary>
+    public bool IsDpiStale
+    {
+        get
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero || _editing) return false;
+            return Math.Abs(Native.MonitorScaleOf(hwnd) - DpiScale) > 0.01;
+        }
+    }
+
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
         base.OnDpiChanged(oldDpi, newDpi);

@@ -58,6 +58,18 @@ internal static class Native
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    /// <summary>창이 있는 모니터의 지금 배율. 창이 배율 변경 알림을 못 받았어도 실제 값을 돌려준다.</summary>
+    public static double MonitorScaleOf(IntPtr hwnd)
+    {
+        const uint MONITOR_DEFAULTTONEAREST = 2;
+        var mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, 0, out uint x, out _) == 0 && x > 0) return x / 96.0;
+        return PrimaryScale();
+    }
+
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 

@@ -125,6 +125,30 @@ internal sealed class GroupManager
         _rootWatcher.Deleted += h;
         _rootWatcher.Renamed += (_, _) => Bump();
         _rootWatcher.EnableRaisingEvents = true;
+
+        // Windows 배율이 바뀌었는데 알림을 못 받은 카드는 새 배율로 다시 만든다.
+        var dpiCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        dpiCheck.Tick += (_, _) =>
+        {
+            foreach (var card in _cards.Values.Where(c => c.IsDpiStale).ToList())
+                RecreateCard(card);
+        };
+        dpiCheck.Start();
+    }
+
+    private void RecreateCard(CardWindow card)
+    {
+        // 화면상 왼쪽 위(픽셀)는 그대로 두고 새 배율 기준 DIP로 저장한 뒤 다시 띄운다.
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(card).Handle;
+        if (Native.GetWindowRect(hwnd, out var r))
+        {
+            double ns = Native.MonitorScaleOf(hwnd);
+            _cfg.Positions[card.Group.Name] = new[] { r.Left / ns, r.Top / ns };
+            _cfg.Save();
+        }
+        string folder = card.Group.Folder;
+        RemoveCard(card.Group.Name);
+        CreateCard(folder);
     }
 
     private void Bump() => _debounce.Dispatcher.BeginInvoke(() => { _debounce.Stop(); _debounce.Start(); });
