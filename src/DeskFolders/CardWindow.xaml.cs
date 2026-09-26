@@ -67,11 +67,11 @@ internal partial class CardWindow : Window
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 mini.Children.Add(img);
             }
-            Cells.Children.Add(MakeCell(mini, OverflowTag, $"{items.Count - 3}개 더 보기"));
+            Cells.Children.Add(MakeCell(mini, OverflowTag, null));
         }
     }
 
-    private Border MakeCell(UIElement content, object tag, string tip)
+    private Border MakeCell(UIElement content, object tag, string? tip)
     {
         var b = new Border
         {

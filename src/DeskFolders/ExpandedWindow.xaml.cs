@@ -14,8 +14,10 @@ namespace DeskFolders;
 internal partial class ExpandedWindow : Window
 {
     private const int Columns = 4;
-    private const double TileW = 100, TileH = 104;
-    private const int MaxVisibleRows = 4;
+    private const int RowsPerPage = 3;
+    private const double TileW = 120, TileH = 104;
+    private const double PageH = RowsPerPage * TileH;
+    private const double SidePad = 32, TitleH = 80, BottomPad = 28;
 
     private static ExpandedWindow? _current;
 
@@ -26,6 +28,12 @@ internal partial class ExpandedWindow : Window
     private ShellEntry? _downEntry;
     private bool _pending, _busy, _closing;
 
+    // 페이지 스크롤 상태
+    private int _page, _pages = 1, _wheelAcc;
+    private double _animFrom, _animTo;
+    private DateTime _animStart;
+    private bool _animating;
+
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle)
     {
         InitializeComponent();
@@ -33,7 +41,7 @@ internal partial class ExpandedWindow : Window
         _card = card;
         _mgr = mgr;
         _editTitle = editTitle;
-        Width = 22 * 2 + Columns * TileW + 18;
+        Width = SidePad * 2 + Columns * TileW;
 
         Group.Changed += Rebuild;
         Rebuild();
@@ -43,6 +51,7 @@ internal partial class ExpandedWindow : Window
         Loaded += OnLoaded;
         Deactivated += (_, _) => { if (!_busy) SafeClose(); };
         PreviewKeyDown += OnKey;
+        PreviewMouseWheel += OnWheel;
         ItemsPanel.PreviewMouseLeftButtonDown += OnDown;
         ItemsPanel.PreviewMouseMove += OnMove;
         ItemsPanel.PreviewMouseLeftButtonUp += OnUp;
@@ -89,10 +98,87 @@ internal partial class ExpandedWindow : Window
             ItemsPanel.Children.Add(MakeTile(entry));
         Empty.Visibility = Group.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
+        // 한 번에 4×3까지 보이고, 넘치면 3줄 단위 페이지로 위아래 스크롤한다.
         int rows = Math.Max(1, (int)Math.Ceiling(Group.Items.Count / (double)Columns));
-        double listH = Math.Min(rows, MaxVisibleRows) * TileH;
-        Scroller.Height = listH;
-        Height = 16 + 44 + 6 + listH + 18;
+        _pages = Math.Max(1, (int)Math.Ceiling(rows / (double)RowsPerPage));
+        double viewH = Math.Min(rows, RowsPerPage) * TileH;
+        ItemsPanel.MinHeight = _pages > 1 ? _pages * PageH : 0; // 마지막 페이지도 딱 맞게 멈추도록
+        Scroller.Height = viewH;
+        Height = TitleH + viewH + BottomPad;
+
+        _page = Math.Min(_page, _pages - 1);
+        StopScrollAnimation();
+        Scroller.ScrollToVerticalOffset(_page * PageH);
+        BuildDots();
+    }
+
+    private void BuildDots()
+    {
+        Dots.Children.Clear();
+        Dots.Visibility = _pages > 1 ? Visibility.Visible : Visibility.Collapsed;
+        for (int i = 0; i < _pages; i++)
+        {
+            int index = i;
+            var dot = new System.Windows.Shapes.Ellipse
+            {
+                Width = i == _page ? 6 : 5,
+                Height = i == _page ? 6 : 5,
+                Opacity = i == _page ? 0.85 : 0.35,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            dot.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "Fg");
+            // 점이 작아서 누르기 쉽도록 투명한 여백을 준다.
+            var hit = new Border { Background = Brushes.Transparent, Width = 14, Height = 14, Child = dot, Cursor = Cursors.Hand };
+            hit.MouseLeftButtonUp += (_, e) => { GoToPage(index); e.Handled = true; };
+            Dots.Children.Add(hit);
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        page = Math.Max(0, Math.Min(page, _pages - 1));
+        if (page == _page) return;
+        _page = page;
+        BuildDots();
+        AnimateScrollTo(_page * PageH);
+    }
+
+    private void OnWheel(object sender, MouseWheelEventArgs e)
+    {
+        e.Handled = true;
+        if (_pages <= 1) return;
+        // 터치패드는 작은 값이 여러 번 오므로 한 칸(120)이 모일 때마다 한 페이지씩 넘긴다.
+        _wheelAcc += e.Delta;
+        if (Math.Abs(_wheelAcc) < 120) return;
+        int dir = _wheelAcc > 0 ? -1 : 1;
+        _wheelAcc = 0;
+        GoToPage(_page + dir);
+    }
+
+    private void AnimateScrollTo(double y)
+    {
+        _animFrom = Scroller.VerticalOffset;
+        _animTo = y;
+        _animStart = DateTime.Now;
+        if (_animating) return;
+        _animating = true;
+        CompositionTarget.Rendering += OnScrollFrame;
+    }
+
+    private void OnScrollFrame(object? sender, EventArgs e)
+    {
+        double t = Math.Min(1, (DateTime.Now - _animStart).TotalMilliseconds / 280);
+        double k = 1 - Math.Pow(1 - t, 3);
+        Scroller.ScrollToVerticalOffset(_animFrom + (_animTo - _animFrom) * k);
+        if (t >= 1) StopScrollAnimation();
+    }
+
+    private void StopScrollAnimation()
+    {
+        if (!_animating) return;
+        _animating = false;
+        CompositionTarget.Rendering -= OnScrollFrame;
     }
 
     private Border MakeTile(ShellEntry entry)
@@ -102,12 +188,12 @@ internal partial class ExpandedWindow : Window
         var text = new TextBlock
         {
             Text = entry.Name,
-            FontSize = 12,
+            FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextAlignment = TextAlignment.Center,
-            MaxHeight = 34,
-            Margin = new Thickness(6, 6, 6, 0),
+            MaxHeight = 38,
+            Margin = new Thickness(6, 8, 6, 0),
         };
         text.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
 
@@ -172,7 +258,7 @@ internal partial class ExpandedWindow : Window
 
         double cx = _card.Left + _card.Width / 2;
         double cy = _card.Top + 8 + 88;
-        double left = cx - Width / 2, top = cy - Math.Min(Height, 300) / 2;
+        double left = cx - Width / 2, top = cy - Height / 2;
         Left = Math.Max(waL + 8, Math.Min(left, waR - Width - 8));
         Top = Math.Max(waT + 8, Math.Min(top, waB - Height - 8));
     }
@@ -225,6 +311,11 @@ internal partial class ExpandedWindow : Window
 
     private void OnKey(object sender, KeyEventArgs e)
     {
+        if (!TitleBox.IsKeyboardFocused)
+        {
+            int dir = e.Key switch { Key.Down or Key.PageDown => 1, Key.Up or Key.PageUp => -1, _ => 0 };
+            if (dir != 0) { GoToPage(_page + dir); e.Handled = true; return; }
+        }
         if (e.Key == Key.Escape)
         {
             if (TitleBox.IsKeyboardFocused) TitleBox.Text = Group.Name;
@@ -303,6 +394,7 @@ internal partial class ExpandedWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         Group.Changed -= Rebuild;
+        StopScrollAnimation();
         if (_current == this) _current = null;
         base.OnClosed(e);
     }

@@ -20,7 +20,7 @@ internal static class Theme
             r["HoverBg"] = Brush("#14000000");
             r["Fg"] = Brush("#FF1B1B1B");
             r["SubFg"] = Brush("#FF5F5F5F");
-            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#00FFFFFF" : "#F7F3F3F3");
+            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B8FAFAFA" : "#F7F3F3F3");
             r["Accent"] = Brush("#FF005FB8");
         }
         else
@@ -30,7 +30,7 @@ internal static class Theme
             r["HoverBg"] = Brush("#18FFFFFF");
             r["Fg"] = Brush("#FFFFFFFF");
             r["SubFg"] = Brush("#FFC5C5C5");
-            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#00000000" : "#F7202020");
+            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B82C2C2C" : "#F7202020");
             r["Accent"] = Brush("#FF60CDFF");
         }
     }
