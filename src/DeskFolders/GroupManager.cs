@@ -10,7 +10,7 @@ namespace DeskFolders;
 /// <summary>그룹 루트 폴더의 하위 폴더마다 카드 창을 하나씩 띄우고 동기화한다.</summary>
 internal sealed class GroupManager
 {
-    private const double CardW = 196, CardH = 226;
+    private const double CardW = 196, CardH = 206;
 
     private readonly Config _cfg = Config.Load();
     private readonly Dictionary<string, CardWindow> _cards = new(StringComparer.OrdinalIgnoreCase);
@@ -94,6 +94,9 @@ internal sealed class GroupManager
         card.Closed += OnCardClosed;
         _cards[group.Name] = card;
         card.Show();
+        // 저장된 위치든 새 자리든 바탕화면 칸에 맞춘다(아이콘 크기를 바꿨을 수도 있다).
+        card.SnapToGrid();
+        SavePosition(card);
         return card;
     }
 

@@ -13,6 +13,7 @@ internal static class Native
     public const long WS_EX_NOACTIVATE = 0x08000000;
 
     public const int WM_WINDOWPOSCHANGING = 0x0046;
+    public const int WM_MOVING = 0x0216;
     public const uint SWP_NOSIZE = 0x0001;
     public const uint SWP_NOMOVE = 0x0002;
     public const uint SWP_NOZORDER = 0x0004;
@@ -31,6 +32,15 @@ internal static class Native
         public int x, y, cx, cy;
         public uint flags;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct BITMAP

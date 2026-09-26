@@ -111,8 +111,7 @@ internal partial class CardWindow : Window
         else
         {
             try { DragMove(); } catch (InvalidOperationException) { }
-            Left = Math.Round(Left / 8) * 8;
-            Top = Math.Round(Top / 8) * 8;
+            SnapToGrid();
             _mgr.SavePosition(this);
         }
     }
@@ -224,11 +223,46 @@ internal partial class CardWindow : Window
                 Marshal.StructureToPtr(wp, lParam, false);
             }
         }
+        else if (msg == Native.WM_MOVING)
+        {
+            // 끄는 동안에도 바탕화면 아이콘처럼 칸 단위로 움직인다.
+            var r = Marshal.PtrToStructure<Native.RECT>(lParam);
+            var (x, y) = SnapWindowPx(r.Left, r.Top);
+            int w = r.Right - r.Left, h = r.Bottom - r.Top;
+            Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
+            handled = true;
+            return new IntPtr(1);
+        }
         else if (msg == _taskbarCreatedMsg && _taskbarCreatedMsg != 0)
         {
             AttachToDesktop(hwnd);
         }
         return IntPtr.Zero;
+    }
+
+    // ----- 바탕화면 격자 맞춤 -----
+
+    /// <summary>창 안에서 실제로 보이는 영역(카드 + 이름). XAML의 Grid 여백/크기와 맞춘다.</summary>
+    private static readonly Rect ContentRect = new(14, 6, 168, 194);
+
+    /// <summary>현재 위치를 가장 가까운 바탕화면 칸에 맞춘다.</summary>
+    public void SnapToGrid()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
+        var (x, y) = SnapWindowPx(r.Left, r.Top);
+        if (x != r.Left || y != r.Top)
+            Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0,
+                Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+    }
+
+    private (int X, int Y) SnapWindowPx(int winX, int winY)
+    {
+        var dpi = VisualTreeHelper.GetDpi(this);
+        int offX = (int)Math.Round(ContentRect.X * dpi.DpiScaleX), offY = (int)Math.Round(ContentRect.Y * dpi.DpiScaleY);
+        int w = (int)Math.Round(ContentRect.Width * dpi.DpiScaleX), h = (int)Math.Round(ContentRect.Height * dpi.DpiScaleY);
+        var (cx, cy) = DesktopGrid.Snap(winX + offX, winY + offY, w, h);
+        return (cx - offX, cy - offY);
     }
 
     protected override void OnClosed(EventArgs e)

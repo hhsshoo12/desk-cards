@@ -4,12 +4,13 @@
         x:ClassModifier="internal"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
-        Width="196" Height="226" AllowDrop="True"
+        Width="196" Height="206" AllowDrop="True"
         FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic"
         UseLayoutRounding="True" Title="DeskFolders Card">
-    <Grid Margin="10,8,10,4">
+    <!-- 보이는 영역(카드 168 + 이름 26)은 CardWindow.ContentRect와 맞춰야 한다. -->
+    <Grid Margin="14,6,14,6">
         <Grid.RowDefinitions>
-            <RowDefinition Height="176" />
+            <RowDefinition Height="168" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -26,7 +27,7 @@
                    Foreground="{DynamicResource SubFg}" HorizontalAlignment="Center" VerticalAlignment="Center"
                    Visibility="Collapsed" IsHitTestVisible="False" />
 
-        <TextBlock x:Name="Label" Grid.Row="1" Margin="4,7,4,0" FontSize="13" Foreground="White"
+        <TextBlock x:Name="Label" Grid.Row="1" Margin="4,5,4,0" FontSize="13" Foreground="White"
                    HorizontalAlignment="Center" TextTrimming="CharacterEllipsis">
             <TextBlock.Effect>
                 <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.9" Color="Black" />
