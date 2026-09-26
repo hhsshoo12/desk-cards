@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
@@ -33,10 +33,56 @@ internal static class SmartGuides
     {
         x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
         y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
-        var lines = new List<Line>();
-        if ((Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0) return (x, y, lines);
+        if ((Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0) return (x, y, new List<Line>());
 
-        // 화면 가장자리는 붙기만 하고(선은 안 보여 준다), 화면 가운데와 다른 카드의 가장자리·가운데는 선도 보여 준다.
+        var (xs, ys) = Targets(others, wa);
+
+        int threshold = (int)Math.Round(SnapDip * dpiScale);
+        x += Nearest(x, w, xs, threshold);
+        y += Nearest(y, h, ys, threshold);
+        x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
+        y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
+
+        return (x, y, LinesFor(x, y, w, h, xs, ys));
+    }
+
+    /// <summary>
+    /// 비율 고정 크기 조절용. 왼쪽 위(start)는 고정하고 배율 g만큼 키울 때, 오른쪽·아래 끝이나 가운데가
+    /// 다른 카드·화면 가운데 줄에 가까우면 거기 맞는 배율로 바꾼다.
+    /// </summary>
+    public static (double G, List<Line> Lines) SnapScale(Native.RECT start, double g,
+        IReadOnlyList<Native.RECT> others, System.Drawing.Rectangle wa, double dpiScale)
+    {
+        int x = start.Left, y = start.Top;
+        double w0 = start.Right - start.Left, h0 = start.Bottom - start.Top;
+        if ((Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0) return (g, new List<Line>());
+
+        var (xs, ys) = Targets(others, wa);
+        double threshold = SnapDip * dpiScale;
+        double bestG = g, bestD = double.MaxValue;
+        void Try(List<Target> targets, int origin, double size)
+        {
+            foreach (var t in targets)
+                foreach (double frac in new[] { 1.0, 0.5 })
+                {
+                    double d = Math.Abs(t.Pos - (origin + size * g * frac));
+                    if (d <= threshold && d < bestD && t.Pos > origin)
+                    {
+                        bestD = d;
+                        bestG = (t.Pos - origin) / (size * frac);
+                    }
+                }
+        }
+        Try(xs, x, w0);
+        Try(ys, y, h0);
+
+        int w = (int)Math.Round(w0 * bestG), h = (int)Math.Round(h0 * bestG);
+        return (bestG, LinesFor(x, y, w, h, xs, ys));
+    }
+
+    /// <summary>화면 가장자리는 붙기만 하고(선은 안 보여 준다), 화면 가운데와 다른 카드의 가장자리·가운데는 선도 보여 준다.</summary>
+    private static (List<Target> Xs, List<Target> Ys) Targets(IReadOnlyList<Native.RECT> others, System.Drawing.Rectangle wa)
+    {
         var xs = new List<Target>
         {
             new(wa.Left, wa.Top, wa.Bottom, false),
@@ -58,14 +104,13 @@ internal static class SmartGuides
             ys.Add(new(o.Bottom, o.Left, o.Right, true));
             ys.Add(new((o.Top + o.Bottom) / 2, o.Left, o.Right, true));
         }
+        return (xs, ys);
+    }
 
-        int threshold = (int)Math.Round(SnapDip * dpiScale);
-        x += Nearest(x, w, xs, threshold);
-        y += Nearest(y, h, ys, threshold);
-        x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
-        y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
-
-        // 실제로 맞은 줄마다 선을 긋는다. 선은 카드와 맞춘 대상을 모두 덮는 길이로.
+    /// <summary>실제로 맞은 줄마다 선을 긋는다. 선은 카드와 맞춘 대상을 모두 덮는 길이로.</summary>
+    private static List<Line> LinesFor(int x, int y, int w, int h, List<Target> xs, List<Target> ys)
+    {
+        var lines = new List<Line>();
         int[] offX = { 0, w / 2, w }, offY = { 0, h / 2, h };
         var seen = new HashSet<(bool, int)>();
         foreach (var t in xs)
@@ -78,7 +123,7 @@ internal static class SmartGuides
             if (!t.Draw || !Hits(y, offY, t.Pos) || !seen.Add((false, t.Pos))) continue;
             lines.Add(new Line(false, t.Pos, Math.Min(t.From, x), Math.Max(t.To, x + w)));
         }
-        return (x, y, lines);
+        return lines;
     }
 
     /// <summary>카드의 앞·가운데·뒤 줄 중 대상 줄에 가장 가까운 것까지의 이동량(없으면 0).</summary>

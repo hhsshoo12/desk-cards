@@ -53,7 +53,8 @@ internal partial class CardWindow : Window
         ContextMenu = BuildMenu();
 
         DoneButton.MouseLeftButtonUp += (_, e) => { EndEdit(); e.Handled = true; };
-        GripCorner.DragDelta += OnGripDelta;
+        GripCorner.DragStarted += (_, _) => OnGripStart();
+        GripCorner.DragDelta += (_, _) => OnGripDelta();
         GripCorner.DragCompleted += (_, _) => OnGripDone();
     }
 
@@ -205,14 +206,45 @@ internal partial class CardWindow : Window
         _mgr.SavePosition(this);
     }
 
-    private void OnGripDelta(object sender, DragDeltaEventArgs e)
+    private double _gripZoom;
+
+    private void OnGripStart()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        Native.GetCursorPos(out _moveCursorStart);
+        Native.GetWindowRect(hwnd, out _moveWindowStart);
+        _moveOthers = _mgr.CardRects(except: this);
+        _gripZoom = _layout.Zoom;
+    }
+
+    private void OnGripDelta()
     {
         // 비율 고정: 가로·세로 늘어난 비율의 평균만큼 카드 전체를 키우거나 줄인다.
-        // (손잡이가 창 모서리와 함께 움직이므로 이동량은 매번 직전 대비 증분이다.)
-        double grow = (e.HorizontalChange / Width + e.VerticalChange / Height) / 2;
-        double zoom = _layout.Zoom * (1 + grow);
+        // 손잡이가 모서리와 함께 움직여 증분이 흔들리므로, 잡은 순간부터의 전체 마우스 이동량으로 계산한다.
+        var hwnd = new WindowInteropHelper(this).Handle;
+        Native.GetCursorPos(out var cur);
+        var r0 = _moveWindowStart;
+        double w0 = r0.Right - r0.Left, h0 = r0.Bottom - r0.Top;
+        double g = ((w0 + cur.X - _moveCursorStart.X) / w0 + (h0 + cur.Y - _moveCursorStart.Y) / h0) / 2;
 
-        // 작업 영역 밖으로 커지지 않게 한다.
+        // 다른 카드·화면 가운데와 끝선이 맞으면 붙고 안내선을 보여 준다.
+        var wa = DesktopGrid.WorkAreaAt(r0.Left + 1, r0.Top + 1);
+        var (sg, lines) = SmartGuides.SnapScale(r0, g, _moveOthers, wa, Native.MonitorScaleOf(hwnd));
+        SmartGuides.Show(wa, lines);
+        SetZoomClamped(_gripZoom * sg);
+    }
+
+    private void OnGripDone()
+    {
+        SmartGuides.Hide();
+        _mgr.SaveLayout(this, _layout);
+        FitToScreen();
+        _mgr.SavePosition(this);
+    }
+
+    /// <summary>확대 비율을 바꾸되, 최소·최대와 작업 영역(오른쪽·아래 끝) 안으로 제한한다.</summary>
+    private void SetZoomClamped(double zoom)
+    {
         var wa = WorkAreaDip();
         var p = ActualPosition;
         var size = BaseSize(_layout, _mgr.CellSize);
@@ -222,11 +254,20 @@ internal partial class CardWindow : Window
         LayoutFor();
     }
 
-    private void OnGripDone()
+    /// <summary>
+    /// 설정에 보여 주는 카드 크기(%). 기준 크기 대비 지금 보이는 크기로, Windows 배율을 따라가는 중이면
+    /// 125% 배율에서 기본 카드는 125%가 된다.
+    /// </summary>
+    public int SizePercent => (int)Math.Round(_layout.Zoom * ScaleFactor * 100);
+
+    /// <summary>카드 크기를 %로 정한다. 화면에 들어가지 않으면 들어가는 만큼만 키운다. 실제 적용된 값을 돌려준다.</summary>
+    public int SetSizePercent(int percent)
     {
+        SetZoomClamped(percent / 100.0 / ScaleFactor);
         _mgr.SaveLayout(this, _layout);
         FitToScreen();
         _mgr.SavePosition(this);
+        return SizePercent;
     }
 
     /// <summary>미리보기 칸 수를 바꾼다(카드 비율이 따라 바뀐다).</summary>

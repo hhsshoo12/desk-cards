@@ -291,6 +291,7 @@ internal partial class ExpandedWindow : Window
         {
             case 0:
                 AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
+                AddPercent("", "크기");
                 var layout = _card.CurrentLayout;
                 AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
                 AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
@@ -442,6 +443,99 @@ internal partial class ExpandedWindow : Window
         row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
         row.MouseLeftButtonUp += (_, e) => { e.Handled = true; act(); };
         AddRow(row);
+    }
+
+    /// <summary>카드 크기(%) 줄. [−]/[+]는 5%씩, 숫자 칸을 눌러 직접 입력할 수도 있다.</summary>
+    private void AddPercent(string glyph, string text)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var icon = new TextBlock
+        {
+            Text = glyph,
+            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = 15,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        var label = new TextBlock { Text = text, FontSize = 14, VerticalAlignment = VerticalAlignment.Center };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        Grid.SetColumn(label, 1);
+
+        var box = new TextBox
+        {
+            Text = _card.SizePercent.ToString(),
+            FontSize = 14,
+            Width = 44,
+            MaxLength = 3,
+            TextAlignment = TextAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(0, 2, 1, 2),
+        };
+        box.SetResourceReference(TextBox.ForegroundProperty, "Fg");
+        box.SetResourceReference(TextBox.CaretBrushProperty, "Fg");
+        box.SetResourceReference(TextBox.BorderBrushProperty, "SectionLine");
+        var unit = new TextBlock { Text = "%", FontSize = 14, Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        unit.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
+
+        void Apply(int percent) => box.Text = _card.SetSizePercent(Math.Clamp(percent, 10, 999)).ToString();
+        void Commit()
+        {
+            if (int.TryParse(box.Text.Trim().TrimEnd('%'), out int v)) Apply(v);
+            else box.Text = _card.SizePercent.ToString();
+        }
+        box.PreviewTextInput += (_, e) => e.Handled = !e.Text.All(char.IsDigit);
+        box.GotKeyboardFocus += (_, _) => box.SelectAll();
+        box.PreviewMouseLeftButtonDown += (_, e) =>
+        {
+            if (box.IsKeyboardFocusWithin) return;
+            e.Handled = true;
+            box.Focus();
+        };
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter) return;
+            e.Handled = true;
+            Commit();
+            box.SelectAll();
+        };
+        box.LostKeyboardFocus += (_, _) => Commit();
+
+        Button Step(string g, int dir)
+        {
+            var b = new Button
+            {
+                Style = (Style)FindResource("IconButton"),
+                Content = new TextBlock { Text = g, FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"), FontSize = 11 },
+            };
+            b.Click += (_, _) =>
+            {
+                // 5% 단위로 맞춰 가며 움직인다(103 → 105, 103 → 100).
+                int cur = _card.SizePercent;
+                int next = dir > 0 ? (cur / 5 + 1) * 5 : (cur % 5 == 0 ? cur - 5 : cur / 5 * 5);
+                Apply(next);
+            };
+            return b;
+        }
+
+        var stepper = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) };
+        stepper.Children.Add(Step("", -1)); // −
+        stepper.Children.Add(box);
+        stepper.Children.Add(unit);
+        stepper.Children.Add(Step("", +1)); // +
+        Grid.SetColumn(stepper, 2);
+
+        grid.Children.Add(icon);
+        grid.Children.Add(label);
+        grid.Children.Add(stepper);
+        AddRow(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
     }
 
     /// <summary>[−] 값 [+] 로 1~8을 고르는 설정 줄.</summary>
