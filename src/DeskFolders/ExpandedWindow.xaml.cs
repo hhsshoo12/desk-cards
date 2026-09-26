@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -110,7 +110,15 @@ internal partial class ExpandedWindow : Window
         ItemsPanel.MinHeight = _pages > 1 ? _pages * PageH : 0; // 마지막 페이지도 딱 맞게 멈추도록
         Scroller.Height = viewH;
         double height = TitleH + viewH + BottomPad;
-        if (_settings) height = Math.Max(height, TitleH + SettingsPanel.Children.Count * SettingRowH + 32);
+        if (_settings)
+        {
+            // 설정은 한 페이지(4×3) 높이까지만 늘리고, 넘치면 안에서 스크롤한다.
+            SettingsPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double maxView = RowsPerPage * TileH + BottomPad - 20;
+            double view = Math.Min(SettingsPanel.DesiredSize.Height, maxView);
+            SettingsScroller.Height = view;
+            height = Math.Max(height, TitleH + view + 20);
+        }
         Height = height;
 
         _page = Math.Min(_page, _pages - 1);
@@ -153,8 +161,9 @@ internal partial class ExpandedWindow : Window
 
     private void OnWheel(object sender, MouseWheelEventArgs e)
     {
+        if (_settings) return; // 설정 화면은 스크롤 뷰어가 직접 굴린다.
         e.Handled = true;
-        if (_pages <= 1 || _settings) return;
+        if (_pages <= 1) return;
         // 터치패드는 작은 값이 여러 번 오므로 한 칸(120)이 모일 때마다 한 페이지씩 넘긴다.
         _wheelAcc += e.Delta;
         if (Math.Abs(_wheelAcc) < 120) return;
@@ -260,7 +269,7 @@ internal partial class ExpandedWindow : Window
     {
         _settings = on;
         Scroller.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        SettingsPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        SettingsScroller.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         GearGlyph.SetResourceReference(TextBlock.ForegroundProperty, on ? "Accent" : "Fg");
         if (on) BuildSettings();
         Rebuild();
@@ -269,11 +278,16 @@ internal partial class ExpandedWindow : Window
 
     private void BuildSettings()
     {
+        double offset = SettingsScroller.VerticalOffset;
         SettingsPanel.Children.Clear();
+
+        AddSection("카드");
         AddSetting("", "위치 옮기기 · 크기 조절", null, () => { SafeClose(); _card.BeginEdit(); });
         var layout = _card.CurrentLayout;
         AddStepper("", "미리보기 칸 (가로)", layout.Cols, v => _card.SetGrid(v, _card.CurrentLayout.Rows));
         AddStepper("", "미리보기 칸 (세로)", layout.Rows, v => _card.SetGrid(_card.CurrentLayout.Cols, v));
+
+        AddSection("그룹");
         AddSetting("", "이름 바꾸기", null, () => { ShowSettings(false); TitleBox.Focus(); });
         AddSetting("", "폴더 열기", null, () => { FileOps.OpenFolder(Group.Folder); SafeClose(); });
         AddSetting("", "새 그룹 만들기", null, () => { SafeClose(); _mgr.NewGroup(); });
@@ -284,11 +298,56 @@ internal partial class ExpandedWindow : Window
             _busy = false;
             SafeClose();
         });
-        AddSetting("", "카드 크기: Windows 배율 따라가기", _mgr.FollowWindowsScale ? "켬" : "끔", () =>
+
+        AddSection("모든 카드");
+        AddSetting("", "Windows 배율 따라가기", _mgr.FollowWindowsScale ? "켬" : "끔", () =>
         {
             _mgr.FollowWindowsScale = !_mgr.FollowWindowsScale;
             BuildSettings();
         });
+
+        SettingsScroller.ScrollToVerticalOffset(offset);
+    }
+
+    private StackPanel? _section;
+
+    /// <summary>제목 + 둥근 묶음 카드. 이후 추가하는 설정 줄은 이 묶음 안에 들어간다.</summary>
+    private void AddSection(string title)
+    {
+        var header = new TextBlock
+        {
+            Text = title,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(4, SettingsPanel.Children.Count == 0 ? 0 : 14, 0, 6),
+        };
+        header.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
+        SettingsPanel.Children.Add(header);
+
+        _section = new StackPanel();
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(4, 2, 4, 2),
+            Child = _section,
+        };
+        card.SetResourceReference(Border.BackgroundProperty, "SectionBg");
+        card.SetResourceReference(Border.BorderBrushProperty, "SectionLine");
+        SettingsPanel.Children.Add(card);
+    }
+
+    /// <summary>현재 묶음에 줄을 넣고, 앞 줄과는 얇은 선으로 나눈다.</summary>
+    private void AddRow(UIElement row)
+    {
+        if (_section == null) AddSection("");
+        if (_section!.Children.Count > 0)
+        {
+            var line = new Border { Height = 1, Margin = new Thickness(40, 0, 8, 0) };
+            line.SetResourceReference(Border.BackgroundProperty, "SectionLine");
+            _section.Children.Add(line);
+        }
+        _section.Children.Add(row);
     }
 
     private void AddSetting(string glyph, string text, string? trailing, Action act)
@@ -332,7 +391,7 @@ internal partial class ExpandedWindow : Window
         row.MouseEnter += (_, _) => row.SetResourceReference(Border.BackgroundProperty, "HoverBg");
         row.MouseLeave += (_, _) => row.Background = Brushes.Transparent;
         row.MouseLeftButtonUp += (_, e) => { e.Handled = true; act(); };
-        SettingsPanel.Children.Add(row);
+        AddRow(row);
     }
 
     /// <summary>[−] 값 [+] 로 1~8을 고르는 설정 줄.</summary>
@@ -394,7 +453,7 @@ internal partial class ExpandedWindow : Window
         grid.Children.Add(icon);
         grid.Children.Add(label);
         grid.Children.Add(stepper);
-        SettingsPanel.Children.Add(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
+        AddRow(new Border { Height = SettingRowH - 4, Margin = new Thickness(0, 2, 0, 2), Child = grid });
     }
 
     /// <summary>설정 화면으로 바뀌며 창이 길어졌을 때 화면 아래로 넘치지 않게 올린다.</summary>

@@ -22,6 +22,8 @@ internal static class Theme
             r["SubFg"] = Brush("#FF5F5F5F");
             r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B8FAFAFA" : "#F7F3F3F3");
             r["Accent"] = Brush("#FF005FB8");
+            r["SectionBg"] = Brush("#B3FFFFFF");
+            r["SectionLine"] = Brush("#0F000000");
         }
         else
         {
@@ -32,6 +34,8 @@ internal static class Theme
             r["SubFg"] = Brush("#FFC5C5C5");
             r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B82C2C2C" : "#F7202020");
             r["Accent"] = Brush("#FF60CDFF");
+            r["SectionBg"] = Brush("#0FFFFFFF");
+            r["SectionLine"] = Brush("#14FFFFFF");
         }
     }
 
