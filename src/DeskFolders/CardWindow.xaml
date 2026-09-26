@@ -1,0 +1,36 @@
+<Window x:Class="DeskFolders.CardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:ClassModifier="internal"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
+        Width="196" Height="226" AllowDrop="True"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic"
+        UseLayoutRounding="True" Title="DeskFolders Card">
+    <Grid Margin="10,8,10,4">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="176" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="Card" CornerRadius="8" BorderThickness="1"
+                Background="{DynamicResource CardBg}" BorderBrush="{DynamicResource CardBorder}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.22" />
+            </Border.Effect>
+        </Border>
+
+        <UniformGrid x:Name="Cells" Rows="2" Columns="2" Margin="14" />
+
+        <TextBlock x:Name="Placeholder" Text="여기로 끌어다 놓기" FontSize="12"
+                   Foreground="{DynamicResource SubFg}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Visibility="Collapsed" IsHitTestVisible="False" />
+
+        <TextBlock x:Name="Label" Grid.Row="1" Margin="4,7,4,0" FontSize="13" Foreground="White"
+                   HorizontalAlignment="Center" TextTrimming="CharacterEllipsis">
+            <TextBlock.Effect>
+                <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.9" Color="Black" />
+            </TextBlock.Effect>
+        </TextBlock>
+    </Grid>
+</Window>
