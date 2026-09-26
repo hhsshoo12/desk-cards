@@ -46,6 +46,9 @@ public partial class App : Application
         var startup = new Forms.ToolStripMenuItem("Windows 시작 시 실행") { Checked = IsStartupEnabled(), CheckOnClick = true };
         startup.CheckedChanged += (_, _) => SetStartup(startup.Checked);
         menu.Items.Add(startup);
+        var scale = new Forms.ToolStripMenuItem("카드 크기: Windows 배율 따라가기") { Checked = _mgr!.FollowWindowsScale, CheckOnClick = true };
+        scale.CheckedChanged += (_, _) => _mgr!.FollowWindowsScale = scale.Checked;
+        menu.Items.Add(scale);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add("종료", null, (_, _) => Quit());
 

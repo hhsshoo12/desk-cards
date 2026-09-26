@@ -10,6 +10,9 @@ internal sealed class Config
 {
     public Dictionary<string, double[]> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>카드 크기에 Windows 배율(125% 등)을 곱할지. 기본 켜짐.</summary>
+    public bool FollowWindowsScale { get; set; } = true;
+
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskFolders", "config.json");
 

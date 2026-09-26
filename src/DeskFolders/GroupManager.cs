@@ -28,6 +28,22 @@ internal sealed class GroupManager
     public string Root { get; }
     public IEnumerable<GroupModel> Groups => _cards.Values.Select(c => c.Group);
 
+    public bool FollowWindowsScale
+    {
+        get => _cfg.FollowWindowsScale;
+        set
+        {
+            if (_cfg.FollowWindowsScale == value) return;
+            _cfg.FollowWindowsScale = value;
+            _cfg.Save();
+            foreach (var card in _cards.Values)
+            {
+                card.SnapToGrid();
+                SavePosition(card);
+            }
+        }
+    }
+
     public void Start()
     {
         Directory.CreateDirectory(Root);
@@ -233,7 +249,8 @@ internal sealed class GroupManager
         {
             // 바탕화면 칸 단위(카드 = 2×2칸)로 오른쪽 위부터 찾는다.
             double s = Native.GetDpiForSystem() / 96.0;
-            double w = DesktopGrid.CardCols * cx / s, h = DesktopGrid.CardRows * cy / s;
+            double k = FollowWindowsScale ? s : 1;
+            double w = DesktopGrid.CardCols * cx / s * k, h = DesktopGrid.CardRows * cy / s * k;
             int lastCol = (int)Math.Floor((wa.Right * s - ox) / cx) - DesktopGrid.CardCols;
             for (int col = lastCol; col >= 0; col -= DesktopGrid.CardCols)
             {

@@ -261,21 +261,25 @@ internal partial class CardWindow : Window
     /// <summary>
     /// 창을 바탕화면 아이콘 2×2칸 크기로 맞추고, 그 안에 정사각형 카드와 이름을 배치한다.
     /// 여백은 아이콘이 칸 안에서 떨어진 정도(위 약 5px, 좌우 약 4px)에 맞췄다.
+    /// 'Windows 배율 따라가기'가 켜져 있으면 이 크기를 100%로 보고 배율만큼(125%면 1.25배) 통째로 키운다.
     /// </summary>
     private void ApplyGridSize()
     {
         if (!DesktopGrid.TryGet(out _, out _, out int cx, out int cy)) return;
         var dpi = VisualTreeHelper.GetDpi(this);
         double sx = dpi.DpiScaleX, sy = dpi.DpiScaleY;
+        double k = _mgr.FollowWindowsScale ? sx : 1;
 
         double w = DesktopGrid.CardCols * cx, h = DesktopGrid.CardRows * cy; // px
         double top = 5 * sy, labelH = 30 * sy, gap = 4 * sy;
         double side = Math.Min(w - 8 * sx, h - top - labelH - gap);
         double insetX = (w - side) / 2;
 
-        Width = w / sx;
-        Height = h / sy;
-        Layout.Margin = new Thickness(insetX / sx, top / sy, insetX / sx, 0);
+        Width = w / sx * k;
+        Height = h / sy * k;
+        // 아이콘·글자·모서리까지 같은 비율로 커지도록 내용 전체에 배율을 건다(여백은 변환 밖이라 직접 곱한다).
+        Layout.LayoutTransform = k == 1 ? Transform.Identity : new ScaleTransform(k, k);
+        Layout.Margin = new Thickness(insetX / sx * k, top / sy * k, insetX / sx * k, 0);
         BodyRow.Height = new GridLength(side / sy);
         Cells.Margin = new Thickness(side / sy * 0.085);
     }
