@@ -306,6 +306,13 @@ internal partial class SettingsWindow : Window
         detail.Children.Add(text);
         detail.Children.Add(gauge);
 
+        // 확인이 금방 끝나도 누른 게 보이도록 로딩 동그라미를 잠깐은 보여 준다.
+        // (시각을 비교하면 타이머가 몇 ms 일찍 울릴 때 동그라미가 꺼지지 않으므로 켜짐/꺼짐으로 둔다.)
+        bool spinHold = false;
+        var spinTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        spinTimer.Tick += (_, _) => { spinTimer.Stop(); spinHold = false; _updateRefresh?.Invoke(); };
+        var spinner = Spinner();
+
         var button = new Button();
         button.Click += (_, _) =>
         {
@@ -313,7 +320,11 @@ internal partial class SettingsWindow : Window
             {
                 case UpdateState.Available: _ = u.DownloadAsync(); break;
                 case UpdateState.Ready: u.Restart(); break;
-                case UpdateState.Failed: _ = u.CheckAsync(); break;
+                case UpdateState.Idle or UpdateState.UpToDate or UpdateState.Failed:
+                    spinHold = true;
+                    spinTimer.Start();
+                    _ = u.CheckAsync();
+                    break;
             }
         };
 
@@ -332,27 +343,39 @@ internal partial class SettingsWindow : Window
             rest.Width = new GridLength(1 - p, GridUnitType.Star);
             percent.Text = $"{Math.Round(p * 100)}%";
 
-            text.Text = state switch
+            // 버전 0.2.3  최신  260927-2033 (최신만 굵게)
+            text.Inlines.Clear();
+            switch (state)
             {
-                UpdateState.Preparing => "업데이트 준비 중…",
-                UpdateState.Ready => "업데이트 준비 완료",
-                UpdateState.Failed => $"{version} · {u?.Error}",
-                _ => version,
-            };
+                case UpdateState.Preparing: text.Inlines.Add(new System.Windows.Documents.Run("업데이트 준비 중…")); break;
+                case UpdateState.Ready: text.Inlines.Add(new System.Windows.Documents.Run("업데이트 준비 완료")); break;
+                default:
+                    text.Inlines.Add(new System.Windows.Documents.Run(version));
+                    if (state == UpdateState.UpToDate)
+                    {
+                        text.Inlines.Add(new System.Windows.Documents.Run("  "));
+                        text.Inlines.Add(new System.Windows.Documents.Run("최신") { FontWeight = FontWeights.Bold });
+                        if (u?.LastChecked is { } at)
+                            text.Inlines.Add(new System.Windows.Documents.Run("  " + at.ToString("yyMMdd-HHmm")));
+                    }
+                    else if (state == UpdateState.Failed)
+                        text.Inlines.Add(new System.Windows.Documents.Run(" · " + u?.Error));
+                    break;
+            }
             text.SetResourceReference(TextBlock.ForegroundProperty, state == UpdateState.Ready ? "Accent" : "SubFg");
 
+            bool spinning = state == UpdateState.Checking || spinHold;
             (string label, bool accent, bool enabled) = state switch
             {
-                UpdateState.Checking or UpdateState.Idle => ("확인 중", false, false),
+                _ when spinning => ("", false, false),
                 UpdateState.Available when u?.CanUpdate != true => ("개발 빌드", false, false),
                 UpdateState.Available => ("업데이트", true, true),
                 UpdateState.Downloading => ("받는 중", false, false),
                 UpdateState.Preparing => ("준비 중", false, false),
                 UpdateState.Ready => ("앱 재시작", true, true),
-                UpdateState.Failed => ("다시 시도", false, true),
-                _ => ("최신", false, false),
+                _ => ("버전 확인", false, u != null),
             };
-            button.Content = label;
+            button.Content = spinning ? spinner : label;
             button.Style = (Style)FindResource(accent ? "AccentButton" : "StdButton");
             button.IsEnabled = enabled;
             if (enabled) button.ClearValue(ForegroundProperty);
@@ -361,8 +384,28 @@ internal partial class SettingsWindow : Window
 
         _updateRefresh = Refresh;
         Refresh();
-        u?.CheckIfStale();
         return Row("", "Desk Cards", null, button, null, icon, detail);
+    }
+
+    /// <summary>Windows 11의 로딩 동그라미(ProgressRing)처럼 도는 호.</summary>
+    private static FrameworkElement Spinner()
+    {
+        var ring = new System.Windows.Shapes.Ellipse
+        {
+            Width = 16,
+            Height = 16,
+            StrokeThickness = 2,
+            StrokeDashCap = PenLineCap.Round,
+            StrokeDashArray = new DoubleCollection { 7, 100 }, // 둘레의 1/3쯤만 그린다
+            RenderTransformOrigin = new Point(0.5, 0.5),
+        };
+        ring.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Accent");
+        var rotate = new RotateTransform();
+        ring.RenderTransform = rotate;
+        rotate.BeginAnimation(RotateTransform.AngleProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.9))
+            { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
+        return ring;
     }
 
     // ----- 왼쪽 메뉴 -----

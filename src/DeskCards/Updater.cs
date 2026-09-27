@@ -170,7 +170,7 @@ internal sealed class UpdateHost
         {
             InstallDir = dir,
             Installed = IsInstalledAt(dir),
-            ReadText = (url, token) => Http.GetStringAsync(url, token),
+            ReadText = ReadTextAsync,
             Download = DownloadAsync,
             SetInstalledVersion = v =>
             {
@@ -195,10 +195,25 @@ internal sealed class UpdateHost
 
     private static HttpClient CreateClient()
     {
-        var c = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        // 오래 쉰 연결을 다시 쓰다 응답 없이 걸리지 않게 연결은 짧게 두고, 시간 제한은 요청마다 건다.
+        var handler = new SocketsHttpHandler
+        {
+            ConnectTimeout = TimeSpan.FromSeconds(15),
+            PooledConnectionIdleTimeout = TimeSpan.FromSeconds(30),
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        };
+        var c = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         c.DefaultRequestHeaders.UserAgent.ParseAdd("DeskCards/" + Updater.RunningVersion.ToString(3));
         c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
         return c;
+    }
+
+    /// <summary>작은 응답(릴리스 목록, 해시). 20초 안에 끝나지 않으면 실패로 본다.</summary>
+    private static async Task<string> ReadTextAsync(string url, CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        return await Http.GetStringAsync(url, timeout.Token);
     }
 
     private static async Task DownloadAsync(string url, string path, IProgress<double> progress, CancellationToken token)
@@ -273,6 +288,9 @@ internal sealed class Updater
     public string? Error { get; private set; }
     public bool CanUpdate => _host.Installed;
 
+    /// <summary>마지막으로 확인에 성공한 시각(이 컴퓨터 시간). 이번 실행에서 아직 확인하지 않았으면 null.</summary>
+    public DateTime? LastChecked => _lastCheck == DateTime.MinValue ? null : _lastCheck.ToLocalTime();
+
     /// <summary>상태가 바뀔 때(UI 스레드).</summary>
     public event Action? Changed;
 
@@ -315,14 +333,6 @@ internal sealed class Updater
         if (State is UpdateState.Checking or UpdateState.Downloading or UpdateState.Preparing or UpdateState.Ready) return;
         await CheckAsync();
         if (State == UpdateState.Available) await DownloadAsync();
-    }
-
-    /// <summary>정보 페이지를 열 때. 최근에 확인했으면 다시 묻지 않는다.</summary>
-    public void CheckIfStale()
-    {
-        if (State is UpdateState.Idle or UpdateState.Failed ||
-            (State is UpdateState.UpToDate or UpdateState.Available && DateTime.UtcNow - _lastCheck > TimeSpan.FromMinutes(10)))
-            _ = CheckAsync();
     }
 
     public async Task CheckAsync()
