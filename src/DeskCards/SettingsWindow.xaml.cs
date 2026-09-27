@@ -376,7 +376,8 @@ internal partial class SettingsWindow : Window
             grid.Children.Add(right);
             if (control != null && click == null)
             {
-                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                // 첫 줄이 남는 높이를 받아야 최소 높이(44)보다 내용이 작을 때 가운데 온다(둘 다 Auto면 위로 쏠린다).
+                grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
                 grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 bool? stacked = null;
                 grid.SizeChanged += (_, _) =>
