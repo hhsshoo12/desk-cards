@@ -75,6 +75,15 @@ internal static class Native
         return PrimaryScale();
     }
 
+    /// <summary>화면 좌표(물리 픽셀)가 있는 모니터의 지금 배율.</summary>
+    public static double MonitorScaleAt(int x, int y)
+    {
+        const uint MONITOR_DEFAULTTONEAREST = 2;
+        var mon = MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST);
+        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, 0, out uint dx, out _) == 0 && dx > 0) return dx / 96.0;
+        return PrimaryScale();
+    }
+
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 

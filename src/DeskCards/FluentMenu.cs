@@ -39,6 +39,7 @@ internal sealed class FluentMenu : Window
     private Row? _hot, _hoverTarget, _subRow;
     private FluentMenu? _sub;
     private Func<Size, Point>? _place;
+    private Point _anchor; // 띄울 자리(물리 픽셀). 이 모니터의 배율로 크기를 계산한다.
     private bool _closing;
 
     public FluentMenu() : this(null) { }
@@ -50,7 +51,6 @@ internal sealed class FluentMenu : Window
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
         Topmost = true;
-        SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = Top = -32000;
         Background = Brushes.Transparent;
@@ -184,6 +184,7 @@ internal sealed class FluentMenu : Window
     {
         _open?.CloseAll();
         _open = this;
+        _anchor = new Point(x, y);
         _place = size =>
         {
             var wa = DesktopGrid.WorkAreaAt(x, y);
@@ -192,8 +193,28 @@ internal sealed class FluentMenu : Window
             return new Point(Math.Max(wa.Left, Math.Min(left, wa.Right - size.Width)),
                              Math.Max(wa.Top, Math.Min(top, wa.Bottom - size.Height)));
         };
+        FitToContent();
         Show();
         Activate();
+    }
+
+    /// <summary>
+    /// 내용 크기에 창을 맞춘다. WindowChrome으로 틀을 없앤 창은 SizeToContent가 없어진 틀만큼 크게 잡아서
+    /// 아래에 빈 자리가 남고 화면 끝 계산도 틀어지므로, 직접 재서 정한다.
+    /// </summary>
+    private void FitToContent()
+    {
+        var content = (UIElement)Content;
+        content.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Width = Math.Ceiling(content.DesiredSize.Width);
+        Height = Math.Ceiling(content.DesiredSize.Height);
+    }
+
+    /// <summary>띄울 모니터 기준 물리 픽셀 크기.</summary>
+    private Size PhysicalSize()
+    {
+        double s = Native.MonitorScaleAt((int)_anchor.X, (int)_anchor.Y);
+        return new Size(Math.Ceiling(Width * s), Math.Ceiling(Height * s));
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -207,8 +228,14 @@ internal sealed class FluentMenu : Window
             Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_TOOLWINDOW));
         }
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
-        // 처음부터 띄울 자리의 모니터에 있어야 그 모니터 배율로 크기가 정해진다.
-        if (_place?.Invoke(new Size(1, 1)) is { } p) Move(p);
+        // 처음부터 띄울 자리의 모니터에 제 크기로 둔다(그 모니터 배율로 크기가 정해진다).
+        if (_place != null)
+        {
+            var size = PhysicalSize();
+            var p = _place(size);
+            Native.SetWindowPos(Hwnd.Of(this), IntPtr.Zero, (int)p.X, (int)p.Y, (int)size.Width, (int)size.Height,
+                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -289,6 +316,8 @@ internal sealed class FluentMenu : Window
             double top = Math.Min(anchor.Y - 5, wa.Bottom - size.Height);
             return new Point(Math.Max(wa.Left, left), Math.Max(wa.Top, top));
         };
+        sub._anchor = far;
+        sub.FitToContent();
         sub.Owner = this;
         sub.Show();
         if (keyboard) sub.MoveHot(+1, fromStart: true);
