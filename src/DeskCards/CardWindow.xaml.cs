@@ -27,7 +27,6 @@ internal partial class CardWindow : Window
     private readonly GroupManager _mgr;
     private Point _downPos;
     private object? _downTarget;
-    private bool _downOnLabel;
     private bool _pending, _editing, _selected;
     private CardLayout _layout = new();
     private double _iconSize = 40;
@@ -53,7 +52,7 @@ internal partial class CardWindow : Window
         DragOver += OnDragOver;
         DragLeave += (_, _) => UpdateBorder(false);
         Drop += OnDrop;
-        ContextMenu = BuildMenu();
+        MouseRightButtonUp += OnRightUp;
 
         GripCorner.DragStarted += (_, _) => OnGripStart();
         GripCorner.DragDelta += (_, _) => OnGripDelta();
@@ -141,7 +140,7 @@ internal partial class CardWindow : Window
     }
 
     // ----- 입력 -----
-    // 평소: 아이콘 클릭 = 실행, 더보기 칸·이름 클릭 = 펼치기(빈 칸은 아무 일 없음), 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
+    // 평소: 아이콘 클릭 = 실행, 더보기 칸 클릭 = 펼치기(빈 칸·이름은 아무 일 없음), 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
     // 편집 모드: 누르기 = 고르기, 아무 데나 끌기 = 자유 이동(안내선), 오른쪽 아래 모서리 끌기 = 크기 조절.
 
     private void OnDown(object sender, MouseButtonEventArgs e)
@@ -155,7 +154,6 @@ internal partial class CardWindow : Window
         }
         _downPos = e.GetPosition(this);
         _downTarget = FindTag(src);
-        _downOnLabel = IsWithin(src, Label);
         _pending = true;
     }
 
@@ -184,7 +182,7 @@ internal partial class CardWindow : Window
         _pending = false;
         if (_editing) return;
         if (_downTarget is ShellEntry entry) FileOps.Launch(entry.Path);
-        else if (_downTarget as string == OverflowTag || _downOnLabel) ExpandedWindow.Open(this, _mgr);
+        else if (_downTarget as string == OverflowTag) ExpandedWindow.Open(this, _mgr);
     }
 
     private object? FindTag(DependencyObject? d)
@@ -195,13 +193,6 @@ internal partial class CardWindow : Window
             d = GetParent(d);
         }
         return null;
-    }
-
-    private static bool IsWithin(DependencyObject? d, DependencyObject target)
-    {
-        for (; d != null; d = GetParent(d))
-            if (d == target) return true;
-        return false;
     }
 
     private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject
@@ -401,27 +392,15 @@ internal partial class CardWindow : Window
     }
 
     // ----- 메뉴 -----
+    // 아이콘 위 우클릭 = 항목 메뉴(펼친 창과 같음), 그 밖 = 카드 메뉴.
 
-    private ContextMenu BuildMenu()
+    private void OnRightUp(object sender, MouseButtonEventArgs e)
     {
-        var m = new ContextMenu();
-        m.Items.Add(Item("펼치기", () => ExpandedWindow.Open(this, _mgr)));
-        m.Items.Add(Item("카드 편집 (이동 · 크기 · 삭제)", () => _mgr.BeginEditMode(this)));
-        m.Items.Add(Item("이름 바꾸기", () => ExpandedWindow.Open(this, _mgr, editTitle: true)));
-        m.Items.Add(Item("폴더 열기", () => FileOps.OpenFolder(Group.Folder)));
-        m.Items.Add(new Separator());
-        m.Items.Add(Item("새 그룹", () => _mgr.NewGroup()));
-        m.Items.Add(Item("그룹 삭제 (항목은 바탕화면으로)", () => _mgr.DeleteGroup(this)));
-        m.Items.Add(new Separator());
-        m.Items.Add(Item("설정", () => SettingsWindow.Open(_mgr, this)));
-        return m;
-    }
-
-    private static MenuItem Item(string header, Action act)
-    {
-        var mi = new MenuItem { Header = header };
-        mi.Click += (_, _) => act();
-        return mi;
+        e.Handled = true;
+        if (!_editing && FindTag(e.OriginalSource as DependencyObject) is ShellEntry entry)
+            Menus.ForEntry(entry, Group, _mgr).ShowAtCursor();
+        else
+            Menus.ForCard(this, _mgr).ShowAtCursor();
     }
 
     // ----- 바탕화면 층에 붙이기 -----

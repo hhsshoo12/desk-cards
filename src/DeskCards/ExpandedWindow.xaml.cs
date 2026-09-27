@@ -230,41 +230,25 @@ internal partial class ExpandedWindow : Window
             Background = Brushes.Transparent,
             Tag = entry,
             Child = panel,
-            ContextMenu = BuildItemMenu(entry),
         };
         b.MouseEnter += (_, _) => b.SetResourceReference(Border.BackgroundProperty, "HoverBg");
         b.MouseLeave += (_, _) => b.Background = Brushes.Transparent;
-        b.ContextMenu.Opened += (_, _) => _busy = true;
-        b.ContextMenu.Closed += (_, _) => { _busy = false; if (!IsActive) SafeClose(); else Keyboard.Focus(this); };
+        b.MouseRightButtonUp += (_, e) => { e.Handled = true; ShowItemMenu(entry); };
         return b;
     }
 
-    private ContextMenu BuildItemMenu(ShellEntry entry)
+    /// <summary>타일 우클릭 메뉴. 떠 있는 동안은 이 창이 비활성이 되어도 닫지 않는다.</summary>
+    private void ShowItemMenu(ShellEntry entry)
     {
-        var m = new ContextMenu();
-        m.Items.Add(Item("열기", () => { FileOps.Launch(entry.Path); SafeClose(); }));
-        m.Items.Add(Item("관리자 권한으로 실행", () => { FileOps.Launch(entry.Path, admin: true); SafeClose(); }));
-        m.Items.Add(Item("파일 위치 열기", () => FileOps.Reveal(entry.Path)));
-        m.Items.Add(new Separator());
-
-        var move = new MenuItem { Header = "다른 그룹으로 이동" };
-        foreach (var g in _mgr.Groups.Where(g => g != Group).OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase))
+        _busy = true;
+        var menu = Menus.ForEntry(entry, Group, _mgr, launched: SafeClose);
+        menu.Closed += (_, _) =>
         {
-            var target = g;
-            move.Items.Add(Item(g.Name, () => FileOps.MoveTo(entry.Path, target.Folder)));
-        }
-        move.IsEnabled = move.Items.Count > 0;
-        m.Items.Add(move);
-        m.Items.Add(Item("바탕화면으로 꺼내기", () => FileOps.MoveTo(entry.Path, FileOps.UserDesktop)));
-        m.Items.Add(Item("휴지통으로 이동", () => FileOps.Recycle(entry.Path)));
-        return m;
-    }
-
-    private static MenuItem Item(string header, Action act)
-    {
-        var mi = new MenuItem { Header = header };
-        mi.Click += (_, _) => act();
-        return mi;
+            _busy = false;
+            if (!IsActive) SafeClose();
+            else Keyboard.Focus(this);
+        };
+        menu.ShowAtCursor();
     }
 
     private void PlaceNearCard()

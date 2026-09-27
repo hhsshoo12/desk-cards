@@ -83,23 +83,16 @@ public partial class App : Application
 
     private void CreateTray()
     {
-        var menu = new Forms.ContextMenuStrip();
-        var settings = new Forms.ToolStripMenuItem("설정", null, (_, _) => SettingsWindow.Open(_mgr!));
-        settings.Font = new Drawing.Font(settings.Font, Drawing.FontStyle.Bold);
-        menu.Items.Add(settings);
-        menu.Items.Add("카드 편집 (이동 · 크기 · 삭제)", null, (_, _) => _mgr!.BeginEditMode());
-        menu.Items.Add("새 그룹", null, (_, _) => _mgr!.NewGroup());
-        menu.Items.Add("그룹 폴더 열기", null, (_, _) => FileOps.OpenFolder(_mgr!.Root));
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("종료", null, (_, _) => Quit());
-
         _trayIcon = MakeTrayIcon();
         _tray = new Forms.NotifyIcon
         {
             Icon = _trayIcon,
             Text = "Desk Cards",
             Visible = true,
-            ContextMenuStrip = menu,
+        };
+        _tray.MouseUp += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Right) Menus.ForTray(_mgr!, Quit).ShowAtCursor();
         };
         _tray.DoubleClick += (_, _) => SettingsWindow.Open(_mgr!);
     }
@@ -144,7 +137,6 @@ public partial class App : Application
         _stopListener.Dispose();
         _mgr?.Shutdown();
         _mgr = null;
-        _tray?.ContextMenuStrip?.Dispose();
         _tray?.Dispose();
         _trayIcon?.Dispose();
         _mutex?.Dispose();
