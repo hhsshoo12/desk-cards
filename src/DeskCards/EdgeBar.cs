@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
@@ -83,6 +84,17 @@ internal static class EdgeBar
     {
         if (_hotkeyWindow != null && _registeredFor.Length > 0) UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);
         _registeredFor = "";
+    }
+
+    /// <summary>이 조합을 지금 단축키로 등록할 수 있는지(Windows나 다른 앱이 쓰고 있지 않은지) 잠깐 등록해 보고 푼다.</summary>
+    public static bool IsHotkeyFree(IEnumerable<int> keys)
+    {
+        if (_hotkeyWindow == null) return true;
+        const int ProbeId = 2;
+        var (mods, key) = KeyCombo.ToHotkey(keys);
+        if (!RegisterHotKey(_hotkeyWindow.Handle, ProbeId, mods | 0x4000, key)) return false;
+        UnregisterHotKey(_hotkeyWindow.Handle, ProbeId);
+        return true;
     }
 
     /// <summary>설정에서 새 조합을 누르는 동안에는 지금 조합을 풀어 둔다(안 그러면 그 키가 설정 창에 오지 않는다).</summary>

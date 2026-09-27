@@ -244,6 +244,19 @@ internal static class Program
                         Check(descriptions.Count > 0 && descriptions.All(t => t.ActualWidth >= 200) && inside);
                     }
                 });
+                Test("key combo dialog opens over settings and cancels", () =>
+                {
+                    bool seen = false;
+                    settings.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+                    {
+                        var dialog = app.Windows.OfType<DialogWindow>().Single();
+                        seen = dialog.Owner == settings && !dialog.Primary.IsEnabled;
+                        if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                            Snapshot(dialog, Path.Combine(dir, "key-dialog.png"));
+                        dialog.Close();
+                    });
+                    Check(KeyComboDialog.Ask(settings, KeyCombo.Default) == null && seen);
+                });
                 mgr.BeginEditMode(card);
                 Check(mgr.Editing && mgr.Selected == card && card.IsEditing);
                 card.SetGrid(4, 2);

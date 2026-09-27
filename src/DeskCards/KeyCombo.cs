@@ -68,6 +68,15 @@ internal static class KeyCombo
 
     private static int Rank(int vk) => vk switch { Win => 0, Ctrl => 1, Alt => 2, Shift => 3, _ => 4 };
 
+    /// <summary>키 이름들(Win·Ctrl·Alt·Shift·일반 키 순). 키캡 모양으로 보여 줄 때 쓴다.</summary>
+    public static IEnumerable<string> Names(IEnumerable<int> keys) => Order(keys).Select(Name);
+
+    /// <summary>쓸 수 없는 조합이면 그 까닭, 쓸 수 있으면 null.</summary>
+    public static string? Problem(IReadOnlyCollection<int> keys) =>
+        !keys.Any(IsModifier) ? "보조키(Ctrl · Alt · Shift · Win)를 하나 이상 넣어 주세요."
+        : keys.Count(k => !IsModifier(k)) > 1 ? "일반 키는 하나까지만 넣을 수 있어요."
+        : null;
+
     /// <summary>보여 줄 글씨(예: "Win + Shift").</summary>
     public static string Text(IEnumerable<int> keys) => string.Join(" + ", Order(keys).Select(Name));
 
