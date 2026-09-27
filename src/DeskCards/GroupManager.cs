@@ -56,6 +56,33 @@ internal sealed class GroupManager
         }
     }
 
+    /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지.</summary>
+    public bool HoverExpand
+    {
+        get => _cfg.HoverExpand;
+        set
+        {
+            if (_cfg.HoverExpand == value) return;
+            _cfg.HoverExpand = value;
+            _cfg.Save();
+            RaiseChanged();
+        }
+    }
+
+    /// <summary>더보기 칸에 올려 두고 펼칠 때까지 기다리는 시간(ms).</summary>
+    public int HoverExpandDelay
+    {
+        get => _cfg.HoverExpandDelay;
+        set
+        {
+            value = Math.Clamp(value, Config.HoverDelayMin, Config.HoverDelayMax);
+            if (_cfg.HoverExpandDelay == value) return;
+            _cfg.HoverExpandDelay = value;
+            _cfg.Save();
+            RaiseChanged();
+        }
+    }
+
     /// <summary>
     /// 켜져 있으면 Windows 배율이 바뀔 때 카드도 같은 비율로 따라 커지고 작아진다.
     /// 켜고 끄는 순간에는 지금 보이는 크기를 그대로 두고, 크기 조절은 어느 쪽이든 할 수 있다.

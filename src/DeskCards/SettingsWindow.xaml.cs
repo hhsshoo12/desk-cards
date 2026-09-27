@@ -225,6 +225,12 @@ internal partial class SettingsWindow : Window
         AddRow(Row("", "안내선 · 자동 맞춤",
             "카드를 옮기거나 크기를 바꿀 때 다른 카드·화면 가운데와 줄이 맞으면 보라색 선을 보여 주고 붙여요. Alt를 누르고 있으면 잠시 꺼져요.",
             Switch(_mgr.ShowGuides, v => _mgr.ShowGuides = v)));
+        AddRow(Row("", "더보기에 올려 두면 펼치기",
+            "카드의 더보기 칸에 마우스를 잠시 올려 두면 누르지 않아도 펼쳐져요. 펼쳐진 창 밖으로 마우스를 옮기면 바로 접혀요.",
+            Switch(_mgr.HoverExpand, v => _mgr.HoverExpand = v)));
+        AddRow(Row("", "펼칠 때까지 기다리는 시간", "0.1초부터 1초까지 골라요.",
+            Stepper(() => _mgr.HoverExpandDelay / 100, v => _mgr.HoverExpandDelay = v * 100,
+                Config.HoverDelayMin / 100, Config.HoverDelayMax / 100, v => $"{v / 10.0:0.0}초")));
         if (Updater.Instance is { } updater)
             AddRow(Row("", "자동 업데이트",
                 "새 버전이 나오면 미리 받아 두었다가, 다음에 앱을 켤 때(보통 PC를 다시 켤 때) 새 버전으로 열어요.",
@@ -705,18 +711,20 @@ internal partial class SettingsWindow : Window
         return panel;
     }
 
-    /// <summary>[−] 값 [+] 로 1~8을 고른다.</summary>
-    private UIElement Stepper(Func<int> get, Action<int> set)
+    /// <summary>[−] 값 [+] 로 min~max(기본 칸 수 1~8)를 고른다. format이 있으면 값을 그 모양으로 보여 준다.</summary>
+    private UIElement Stepper(Func<int> get, Action<int> set,
+        int min = CardLayout.MinCells, int max = CardLayout.MaxCells, Func<int, string>? format = null)
     {
-        var num = new TextBlock { Text = get().ToString(), FontSize = 14, Width = 32, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-        _refreshControls.Add(() => num.Text = get().ToString());
+        format ??= v => v.ToString();
+        var num = new TextBlock { Text = format(get()), FontSize = 14, MinWidth = 32, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        _refreshControls.Add(() => num.Text = format(get()));
         num.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         void Step(int delta)
         {
-            int next = Math.Clamp(get() + delta, CardLayout.MinCells, CardLayout.MaxCells);
+            int next = Math.Clamp(get() + delta, min, max);
             if (next == get()) return;
             set(next);
-            num.Text = get().ToString();
+            num.Text = format(get());
         }
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(StepButton("", () => Step(-1)));

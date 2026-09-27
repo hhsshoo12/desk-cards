@@ -25,6 +25,9 @@ internal partial class ExpandedWindow : Window
     private readonly CardWindow _card;
     private readonly GroupManager _mgr;
     private readonly bool _editTitle;
+    private readonly bool _hover;
+    private DispatcherTimer? _leaveTimer;
+    private bool _entered;
     private Point _downPos;
     private ShellEntry? _downEntry;
     private bool _pending, _busy, _closing, _committing;
@@ -35,13 +38,14 @@ internal partial class ExpandedWindow : Window
     private DateTime _animStart;
     private bool _animating;
 
-    private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle)
+    private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover)
     {
         InitializeComponent();
         Focusable = true;
         _card = card;
         _mgr = mgr;
         _editTitle = editTitle;
+        _hover = hover;
         Width = SidePad * 2 + Columns * TileW;
 
         Group.Changed += Rebuild;
@@ -85,15 +89,18 @@ internal partial class ExpandedWindow : Window
 
     private GroupModel Group => _card.Group;
 
-    public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false)
+    /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
+    public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false, bool hover = false)
     {
         _current?.SafeClose();
-        var w = new ExpandedWindow(card, mgr, editTitle);
+        var w = new ExpandedWindow(card, mgr, editTitle, hover);
         _current = w;
         w.Topmost = mgr.Editing; // 편집 막대의 이름 바꾸기: 어두운 막 위에 뜬다.
         w.Show();
         w.Activate();
     }
+
+    public static bool IsOpenFor(CardWindow card) => _current is { _closing: false } w && w._card == card;
 
     public static void CloseCurrent() => _current?.SafeClose();
 
@@ -304,6 +311,13 @@ internal partial class ExpandedWindow : Window
         Scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.94, 1, dur) { EasingFunction = ease });
         Scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.94, 1, dur) { EasingFunction = ease });
 
+        if (_hover)
+        {
+            _leaveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+            _leaveTimer.Tick += (_, _) => CheckLeave();
+            _leaveTimer.Start();
+        }
+
         if (_editTitle)
         {
             TitleBox.Focus();
@@ -315,6 +329,24 @@ internal partial class ExpandedWindow : Window
             Keyboard.Focus(this);
         }
     }
+
+    /// <summary>
+    /// 올려 두어서 연 창: 마우스가 창 안에 한 번 들어온 뒤 밖으로 나가면 닫는다.
+    /// 창이 더보기 칸을 덮지 않았을 수도 있으니, 들어오기 전에는 카드 위에 있는 동안도 기다린다.
+    /// 메뉴·끌기·이름 입력 중에는 닫지 않는다.
+    /// </summary>
+    private void CheckLeave()
+    {
+        if (_closing || _busy || TitleBox.IsKeyboardFocusWithin) return;
+        if (!Native.GetCursorPos(out var pt)) return;
+        if (Inside(Hwnd.Of(this), pt)) { _entered = true; return; }
+        if (!_entered && Inside(Hwnd.Of(_card), pt)) return;
+        SafeClose();
+    }
+
+    private static bool Inside(IntPtr hwnd, Native.POINT pt) =>
+        hwnd != IntPtr.Zero && Native.GetWindowRect(hwnd, out var r) &&
+        pt.X >= r.Left && pt.X < r.Right && pt.Y >= r.Top && pt.Y < r.Bottom;
 
     private void OnKey(object sender, KeyEventArgs e)
     {
@@ -406,6 +438,7 @@ internal partial class ExpandedWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         Group.Changed -= Rebuild;
+        _leaveTimer?.Stop();
         StopScrollAnimation();
         if (_current == this) _current = null;
         base.OnClosed(e);

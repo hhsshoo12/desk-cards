@@ -95,8 +95,32 @@ internal partial class CardWindow : Window
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 grid.Children.Add(img);
             }
-            Cells.Children.Add(MakeCell(grid, OverflowTag, null));
+            var more = MakeCell(grid, OverflowTag, null);
+            more.MouseEnter += (_, _) => StartHoverExpand();
+            more.MouseLeave += (_, _) => _hoverTimer?.Stop();
+            Cells.Children.Add(more);
         }
+    }
+
+    private DispatcherTimer? _hoverTimer;
+
+    /// <summary>더보기 칸에 마우스를 잠시 올려 두면 펼친다(일반 설정). 펼친 창은 그 밖으로 나가면 바로 접힌다.</summary>
+    private void StartHoverExpand()
+    {
+        if (_editing || !_mgr.HoverExpand || Mouse.LeftButton == MouseButtonState.Pressed) return;
+        _hoverTimer ??= new DispatcherTimer();
+        _hoverTimer.Stop();
+        _hoverTimer.Interval = TimeSpan.FromMilliseconds(_mgr.HoverExpandDelay);
+        _hoverTimer.Tick -= OnHoverTick;
+        _hoverTimer.Tick += OnHoverTick;
+        _hoverTimer.Start();
+    }
+
+    private void OnHoverTick(object? sender, EventArgs e)
+    {
+        _hoverTimer?.Stop();
+        if (_editing || _closed || Mouse.LeftButton == MouseButtonState.Pressed || ExpandedWindow.IsOpenFor(this)) return;
+        ExpandedWindow.Open(this, _mgr, hover: true);
     }
 
     private Border MakeCell(UIElement content, object tag, string? tip)
@@ -584,6 +608,7 @@ internal partial class CardWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        _hoverTimer?.Stop();
         Group.Changed -= Rebuild;
         base.OnClosed(e);
     }

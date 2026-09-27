@@ -44,6 +44,15 @@ internal static class Program
             var cfg = Config.Load(path);
             Check(!cfg.ShowGuides && cfg.Positions.Count == 1);
         });
+        Test("hover expand delay is clamped to 0.1-1 s", () =>
+        {
+            string path = Path.Combine(root, "hover.json");
+            File.WriteAllText(path, """{"HoverExpandDelay":5}""");
+            var low = Config.Load(path);
+            File.WriteAllText(path, """{"HoverExpandDelay":99999}""");
+            var high = Config.Load(path);
+            Check(low.HoverExpandDelay == 100 && high.HoverExpandDelay == 1000 && low.HoverExpand);
+        });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {

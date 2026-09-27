@@ -19,6 +19,14 @@ internal sealed class Config
     /// <summary>카드를 옮기거나 크기를 바꿀 때 안내선을 보여 주고 줄에 맞출지.</summary>
     public bool ShowGuides { get; set; } = true;
 
+    /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지. 기본 켜짐.</summary>
+    public bool HoverExpand { get; set; } = true;
+
+    /// <summary>더보기 칸에 올려 두고 펼칠 때까지 기다리는 시간(ms, 100~1000).</summary>
+    public int HoverExpandDelay { get; set; } = HoverDelayDefault;
+
+    public const int HoverDelayMin = 100, HoverDelayMax = 1000, HoverDelayDefault = 400;
+
     /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
     public double CellSize { get; set; }
 
@@ -65,6 +73,7 @@ internal sealed class Config
                     if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
                     else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
+                    cfg.HoverExpandDelay = Math.Clamp(cfg.HoverExpandDelay, HoverDelayMin, HoverDelayMax);
                     return cfg;
                 }
             }
