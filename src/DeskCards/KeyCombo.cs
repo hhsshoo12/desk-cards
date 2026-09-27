@@ -6,15 +6,16 @@ using System.Windows.Input;
 namespace DeskCards;
 
 /// <summary>
-/// 카드 바 조합키: 보조키(Ctrl·Alt·Shift·Win) 하나 이상 + 일반 키 하나(예: Ctrl + Alt + D).
-/// Windows 단축키로 등록해서, 누르는 동안 앞의 앱에 키가 가지 않는다(알림음·메뉴 열림 없음).
+/// 카드 바 조합키: 보조키(Ctrl·Alt·Shift·Win) 하나 이상 + 일반 키 0개 또는 1개(예: Shift, Ctrl + Alt + D).
+/// 일반 키가 있으면 Windows 단축키로 등록해서, 누르는 동안 앞의 앱에 키가 가지 않는다(알림음·메뉴 열림 없음).
+/// 보조키만 있으면 등록할 수 없지만(Windows가 받지 않음), 보조키만 누르는 건 앱에 아무 일도 일으키지 않아 지켜보기만 한다.
 /// 왼쪽·오른쪽 보조키는 하나로 친다.
 /// </summary>
 internal static class KeyCombo
 {
     public const int Shift = 0x10, Ctrl = 0x11, Alt = 0x12, Win = 0x5B, RWin = 0x5C, Esc = 0x1B;
 
-    public static readonly IReadOnlyList<int> Default = new[] { Ctrl, Alt, 0x44 }; // Ctrl + Alt + D
+    public static readonly IReadOnlyList<int> Default = new[] { Shift };
 
     /// <summary>왼쪽·오른쪽 구분을 없앤 키 코드. 쓸 수 없는 키면 0.</summary>
     public static int Normalize(int vk) => vk switch
@@ -35,11 +36,14 @@ internal static class KeyCombo
     public static List<int> Order(IEnumerable<int> keys) =>
         keys.Select(Normalize).Where(k => k != 0).Distinct().OrderBy(Rank).ThenBy(k => k).ToList();
 
-    /// <summary>단축키로 등록할 수 있는 모양인지(보조키 하나 이상 + 일반 키 딱 하나).</summary>
+    /// <summary>쓸 수 있는 모양인지(보조키 하나 이상 + 일반 키 0개 또는 1개).</summary>
     public static bool IsValid(IReadOnlyCollection<int> keys) =>
-        keys.Count(IsModifier) >= 1 && keys.Count(k => !IsModifier(k)) == 1;
+        keys.Count(IsModifier) >= 1 && keys.Count(k => !IsModifier(k)) <= 1;
 
-    /// <summary>정리한 조합. 등록할 수 없는 모양이면 기본값(Ctrl + Alt + D).</summary>
+    /// <summary>일반 키가 있어서 Windows 단축키로 등록하는 조합인지.</summary>
+    public static bool NeedsHotkey(IEnumerable<int> keys) => keys.Any(k => !IsModifier(k));
+
+    /// <summary>정리한 조합. 쓸 수 없는 모양이면 기본값(Shift).</summary>
     public static List<int> Clean(IEnumerable<int>? keys)
     {
         var list = Order(keys ?? Array.Empty<int>());

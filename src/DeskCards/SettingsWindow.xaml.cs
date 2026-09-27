@@ -273,7 +273,7 @@ internal partial class SettingsWindow : Window
 
         string keyDesc = EdgeBar.HotkeyRegistered == false
             ? "이 조합은 Windows나 다른 앱이 이미 쓰고 있어서 등록하지 못했어요. 다른 조합으로 만들어 주세요."
-            : "이 키를 누르고 있을 때만 열려요. [조합키 만들기]를 누르고 보조키(Ctrl·Alt·Shift·Win)와 일반 키 하나를 함께 눌렀다 떼면 저장돼요. 등록한 조합은 다른 앱에 전달되지 않아요.";
+            : "이 키를 누르고 있을 때만 열려요. [조합키 만들기]를 누르고 보조키(Ctrl·Alt·Shift·Win)를, 필요하면 일반 키 하나와 함께 눌렀다 떼면 저장돼요. 일반 키가 들어간 조합은 Windows 단축키로 등록돼 다른 앱에 전달되지 않아요.";
         AddRow(Row("", "조합키", keyDesc, KeyRecorder()));
 
         AddRow(Row("", "대고 있을 시간", "게이지가 한 바퀴 도는 시간이에요.",
@@ -316,7 +316,7 @@ internal partial class SettingsWindow : Window
                 return;
             }
             text.Text = save && !valid
-                ? $"{KeyCombo.Text(combo)} — 보조키와 일반 키 하나를 함께 눌러 주세요"
+                ? $"{KeyCombo.Text(combo)} — 보조키 하나 이상과, 일반 키는 하나까지만 눌러 주세요"
                 : KeyCombo.Text(_mgr.BarKeys);
         }
 

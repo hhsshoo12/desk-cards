@@ -72,6 +72,8 @@ internal static class EdgeBar
         Unregister();
         _registeredFor = want;
         if (want.Length == 0) { HotkeyRegistered = _mgr.BarEnabled ? HotkeyRegistered : null; return; }
+        // 보조키만 있는 조합은 등록할 수 없고 그럴 필요도 없다(앱에 아무 일도 일으키지 않는다).
+        if (!KeyCombo.NeedsHotkey(_mgr.BarKeys)) { HotkeyRegistered = true; _registeredFor = ""; return; }
         var (mods, key) = KeyCombo.ToHotkey(_mgr.BarKeys);
         const uint MOD_NOREPEAT = 0x4000;
         HotkeyRegistered = RegisterHotKey(_hotkeyWindow.Handle, HotkeyId, mods | MOD_NOREPEAT, key);

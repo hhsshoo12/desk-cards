@@ -42,7 +42,7 @@ internal sealed class Config
     public List<int> BarKeys { get; set; } = KeyCombo.Default.ToList();
 
     /// <summary>바 두께. 모니터 작업 영역의 %(10~33, 3분의 1까지).</summary>
-    public int BarSize { get; set; } = 20;
+    public int BarSize { get; set; } = BarSizeMax;
 
     public const int BarDelayMax = 2000, BarSizeMin = 10, BarSizeMax = 33;
 
