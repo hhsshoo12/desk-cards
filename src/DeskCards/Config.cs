@@ -38,7 +38,8 @@ internal sealed class Config
     public int BarDelay { get; set; } = 500;
 
     public ScreenEdge BarEdge { get; set; } = ScreenEdge.Right;
-    public BarKey BarModifier { get; set; } = BarKey.Ctrl;
+    /// <summary>바를 여는 조합키(가상 키 코드, 예: Alt + Shift). 설정에서 직접 눌러서 정한다.</summary>
+    public List<int> BarKeys { get; set; } = KeyCombo.Default.ToList();
 
     /// <summary>바 두께. 모니터 작업 영역의 %(10~33, 3분의 1까지).</summary>
     public int BarSize { get; set; } = 20;
@@ -102,7 +103,7 @@ internal sealed class Config
                     cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
                     cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
                     if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
-                    if (!Enum.IsDefined(cfg.BarModifier)) cfg.BarModifier = BarKey.Ctrl;
+                    cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
                     return cfg;
                 }
             }
@@ -142,9 +143,6 @@ internal sealed class Config
 
 /// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>
 internal enum ScreenEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
-
-/// <summary>카드 바를 여는 조합키.</summary>
-internal enum BarKey { Ctrl = 0, Shift = 1, Alt = 2 }
 
 /// <summary>
 /// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.

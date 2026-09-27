@@ -71,7 +71,15 @@ internal sealed class GroupManager
     }
 
     public ScreenEdge BarEdge { get => _cfg.BarEdge; set => Store(_cfg.BarEdge != value, () => _cfg.BarEdge = value); }
-    public BarKey BarModifier { get => _cfg.BarModifier; set => Store(_cfg.BarModifier != value, () => _cfg.BarModifier = value); }
+    public IReadOnlyList<int> BarKeys
+    {
+        get => _cfg.BarKeys;
+        set
+        {
+            var keys = KeyCombo.Clean(value);
+            Store(!keys.SequenceEqual(_cfg.BarKeys), () => _cfg.BarKeys = keys);
+        }
+    }
 
     public int BarSize
     {

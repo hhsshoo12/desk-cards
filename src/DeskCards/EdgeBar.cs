@@ -43,9 +43,6 @@ internal static class EdgeBar
         _bar = null;
     }
 
-    public static bool IsKeyDown(BarKey key) =>
-        Native.GetAsyncKeyState(key switch { BarKey.Shift => 0x10, BarKey.Alt => 0x12, _ => 0x11 }) < 0;
-
     private static void Tick()
     {
         if (_mgr == null || _mgr.IsShuttingDown) return;
@@ -69,6 +66,7 @@ internal static class EdgeBar
         {
             Reset();
             _armed = false;
+            KeyCombo.SuppressRelease(_mgr.BarKeys); // Win·Alt를 뗄 때 시작 메뉴·앱 메뉴가 열리지 않게
             _bar = new BarWindow(_mgr, screen, _mgr.BarEdge);
             _bar.Open();
             return;
@@ -90,7 +88,7 @@ internal static class EdgeBar
     {
         screen = Forms.Screen.FromPoint(new System.Drawing.Point(pt.X, pt.Y));
         var mgr = _mgr!;
-        if (!mgr.BarEnabled || mgr.Editing || !IsKeyDown(mgr.BarModifier)) return false;
+        if (!mgr.BarEnabled || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
         if (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed) return false;
         if (mgr.BarEdge == Native.TaskbarEdge() || ExpandedWindow.IsOpen || FluentMenu.IsOpen) return false;
         var b = screen.Bounds;

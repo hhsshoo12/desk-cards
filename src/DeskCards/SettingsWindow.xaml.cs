@@ -53,8 +53,15 @@ internal partial class SettingsWindow : Window
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? new Thickness(8) : new Thickness(0);
         // 항목 수 등이 바뀌었을 수 있으니 돌아올 때 목록을 확인한다. 누르는 중인 버튼이 바뀌지 않도록 달라졌을 때만 다시 그린다.
         Activated += (_, _) => { if (_page == PageKind.Cards && CardsSignature() != _cardsSignature) ScheduleBuild(); };
+        Deactivated += (_, _) => _keyCaptureCancel?.Invoke();
         PreviewKeyDown += (_, e) =>
         {
+            if (_keyCapture != null)
+            {
+                _keyCapture(e);
+                e.Handled = true;
+                return;
+            }
             if (e.Key == Key.Escape && _page is PageKind.Card or PageKind.Libraries && Keyboard.FocusedElement is not TextBox)
             {
                 Go(_page == PageKind.Card ? PageKind.Cards : PageKind.About);
@@ -263,9 +270,8 @@ internal partial class SettingsWindow : Window
             new[] { (ScreenEdge.Top, "위"), (ScreenEdge.Bottom, "아래"), (ScreenEdge.Left, "왼쪽"), (ScreenEdge.Right, "오른쪽") },
             () => _mgr.BarEdge, v => _mgr.BarEdge = v, v => v != taskbar)));
 
-        AddRow(Row("", "조합키", "이 키를 누르고 있을 때만 열려요. Alt는 뗄 때 앞에 있는 앱의 메뉴가 선택될 수 있어요.", Choice(
-            new[] { (BarKey.Ctrl, "Ctrl"), (BarKey.Shift, "Shift"), (BarKey.Alt, "Alt") },
-            () => _mgr.BarModifier, v => _mgr.BarModifier = v)));
+        AddRow(Row("", "조합키", "이 키들을 모두 누르고 있을 때만 열려요. [조합키 만들기]를 누르고 원하는 키를 함께 눌렀다 떼면 저장돼요.",
+            KeyRecorder()));
 
         AddRow(Row("", "대고 있을 시간", "게이지가 한 바퀴 도는 시간이에요.",
             Stepper(() => _mgr.BarDelay / 100, v => _mgr.BarDelay = v * 100,
@@ -273,6 +279,63 @@ internal partial class SettingsWindow : Window
 
         AddRow(Row("", "바 두께", "화면 너비(위·아래 바는 높이)의 몇 %로 할지 정해요. 3분의 1(33%)까지예요.",
             Stepper(() => _mgr.BarSize, v => _mgr.BarSize = v, Config.BarSizeMin, Config.BarSizeMax, v => $"{v}%")));
+    }
+
+    /// <summary>
+    /// 지금 조합키 글씨 + [조합키 만들기]. 누르면 키 입력을 기다리고, 함께 누른 키들을 다 떼는 순간 저장한다.
+    /// 아무 키도 누르기 전에 Esc를 누르거나 창을 벗어나면 취소한다.
+    /// </summary>
+    private Action<KeyEventArgs>? _keyCapture;
+    private Action? _keyCaptureCancel;
+
+    private UIElement KeyRecorder()
+    {
+        var text = new TextBlock { Text = KeyCombo.Text(_mgr.BarKeys), FontSize = 14, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+        text.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        Button? button = null;
+        var combo = new List<int>();
+        var poll = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+
+        void Stop(bool save)
+        {
+            poll.Stop();
+            _keyCapture = null;
+            _keyCaptureCancel = null;
+            if (save && combo.Count > 0) _mgr.BarKeys = combo.ToList(); // 설정이 바뀌면 페이지가 다시 그려진다
+            else { text.Text = KeyCombo.Text(_mgr.BarKeys); button!.Content = "조합키 만들기"; button.Style = (Style)FindResource("StdButton"); }
+        }
+
+        // 뗀 것은 키 이벤트 대신 실제 키 상태로 본다(Win을 누르면 떼는 이벤트가 안 올 때가 있다).
+        poll.Tick += (_, _) =>
+        {
+            if (combo.Count > 0 && !combo.Any(KeyCombo.IsPressed)) Stop(save: true);
+        };
+
+        button = Button("조합키 만들기", () =>
+        {
+            if (_keyCapture != null) { Stop(save: false); return; }
+            combo.Clear();
+            text.Text = "키를 누르세요…";
+            _keyCaptureCancel = () => Stop(save: false);
+            button!.Content = "취소";
+            button.Style = (Style)FindResource("AccentButton");
+            _keyCapture = e =>
+            {
+                var key = e.Key == Key.System ? e.SystemKey : e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+                int vk = KeyCombo.FromKey(key);
+                if (vk == 0) return;
+                if (vk == KeyCombo.Esc && combo.Count == 0) { Stop(save: false); return; }
+                if (combo.Contains(vk)) return;
+                combo.Add(vk);
+                if (vk == KeyCombo.Win) KeyCombo.SuppressRelease(combo); // 기록 중에 시작 메뉴가 열리지 않게
+                text.Text = KeyCombo.Text(combo);
+                poll.Start();
+            };
+        });
+        panel.Children.Add(text);
+        panel.Children.Add(button);
+        return panel;
     }
 
     /// <summary>나란히 놓인 버튼 중 하나를 고르는 칸. 고른 것은 강조색, 고를 수 없는 것은 흐리게.</summary>

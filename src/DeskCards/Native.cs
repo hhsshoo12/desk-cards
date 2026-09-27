@@ -124,6 +124,9 @@ internal static class Native
     public static extern bool SetForegroundWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
+    public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
 
     [DllImport("kernel32.dll")]
