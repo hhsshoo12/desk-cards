@@ -56,10 +56,11 @@ internal static class Program
         Test("card bar settings are normalized", () =>
         {
             string path = Path.Combine(root, "bar.json");
-            File.WriteAllText(path, """{"BarEdge":9,"BarKeys":[164,16,160,0,999],"BarSize":80,"BarDelay":2345,"ShowGuides":false}""");
+            File.WriteAllText(path, """{"BarEdge":9,"BarKeys":[164,16,160,0,999,68],"BarSize":80,"BarDelay":2345,"ShowGuides":false}""");
             var cfg = Config.Load(path);
-            Check(cfg.BarEdge == ScreenEdge.Right && string.Join(",", cfg.BarKeys) == "18,16" && KeyCombo.Text(cfg.BarKeys) == "Alt + Shift"
-                && KeyCombo.Clean(null).Single() == KeyCombo.Ctrl && cfg.BarSize == 33
+            Check(cfg.BarEdge == ScreenEdge.Right && string.Join(",", cfg.BarKeys) == "18,16,68" && KeyCombo.Text(cfg.BarKeys) == "Alt + Shift + D"
+                && string.Join(",", KeyCombo.Clean(new[] { KeyCombo.Ctrl })) == "17,18,68"
+                && !KeyCombo.IsValid(new[] { KeyCombo.Ctrl, 0x41, 0x42 }) && KeyCombo.ToHotkey(cfg.BarKeys) == (0x5u, 0x44u) && cfg.BarSize == 33
                 && cfg.BarDelay == 2000 && !cfg.ShowGuides && cfg.BarEnabled);
         });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));

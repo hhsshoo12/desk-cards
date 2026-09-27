@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows.Interop;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,9 +18,17 @@ namespace DeskCards;
 /// 카드 바 여는 조건을 지켜본다: 조합키를 누른 채 정한 가장자리에 마우스를 대고 있으면
 /// 커서 둘레의 게이지가 12시부터 시계방향으로 차오르고, 한 바퀴가 되는 순간 바가 나온다.
 /// 작업 표시줄이 있는 가장자리와 전체 화면 앱 위에서는 열지 않는다.
+/// 조합키는 Windows 단축키로 등록해 둬서, 누르는 동안 앞의 앱에 키가 가지 않는다.
 /// </summary>
 internal static class EdgeBar
 {
+    private const int HotkeyId = 1, WM_HOTKEY = 0x0312;
+    private static HwndSource? _hotkeyWindow;
+    private static string _registeredFor = "";
+    private static bool _suspended;
+
+    /// <summary>조합키 등록 결과. 카드 바가 꺼져 있으면 null, 다른 곳에서 이미 쓰는 조합이면 false.</summary>
+    public static bool? HotkeyRegistered { get; private set; }
     private static GroupManager? _mgr;
     private static DispatcherTimer? _timer;
     private static GaugeOverlay? _gauge;
@@ -29,6 +39,10 @@ internal static class EdgeBar
     public static void Start(GroupManager mgr)
     {
         _mgr = mgr;
+        _hotkeyWindow = new HwndSource(new HwndSourceParameters("DeskCards.Hotkey") { Width = 0, Height = 0, WindowStyle = 0 });
+        _hotkeyWindow.AddHook(HotkeyHook);
+        ApplyHotkey();
+        mgr.Changed += ApplyHotkey;
         _timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
@@ -37,11 +51,63 @@ internal static class EdgeBar
     public static void Stop()
     {
         _timer?.Stop();
+        if (_mgr != null) _mgr.Changed -= ApplyHotkey;
+        Unregister();
+        _hotkeyWindow?.Dispose();
+        _hotkeyWindow = null;
         _gauge?.Close();
         _bar?.Close();
         _gauge = null;
         _bar = null;
     }
+
+    // ----- 조합키 등록 -----
+
+    /// <summary>설정(켜기·조합)에 맞게 단축키를 등록하거나 푼다. 바뀐 게 없으면 그대로 둔다.</summary>
+    private static void ApplyHotkey()
+    {
+        if (_mgr == null || _hotkeyWindow == null) return;
+        string want = _mgr.BarEnabled && !_suspended ? string.Join(",", _mgr.BarKeys) : "";
+        if (want == _registeredFor) return;
+        Unregister();
+        _registeredFor = want;
+        if (want.Length == 0) { HotkeyRegistered = _mgr.BarEnabled ? HotkeyRegistered : null; return; }
+        var (mods, key) = KeyCombo.ToHotkey(_mgr.BarKeys);
+        const uint MOD_NOREPEAT = 0x4000;
+        HotkeyRegistered = RegisterHotKey(_hotkeyWindow.Handle, HotkeyId, mods | MOD_NOREPEAT, key);
+    }
+
+    private static void Unregister()
+    {
+        if (_hotkeyWindow != null && _registeredFor.Length > 0) UnregisterHotKey(_hotkeyWindow.Handle, HotkeyId);
+        _registeredFor = "";
+    }
+
+    /// <summary>설정에서 새 조합을 누르는 동안에는 지금 조합을 풀어 둔다(안 그러면 그 키가 설정 창에 오지 않는다).</summary>
+    public static void SuspendHotkey(bool on)
+    {
+        _suspended = on;
+        ApplyHotkey();
+    }
+
+    private static IntPtr HotkeyHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        // 조합을 누른 순간 빈 키를 한 번 눌러, 나중에 Alt·Win을 뗄 때 앱 메뉴·시작 메뉴가 열리지 않게 한다.
+        if (msg == WM_HOTKEY && wParam.ToInt32() == HotkeyId && _mgr != null)
+        {
+            KeyCombo.SuppressRelease(_mgr.BarKeys);
+            handled = true;
+        }
+        return IntPtr.Zero;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hwnd, int id, uint modifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
+
+    // ----- 가장자리 지켜보기 -----
 
     private static void Tick()
     {
@@ -66,7 +132,6 @@ internal static class EdgeBar
         {
             Reset();
             _armed = false;
-            KeyCombo.SuppressRelease(_mgr.BarKeys); // Win·Alt를 뗄 때 시작 메뉴·앱 메뉴가 열리지 않게
             _bar = new BarWindow(_mgr, screen, _mgr.BarEdge);
             _bar.Open();
             return;
@@ -88,7 +153,7 @@ internal static class EdgeBar
     {
         screen = Forms.Screen.FromPoint(new System.Drawing.Point(pt.X, pt.Y));
         var mgr = _mgr!;
-        if (!mgr.BarEnabled || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
+        if (!mgr.BarEnabled || _suspended || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
         if (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed) return false;
         if (mgr.BarEdge == Native.TaskbarEdge() || ExpandedWindow.IsOpen || FluentMenu.IsOpen) return false;
         var b = screen.Bounds;

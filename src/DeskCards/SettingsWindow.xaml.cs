@@ -270,8 +270,10 @@ internal partial class SettingsWindow : Window
             new[] { (ScreenEdge.Top, "위"), (ScreenEdge.Bottom, "아래"), (ScreenEdge.Left, "왼쪽"), (ScreenEdge.Right, "오른쪽") },
             () => _mgr.BarEdge, v => _mgr.BarEdge = v, v => v != taskbar)));
 
-        AddRow(Row("", "조합키", "이 키들을 모두 누르고 있을 때만 열려요. [조합키 만들기]를 누르고 원하는 키를 함께 눌렀다 떼면 저장돼요.",
-            KeyRecorder()));
+        string keyDesc = EdgeBar.HotkeyRegistered == false
+            ? "이 조합은 Windows나 다른 앱이 이미 쓰고 있어서 등록하지 못했어요. 다른 조합으로 만들어 주세요."
+            : "이 키를 누르고 있을 때만 열려요. [조합키 만들기]를 누르고 보조키(Ctrl·Alt·Shift·Win)와 일반 키 하나를 함께 눌렀다 떼면 저장돼요. 등록한 조합은 다른 앱에 전달되지 않아요.";
+        AddRow(Row("", "조합키", keyDesc, KeyRecorder()));
 
         AddRow(Row("", "대고 있을 시간", "게이지가 한 바퀴 도는 시간이에요.",
             Stepper(() => _mgr.BarDelay / 100, v => _mgr.BarDelay = v * 100,
@@ -302,8 +304,18 @@ internal partial class SettingsWindow : Window
             poll.Stop();
             _keyCapture = null;
             _keyCaptureCancel = null;
-            if (save && combo.Count > 0) _mgr.BarKeys = combo.ToList(); // 설정이 바뀌면 페이지가 다시 그려진다
-            else { text.Text = KeyCombo.Text(_mgr.BarKeys); button!.Content = "조합키 만들기"; button.Style = (Style)FindResource("StdButton"); }
+            bool valid = KeyCombo.IsValid(KeyCombo.Order(combo));
+            EdgeBar.SuspendHotkey(false);
+            button!.Content = "조합키 만들기";
+            button.Style = (Style)FindResource("StdButton");
+            if (save && valid && !KeyCombo.Order(combo).SequenceEqual(_mgr.BarKeys))
+            {
+                _mgr.BarKeys = combo.ToList(); // 설정이 바뀌면 등록을 새로 하고 페이지가 다시 그려진다
+                return;
+            }
+            text.Text = save && !valid
+                ? $"{KeyCombo.Text(combo)} — 보조키와 일반 키 하나를 함께 눌러 주세요"
+                : KeyCombo.Text(_mgr.BarKeys);
         }
 
         // 뗀 것은 키 이벤트 대신 실제 키 상태로 본다(Win을 누르면 떼는 이벤트가 안 올 때가 있다).
@@ -316,6 +328,7 @@ internal partial class SettingsWindow : Window
         {
             if (_keyCapture != null) { Stop(save: false); return; }
             combo.Clear();
+            EdgeBar.SuspendHotkey(true);
             text.Text = "키를 누르세요…";
             _keyCaptureCancel = () => Stop(save: false);
             button!.Content = "취소";
@@ -328,7 +341,7 @@ internal partial class SettingsWindow : Window
                 if (vk == KeyCombo.Esc && combo.Count == 0) { Stop(save: false); return; }
                 if (combo.Contains(vk)) return;
                 combo.Add(vk);
-                if (vk == KeyCombo.Win) KeyCombo.SuppressRelease(combo); // 기록 중에 시작 메뉴가 열리지 않게
+                if (vk is KeyCombo.Win or KeyCombo.Alt) KeyCombo.SuppressRelease(combo); // 기록 중에 시작 메뉴·창 메뉴가 열리지 않게
                 text.Text = KeyCombo.Text(combo);
                 poll.Start();
             };

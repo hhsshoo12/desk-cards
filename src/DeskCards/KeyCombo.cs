@@ -6,13 +6,15 @@ using System.Windows.Input;
 namespace DeskCards;
 
 /// <summary>
-/// 카드 바 조합키: 가상 키 코드 목록(예: Alt + Shift, Win + Shift). 왼쪽·오른쪽 Ctrl·Shift·Alt·Win은 하나로 친다.
+/// 카드 바 조합키: 보조키(Ctrl·Alt·Shift·Win) 하나 이상 + 일반 키 하나(예: Ctrl + Alt + D).
+/// Windows 단축키로 등록해서, 누르는 동안 앞의 앱에 키가 가지 않는다(알림음·메뉴 열림 없음).
+/// 왼쪽·오른쪽 보조키는 하나로 친다.
 /// </summary>
 internal static class KeyCombo
 {
     public const int Shift = 0x10, Ctrl = 0x11, Alt = 0x12, Win = 0x5B, RWin = 0x5C, Esc = 0x1B;
 
-    public static readonly IReadOnlyList<int> Default = new[] { Ctrl };
+    public static readonly IReadOnlyList<int> Default = new[] { Ctrl, Alt, 0x44 }; // Ctrl + Alt + D
 
     /// <summary>왼쪽·오른쪽 구분을 없앤 키 코드. 쓸 수 없는 키면 0.</summary>
     public static int Normalize(int vk) => vk switch
@@ -27,17 +29,43 @@ internal static class KeyCombo
 
     public static int FromKey(Key key) => Normalize(KeyInterop.VirtualKeyFromKey(key));
 
-    /// <summary>중복·잘못된 코드를 빼고 Win·Ctrl·Alt·Shift·나머지 순으로 정리한다. 비면 기본값(Ctrl).</summary>
+    public static bool IsModifier(int vk) => vk is Win or Ctrl or Alt or Shift;
+
+    /// <summary>중복·잘못된 코드를 빼고 Win·Ctrl·Alt·Shift·일반 키 순으로 정리한다.</summary>
+    public static List<int> Order(IEnumerable<int> keys) =>
+        keys.Select(Normalize).Where(k => k != 0).Distinct().OrderBy(Rank).ThenBy(k => k).ToList();
+
+    /// <summary>단축키로 등록할 수 있는 모양인지(보조키 하나 이상 + 일반 키 딱 하나).</summary>
+    public static bool IsValid(IReadOnlyCollection<int> keys) =>
+        keys.Count(IsModifier) >= 1 && keys.Count(k => !IsModifier(k)) == 1;
+
+    /// <summary>정리한 조합. 등록할 수 없는 모양이면 기본값(Ctrl + Alt + D).</summary>
     public static List<int> Clean(IEnumerable<int>? keys)
     {
-        var list = (keys ?? Array.Empty<int>()).Select(Normalize).Where(k => k != 0).Distinct().OrderBy(Rank).ThenBy(k => k).ToList();
-        return list.Count == 0 ? Default.ToList() : list;
+        var list = Order(keys ?? Array.Empty<int>());
+        return IsValid(list) ? list : Default.ToList();
+    }
+
+    /// <summary>RegisterHotKey에 넘길 보조키 플래그와 일반 키.</summary>
+    public static (uint modifiers, uint key) ToHotkey(IEnumerable<int> keys)
+    {
+        uint mods = 0, key = 0;
+        foreach (int k in keys)
+            switch (k)
+            {
+                case Alt: mods |= 0x1; break;
+                case Ctrl: mods |= 0x2; break;
+                case Shift: mods |= 0x4; break;
+                case Win: mods |= 0x8; break;
+                default: key = (uint)k; break;
+            }
+        return (mods, key);
     }
 
     private static int Rank(int vk) => vk switch { Win => 0, Ctrl => 1, Alt => 2, Shift => 3, _ => 4 };
 
     /// <summary>보여 줄 글씨(예: "Win + Shift").</summary>
-    public static string Text(IEnumerable<int> keys) => string.Join(" + ", Clean(keys).Select(Name));
+    public static string Text(IEnumerable<int> keys) => string.Join(" + ", Order(keys).Select(Name));
 
     private static string Name(int vk) => vk switch
     {
