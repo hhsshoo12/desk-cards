@@ -392,17 +392,13 @@ internal partial class CardWindow : Window
     }
 
     // ----- 메뉴 -----
-    // 아이콘 위 우클릭 = 항목 메뉴(펼친 창과 같음, Shift를 누르면 Windows 메뉴), 그 밖 = 카드 메뉴.
+    // 아이콘 위 우클릭 = 항목 메뉴(펼친 창과 같음), 그 밖 = 카드 메뉴.
 
     private void OnRightUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
         if (!_editing && FindTag(e.OriginalSource as DependencyObject) is ShellEntry entry)
-        {
-            // Shift+우클릭은 탐색기처럼 바로 Windows 메뉴(숨은 항목 포함).
-            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) ShellMenu.ShowAtCursor(entry.Path, extended: true);
-            else Menus.ForEntry(entry, Group, _mgr).ShowAtCursor();
-        }
+            Menus.ForEntry(entry).ShowAtCursor();
         else
             Menus.ForCard(this, _mgr).ShowAtCursor();
     }

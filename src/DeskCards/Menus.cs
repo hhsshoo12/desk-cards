@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 
 namespace DeskCards;
 
@@ -7,27 +6,13 @@ namespace DeskCards;
 internal static class Menus
 {
     /// <param name="launched">열기·관리자 권한 실행 뒤에 할 일(펼친 창 닫기 등).</param>
-    public static FluentMenu ForEntry(ShellEntry entry, GroupModel group, GroupManager mgr, Action? launched = null)
-    {
-        var others = mgr.Groups.Where(g => g != group).OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
-        return new FluentMenu()
-            .Item("", "열기", () => { FileOps.Launch(entry.Path); launched?.Invoke(); }, image: entry.Icon)
-            .Item("", "관리자 권한으로 실행", () => { FileOps.Launch(entry.Path, admin: true); launched?.Invoke(); })
-            .Item("", "파일 위치 열기", () => FileOps.Reveal(entry.Path))
-            .Separator()
-            .Sub("", "다른 그룹으로 이동", sub =>
-            {
-                foreach (var g in others)
-                {
-                    var target = g;
-                    sub.Item("", g.Name, () => FileOps.MoveTo(entry.Path, target.Folder));
-                }
-            }, enabled: others.Count > 0)
-            .Item("", "바탕화면으로 꺼내기", () => FileOps.MoveTo(entry.Path, FileOps.UserDesktop))
-            .Item("", "휴지통으로 이동", () => FileOps.Recycle(entry.Path))
-            .Separator()
-            .Item("", "추가 옵션 표시", () => ShellMenu.ShowAtCursor(entry.Path));
-    }
+    public static FluentMenu ForEntry(ShellEntry entry, Action? launched = null) => new FluentMenu()
+        .Item("", "열기", () => { FileOps.Launch(entry.Path); launched?.Invoke(); }, image: entry.Icon)
+        .Item("", "관리자 권한으로 실행", () => { FileOps.Launch(entry.Path, admin: true); launched?.Invoke(); })
+        .Item("", "파일 위치 열기", () => FileOps.Reveal(entry.Path))
+        .Separator()
+        .Item("", "바탕화면으로 꺼내기", () => FileOps.MoveTo(entry.Path, FileOps.UserDesktop))
+        .Item("", "휴지통으로 이동", () => FileOps.Recycle(entry.Path));
 
     public static FluentMenu ForCard(CardWindow card, GroupManager mgr) => new FluentMenu()
         .Item("", "펼치기", () => ExpandedWindow.Open(card, mgr))
