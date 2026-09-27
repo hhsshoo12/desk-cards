@@ -13,6 +13,7 @@ public partial class App : Application
     private GroupManager? _mgr;
     private Forms.NotifyIcon? _tray;
     private EventWaitHandle? _showSettings;
+    private EventWaitHandle? _quitRequest;
     private readonly ManualResetEvent _stopListener = new(false);
     private Thread? _listener;
     private Drawing.Icon? _trayIcon;
@@ -20,8 +21,10 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        Native.SetCurrentProcessExplicitAppUserModelID("hhsshoo12.DeskCards");
         _mutex = new Mutex(true, "DeskCards.SingleInstance", out bool created);
         _showSettings = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskCards.ShowSettings");
+        _quitRequest = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskCards.Quit");
         if (!created)
         {
             // 이미 실행 중이면(시작 메뉴 바로가기를 다시 누르는 등) 그쪽에 설정 창을 띄우라고 알리고 끝낸다.
@@ -42,9 +45,11 @@ public partial class App : Application
 
         _listener = new Thread(() =>
         {
-            while (WaitHandle.WaitAny(new WaitHandle[] { _stopListener, _showSettings }) == 1)
+            while (true)
             {
-                if (Dispatcher.HasShutdownStarted) return;
+                int signal = WaitHandle.WaitAny(new WaitHandle[] { _stopListener, _showSettings, _quitRequest });
+                if (signal == 0 || Dispatcher.HasShutdownStarted) return;
+                if (signal == 2) { Dispatcher.BeginInvoke(Quit); return; }
                 Dispatcher.BeginInvoke(() => { if (_mgr != null) SettingsWindow.Open(_mgr); });
             }
         }) { IsBackground = true };
@@ -91,6 +96,7 @@ public partial class App : Application
         _stopListener.Set();
         _listener?.Join();
         _showSettings?.Dispose();
+        _quitRequest?.Dispose();
         _stopListener.Dispose();
         _mgr?.Shutdown();
         _mgr = null;

@@ -5,6 +5,8 @@ namespace DeskCards;
 
 internal static class Native
 {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
     [DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr icon);
     public const int GWL_EXSTYLE = -20;

@@ -67,18 +67,29 @@ internal static class AppPaths
 /// <summary>Windows 시작 시 실행(HKCU Run 값).</summary>
 internal static class AutoStart
 {
+    private const string ApprovalKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
     public static bool Enabled
     {
         get
         {
             using var key = Registry.CurrentUser.OpenSubKey(AppPaths.RunKey);
-            return key?.GetValue(AppPaths.RunName) != null;
+            using var approval = Registry.CurrentUser.OpenSubKey(ApprovalKey);
+            return StartupState.Enabled(key?.GetValue(AppPaths.RunName), approval?.GetValue(AppPaths.RunName));
         }
         set
         {
             using var key = Registry.CurrentUser.CreateSubKey(AppPaths.RunKey);
-            if (value) key.SetValue(AppPaths.RunName, $"\"{Environment.ProcessPath}\"");
-            else key.DeleteValue(AppPaths.RunName, false);
+            using var approval = Registry.CurrentUser.CreateSubKey(ApprovalKey);
+            if (value)
+            {
+                key.SetValue(AppPaths.RunName, $"\"{Environment.ProcessPath}\"");
+                approval.SetValue(AppPaths.RunName, StartupState.EnabledBytes(), RegistryValueKind.Binary);
+            }
+            else
+            {
+                key.DeleteValue(AppPaths.RunName, false);
+                approval.DeleteValue(AppPaths.RunName, false);
+            }
         }
     }
 }

@@ -13,10 +13,11 @@
     <Company>hhsshoo12</Company>
     <AssemblyName>DeskCards</AssemblyName>
     <RootNamespace>DeskCards</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../Shared/StartupState.cs" Link="StartupState.cs" />
     <InternalsVisibleTo Include="DeskCards.RegressionTests" />
     <!-- 설정 창의 앱 아이콘 -->
     <Resource Include="app.ico" />
