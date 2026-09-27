@@ -380,13 +380,14 @@ internal partial class SettingsWindow : Window
     /// <summary>나란히 놓인 버튼 중 하나를 고르는 칸. 고른 것은 강조색, 고를 수 없는 것은 흐리게.</summary>
     private UIElement Choice<T>(IEnumerable<(T value, string text)> items, Func<T> get, Action<T> set, Func<T, bool>? allowed = null)
     {
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        // 자리가 모자라면 다음 줄로 넘어간다(창이 좁을 때 버튼이 잘리지 않게).
+        var panel = new WrapPanel();
         foreach (var (value, text) in items)
         {
             var v = value;
             bool selected = EqualityComparer<T>.Default.Equals(get(), v);
             var b = Button(text, () => set(v), accent: selected);
-            b.Margin = new Thickness(4, 0, 0, 0);
+            b.Margin = new Thickness(0, 0, 4, 4);
             b.MinWidth = 56;
             b.IsEnabled = allowed?.Invoke(v) ?? true;
             panel.Children.Add(b);
@@ -719,7 +720,10 @@ internal partial class SettingsWindow : Window
                 bool? stacked = null;
                 grid.SizeChanged += (_, _) =>
                 {
-                    bool narrow = grid.ActualWidth < 460;
+                    // 오른쪽 컨트롤을 놓고도 글씨 자리가 넉넉히(240) 남지 않으면 컨트롤을 글씨 아래로 내린다.
+                    // 버튼이 여러 개인 선택 칸처럼 넓은 컨트롤은 창이 넓어도 아래로 간다.
+                    control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    bool narrow = grid.ActualWidth - 40 - control.DesiredSize.Width < 240;
                     if (stacked == narrow) return;
                     stacked = narrow;
                     Grid.SetColumnSpan(texts, narrow ? 2 : 1);

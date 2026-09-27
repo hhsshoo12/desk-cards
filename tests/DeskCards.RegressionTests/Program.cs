@@ -223,6 +223,27 @@ internal static class Program
                 settings.UpdateLayout();
                 Test("settings labels remain readable at minimum window width", () =>
                     Check(Visuals<TextBlock>(settings).Single(t => t.Text == "이름").ActualWidth >= 60));
+                Test("card bar settings keep descriptions readable", () =>
+                {
+                    var go = typeof(SettingsWindow).GetMethod("Go", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var barPage = Enum.Parse(go.GetParameters()[0].ParameterType, "Bar");
+                    go.Invoke(settings, new[] { barPage });
+                    foreach (double width in new[] { settings.MinWidth, 760.0, 1100.0 })
+                    {
+                        settings.Width = width;
+                        settings.UpdateLayout();
+                        Pump(50);
+                        settings.UpdateLayout();
+                        if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                            Snapshot(settings, Path.Combine(dir, $"bar-{width:0}.png"));
+                        var descriptions = Visuals<TextBlock>(settings).Where(t => t.FontSize == 12 && t.Text.Length > 20).ToList();
+                        // 버튼이 창 오른쪽 밖으로 잘려 나가지 않는다(선택 버튼이 많으면 다음 줄로 넘어간다).
+                        var content = (FrameworkElement)settings.Content;
+                        bool inside = Visuals<Button>(settings).Where(b => b.IsVisible)
+                            .All(b => b.TranslatePoint(new Point(b.ActualWidth, 0), content).X <= content.ActualWidth - 12);
+                        Check(descriptions.Count > 0 && descriptions.All(t => t.ActualWidth >= 200) && inside);
+                    }
+                });
                 mgr.BeginEditMode(card);
                 Check(mgr.Editing && mgr.Selected == card && card.IsEditing);
                 card.SetGrid(4, 2);
@@ -363,6 +384,22 @@ internal static class Program
     }
 
     private static void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
+    private static void Snapshot(Window window, string path)
+    {
+        var root = (FrameworkElement)window.Content;
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)Math.Ceiling(root.ActualWidth), (int)Math.Ceiling(root.ActualHeight), 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        var bg = new System.Windows.Shapes.Rectangle { Width = root.ActualWidth, Height = root.ActualHeight, Fill = System.Windows.Media.Brushes.White };
+        bg.Measure(new Size(root.ActualWidth, root.ActualHeight));
+        bg.Arrange(new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+        bitmap.Render(bg);
+        bitmap.Render(root);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = File.Create(path);
+        encoder.Save(file);
+    }
+
     private static void Pump(int milliseconds)
     {
         var frame = new DispatcherFrame();
