@@ -32,7 +32,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning);
+            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning, heading: "문제가 생겼어요");
         }
     }
 
@@ -119,7 +119,7 @@ internal static class FileOps
             }
             catch (Exception ex)
             {
-                Dialogs.Show($"{Path.GetFileName(p)}: {ex.Message}", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning, heading: $"'{Path.GetFileName(p)}'을(를) 옮기지 못했어요");
             }
         }
     }
@@ -135,7 +135,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning);
+            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning, heading: "문제가 생겼어요");
             return false;
         }
     }

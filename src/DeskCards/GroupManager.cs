@@ -408,7 +408,7 @@ internal sealed class GroupManager
     {
         if (!FileOps.IsValidGroupName(newName))
         {
-            Dialogs.Show("사용할 수 없는 폴더 이름이에요. 예약된 이름, 끝의 점·공백, \\ / : * ? \" < > | 문자는 사용할 수 없어요.");
+            Dialogs.Show("예약된 이름, 끝의 점·공백, \\ / : * ? \" < > | 문자는 사용할 수 없어요.", heading: "사용할 수 없는 이름이에요");
             return false;
         }
         string oldName = card.Group.Name;
@@ -417,7 +417,7 @@ internal sealed class GroupManager
         bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && (Directory.Exists(dest) || File.Exists(dest)))
         {
-            Dialogs.Show($"'{newName}' 그룹이 이미 있어요.");
+            Dialogs.Show("다른 이름을 골라 주세요.", heading: $"'{newName}' 그룹이 이미 있어요");
             return false;
         }
         try
@@ -440,7 +440,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            Dialogs.Show(ex.Message);
+            Dialogs.Show(ex.Message, heading: "문제가 생겼어요");
             return false;
         }
 
@@ -465,13 +465,13 @@ internal sealed class GroupManager
         try { entries = Directory.GetFileSystemEntries(g.Folder); }
         catch (Exception ex)
         {
-            Dialogs.Show(ex.Message);
+            Dialogs.Show(ex.Message, heading: "문제가 생겼어요");
             return false;
         }
         if (entries.Length > 0)
         {
-            var r = Dialogs.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
-                MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            var r = Dialogs.Show($"안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
+                MessageBoxButton.OKCancel, MessageBoxImage.Question, heading: $"'{g.Name}' 그룹을 삭제할까요?", primary: "삭제");
             if (r != MessageBoxResult.OK) return false;
             foreach (var path in entries)
                 if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
@@ -482,7 +482,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            Dialogs.Show($"폴더를 지우지 못했어요: {ex.Message}");
+            Dialogs.Show(ex.Message, heading: "폴더를 지우지 못했어요");
             return false;
         }
         _cfg.Positions.Remove(g.Name);

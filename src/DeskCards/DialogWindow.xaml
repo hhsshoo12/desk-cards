@@ -1,0 +1,81 @@
+<Window x:Class="DeskCards.DialogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:ClassModifier="internal"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False" SizeToContent="WidthAndHeight"
+        Background="{DynamicResource FlyoutBg}" Title="Desk Cards"
+        FontFamily="Segoe UI Variable Text, Segoe UI, Malgun Gothic" UseLayoutRounding="True">
+    <!-- Windows 11 ContentDialog 모양: 위는 제목과 내용, 아래는 한 톤 다른 바탕에 버튼 -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0" GlassFrameThickness="0" ResizeBorderThickness="0" CornerRadius="0" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="StdButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Fg}" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Height="32" CornerRadius="4" Padding="12,0,12,1"
+                                BorderThickness="1" Background="{DynamicResource ControlBg}"
+                                BorderBrush="{DynamicResource ControlBorder}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBg}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        </Style>
+
+        <Style x:Key="AccentButton" TargetType="Button" BasedOn="{StaticResource StdButton}">
+            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Height="32" CornerRadius="4" Padding="12,0,12,1" BorderThickness="1"
+                                Background="{DynamicResource Accent}" BorderBrush="{DynamicResource Accent}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.8" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Fg}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Width="420">
+        <StackPanel x:Name="Body" Margin="24,22,24,24">
+            <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"
+                       Foreground="{DynamicResource Fg}" Margin="0,0,0,12" />
+            <TextBlock x:Name="Message" FontSize="14" TextWrapping="Wrap" LineHeight="20"
+                       Foreground="{DynamicResource Fg}" />
+        </StackPanel>
+        <Border Background="{DynamicResource SectionBg}" BorderBrush="{DynamicResource SectionLine}"
+                BorderThickness="0,1,0,0" Padding="24">
+            <!-- Windows 11처럼 버튼은 반씩. 버튼이 하나면 오른쪽 절반에 둔다. -->
+            <UniformGrid x:Name="Buttons" Rows="1" Columns="2" />
+        </Border>
+    </StackPanel>
+</Window>
