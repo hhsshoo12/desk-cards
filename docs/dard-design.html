@@ -189,13 +189,25 @@ details[open] summary { margin-bottom: 6px; }
 ├─ manifest.json   카드 정보와 권한
 └─ card.html       카드 전체 (CSS·JS·이미지 모두 인라인)</pre>
   <p class="muted">React로 빌드하든 인라인 합성기를 쓰든, 결과물은 HTML 한 장이어야 합니다. 외부 파일·CDN은 불러올 수 없습니다.</p>
+  <h3>카드 파일 위치와 불러오기</h3>
+<pre>%USERPROFILE%\DeskCards\
+├─ 게임\            폴더 = 폴더 카드 (지금과 같음)
+├─ 작업\
+├─ 날씨.dard        .dard 파일 = 카드
+└─ 시계.dard</pre>
+  <ul>
+    <li><b>한 루트에 다 둠</b>: 폴더 카드가 쓰는 그 루트에 .dard 파일을 그냥 넣으면 카드가 됩니다. 폴더는 폴더 카드, .dard 파일은 카드입니다. 지우면 카드도 사라집니다.</li>
+    <li><b>매번 풀어서 열기</b>: 설치 단계가 따로 없습니다. 켤 때마다 zip을 메모리에서 열고, card.html은 <code>WebResourceRequested</code>로 메모리에서 바로 넘겨 줍니다. 디스크에 풀린 파일이 없어서 관리할 것도, 몰래 고칠 것도 없습니다.</li>
+    <li><b>승인 기록은 바깥에</b>: 사용자가 승인한 권한과 .dard 해시는 <code>%APPDATA%\DeskCards\config.json</code>에 저장합니다. 카드 파일이 자기 승인을 스스로 적어 넣을 수 없습니다.</li>
+    <li><b>처음 보는 .dard</b>나 <b>해시가 바뀐 .dard</b>가 루트에 생기면 설치 창을 띄웁니다. [취소]하면 그 해시는 다시 묻지 않고 꺼 둡니다.</li>
+    <li><b>하위 호환 없음</b>: 사용자가 아직 한 명뿐이라 예전 구조를 옮기는 코드는 만들지 않습니다.</li>
+  </ul>
   <h3>manifest.json 예시</h3>
 <pre>{
   "dard": 1,                        // desk API 버전 (권한이 돌려주는 필드가 이 버전에 고정됨)
   "id": "com.example.weather",
   "name": "날씨",
   "version": "1.0.0",
-  "author": "홍길동",
   "grid": [2, 2],                   // 처음 크기 (칸)
   "permissions": {
     "system": ["cpu", "memory", "battery", "network"],
@@ -256,7 +268,7 @@ details[open] summary { margin-bottom: 6px; }
   <p>첫 구현·배포에서는 권한을 <b>세 가지</b>만 만듭니다.</p>
   <div class="table-wrap"><table>
     <tr><th>색</th><th>화면 이름</th><th>키</th><th>하는 일</th></tr>
-    <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 온도, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
+    <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>알림 보내기</td><td><code>notify</code></td><td>Windows 알림 띄우기</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>소리·화면 밝기 조절</td><td><code>system.control</code></td><td>시스템 볼륨·음소거, 화면 밝기 읽기/바꾸기</td></tr>
     <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 연결</td><td><code>internet</code></td><td>매니페스트에 적힌 도메인과만 통신</td></tr>
@@ -268,7 +280,6 @@ details[open] summary { margin-bottom: 6px; }
     <tr><td><code>cpu</code></td><td>전체 사용률 %</td></tr>
     <tr><td><code>gpu</code></td><td>사용률 % (없으면 null)</td></tr>
     <tr><td><code>memory</code></td><td>사용량·전체 (바이트)</td></tr>
-    <tr><td><code>temperature</code></td><td>CPU·GPU 온도 ℃ (못 읽으면 null)</td></tr>
     <tr><td><code>battery</code></td><td>잔량 %, 충전 중 여부, 배터리 유무</td></tr>
     <tr><td><code>storage</code></td><td>드라이브별 남은 공간·전체 (드라이브 문자와 용량만, 볼륨 이름 없음)</td></tr>
     <tr><td><code>uptime</code></td><td>켜진 시간 (초)</td></tr>
@@ -285,7 +296,6 @@ details[open] summary { margin-bottom: 6px; }
       <label><input type="checkbox" data-sys="cpu" checked> CPU 사용량</label>
       <label><input type="checkbox" data-sys="gpu"> GPU 사용량</label>
       <label><input type="checkbox" data-sys="memory" checked> 메모리</label>
-      <label><input type="checkbox" data-sys="temperature"> 온도</label>
       <label><input type="checkbox" data-sys="battery" checked> 배터리</label>
       <label><input type="checkbox" data-sys="storage"> 저장 공간</label>
       <label><input type="checkbox" data-sys="uptime"> 켜진 시간</label>
@@ -381,8 +391,8 @@ details[open] summary { margin-bottom: 6px; }
   <ol>
     <li><b>CSP</b>: <code>eval</code>, <code>new Function</code>, 문자열 타이머, 외부 스크립트, <code>javascript:</code> URL, WebAssembly 금지</li>
     <li><b>스크립트 해시</b>: 설치할 때 card.html 안의 모든 <code>&lt;script&gt;</code> 해시를 계산해서 <code>script-src 'sha256-…'</code>로 고정</li>
-    <li><b>읽기 전용 설치 폴더</b>: 카드는 자기 설치 폴더에 쓸 수 없음</li>
-    <li><b>불러올 때 해시 확인</b>: 파일이 바뀌었으면 카드를 켜지 않음</li>
+    <li><b>풀어 두지 않음</b>: .dard를 디스크에 풀지 않고 매번 메모리에서 열기 때문에, 몰래 고칠 풀린 파일이 없음</li>
+    <li><b>불러올 때 해시 확인</b>: 승인할 때의 .dard 해시와 다르면 켜지 않고 설치 창을 다시 띄움</li>
   </ol>
 <pre>default-src 'none';
 script-src 'sha256-…' 'sha256-…';
@@ -469,6 +479,12 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
   <details><summary>권한을 뭉뚱그려 보여 주는 이유</summary>
     <p>목록이 길고 자세하면 사용자가 읽지 않고 "예"만 누르게 됩니다. 화면에는 짧은 이름과 색만, 자세한 건 풍선에 둡니다. 실제 검사는 매니페스트의 정확한 범위로 합니다.</p>
   </details>
+  <details><summary>카드 서명·검증을 하지 않는 이유</summary>
+    <p>서명은 누군가 카드를 검사하고 보증해 줄 때 의미가 있습니다. 우리는 대기업도 스토어도 아니라서 카드를 하나하나 검증할 수 없습니다. 그래서 "누가 만들었나"를 믿는 대신 <b>"무엇을 할 수 있나"</b>를 권한으로 좁게 막습니다. 설치 창에 만든 사람도 표시하지 않습니다 (확인할 수 없는 정보라서).</p>
+  </details>
+  <details><summary>.dard를 풀어 두지 않고 매번 여는 이유</summary>
+    <p>풀어 두면 풀린 폴더를 따로 관리하고, 고쳐지지 않았는지 지켜야 합니다. 매번 zip을 메모리에서 열면 .dard 파일 하나만 관리하면 되고, 해시도 파일 하나로 확인합니다. 카드는 작아서 여는 비용도 거의 없습니다.</p>
+  </details>
   <details><summary>WebAssembly를 막은 이유</summary>
     <p>wasm을 허용하면 인터넷에서 받은 바이너리를 실행할 수 있어서 스스로 업데이트 방지가 무너집니다. 게임(Canvas·WebGL)이나 이미지 처리(Canvas·WebGL·순수 JS 라이브러리)는 wasm 없이 충분합니다.</p>
   </details>
@@ -480,12 +496,9 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
 <section id="open">
   <h2>남은 질문</h2>
   <ul>
-    <li><b>카드 서명</b>: 만든 사람을 확인할 방법이 필요한가? (1차는 서명 없이 "만든 사람: 홍길동 (확인 안 됨)" 표시)</li>
     <li><b>권한 취소</b>: 1차는 카드를 지우는 것만. 나중에 설정의 카드 상세에서 권한별 끄기</li>
-    <li><b>카드 설치 위치</b>: <code>%LOCALAPPDATA%\DeskCards\cards\&lt;id&gt;\</code> (카드가 쓸 수 없는 곳)</li>
     <li><b>기존 폴더 카드</b>: 내장 카드 종류로 두고 .dard로 옮기지 않음</li>
     <li><b>설치 크기</b>: 지금 uninstall.exe가 81MB (설치 파일 전체 복사본). 페이로드 없이 다시 만들면 약 10MB</li>
-    <li><b>온도 읽기</b>: 관리자 권한 없이 CPU 온도를 안정적으로 읽을 방법 확인 필요 (못 읽으면 null)</li>
   </ul>
 </section>
 </main>
@@ -515,7 +528,7 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
   document.querySelectorAll("main section").forEach(function (s) { obs.observe(s); });
 
   // installer demo
-  var SYS = { cpu: "CPU 사용량", gpu: "GPU 사용량", memory: "메모리 사용량", temperature: "CPU·GPU 온도",
+  var SYS = { cpu: "CPU 사용량", gpu: "GPU 사용량", memory: "메모리 사용량",
     battery: "배터리 잔량과 충전 상태", storage: "드라이브별 저장 공간", uptime: "켜진 시간",
     network: "인터넷 연결 여부, 유선·무선, 속도" };
   var $ = function (id) { return document.getElementById(id); };
@@ -552,7 +565,7 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
       '<div class="lim">개인 파일, 사용 기록, IP 주소, Wi-Fi 이름은 읽지 않아요.</div>')));
 
     var html = '<div class="titlebar">Desk Cards · 카드 설치</div><div class="body">' +
-      '<div class="cardname"><div class="cardicon">☁</div><div><b>날씨</b><span>만든 사람: 홍길동 (확인 안 됨) · 1.0.0</span></div></div>';
+      '<div class="cardname"><div class="cardicon">☁</div><div><b>날씨</b><span>날씨.dard · 1.0.0</span></div></div>';
     if (counted.length) html += "<h5>이 카드는 " + counted.length + "개의 권한을 요구합니다</h5>" + counted.join("");
     else html += "<h5>이 카드는 권한을 요구하지 않습니다</h5>";
     if (info.length) html += "<h5>이 카드가 읽는 정보</h5>" + info.join("");
@@ -566,7 +579,7 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
     if (ctl.length) perms["system.control"] = ctl;
     if (internet) perms.internet = domains;
     $("manifestOut").textContent = JSON.stringify({ dard: 1, id: "com.example.weather", name: "날씨", version: "1.0.0",
-      author: "홍길동", grid: [2, 2], permissions: perms }, null, 2);
+      grid: [2, 2], permissions: perms }, null, 2);
   }
   $("controls").addEventListener("input", render);
   // tap-to-open tooltips on touch
