@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace DeskCards;
@@ -12,6 +13,9 @@ internal sealed class Config
 
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
     public Dictionary<string, CardLayout> Layouts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>카드 안 항목 순서. 그룹 이름 → 파일 이름 목록. 없는 그룹은 이름 순.</summary>
+    public Dictionary<string, List<string>> Orders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
@@ -72,6 +76,10 @@ internal sealed class Config
                     foreach (var (name, layout) in cfg.Layouts ?? new())
                         if (layout != null) layouts[name] = layout.Normalized();
                     cfg.Layouts = layouts;
+                    var orders = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (name, order) in cfg.Orders ?? new())
+                        if (order != null) orders[name] = order.Where(n => !string.IsNullOrEmpty(n)).ToList();
+                    cfg.Orders = orders;
                     if (!double.IsFinite(cfg.CellSize) || cfg.CellSize < 16 || cfg.CellSize > 512) cfg.CellSize = 0;
                     if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;

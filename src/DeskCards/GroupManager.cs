@@ -282,6 +282,15 @@ internal sealed class GroupManager
         Bump();
     }
 
+    /// <summary>카드 안 항목 순서를 정하고 저장한다(펼친 창에서 끌어 옮겼을 때).</summary>
+    public void SetOrder(GroupModel group, IEnumerable<ShellEntry> items)
+    {
+        var names = items.Select(e => Path.GetFileName(e.Path)).ToList();
+        _cfg.Orders[group.Name] = names;
+        _cfg.Save();
+        group.Order = names;
+    }
+
     /// <summary>그룹 이름이 바뀌었을 때 카드 목록과 저장된 위치·모양을 새 이름으로 옮긴다.</summary>
     private void Rekey(CardWindow card, string oldName, string newName)
     {
@@ -289,6 +298,7 @@ internal sealed class GroupManager
         _cards[newName] = card;
         if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[newName] = position;
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
+        if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
         _cfg.Save();
     }
 
@@ -348,7 +358,7 @@ internal sealed class GroupManager
 
     private CardWindow CreateCard(string folder)
     {
-        var group = new GroupModel(folder);
+        var group = new GroupModel(folder, _cfg.Orders.GetValueOrDefault(Path.GetFileName(folder)));
         group.Changed += RaiseChanged;
         var card = new CardWindow(group, this);
         if (_cfg.Positions.TryGetValue(group.Name, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
@@ -510,6 +520,7 @@ internal sealed class GroupManager
         }
         _cfg.Positions.Remove(g.Name);
         _cfg.Layouts.Remove(g.Name);
+        _cfg.Orders.Remove(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
         RaiseChanged();

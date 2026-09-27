@@ -69,6 +69,7 @@ internal partial class ExpandedWindow : Window
         ItemsPanel.PreviewMouseLeftButtonUp += OnUp;
         DragEnter += OnDragOver;
         DragOver += OnDragOver;
+        DragLeave += OnDragLeave;
         Drop += OnDrop;
 
         TitleBox.Text = Group.Name;
@@ -375,9 +376,62 @@ internal partial class ExpandedWindow : Window
             Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         _pending = false;
         _busy = true;
+        // 창 안에서 놓으면 순서 바꾸기, 창 밖(바탕화면·탐색기·다른 카드)에 놓으면 꺼내기.
+        _dragEntry = _downEntry;
+        _dragMoved = _dropped = false;
         FileOps.DragOut(this, _downEntry.Path);
+        _dragEntry = null;
         _busy = false;
+        if (_dropped && _dragMoved)
+            _mgr.SetOrder(Group, ItemsPanel.Children.OfType<Border>().Select(b => b.Tag).OfType<ShellEntry>());
+        else if (_dragMoved) Rebuild();
         if (!IsActive) SafeClose();
+    }
+
+    // ----- 순서 바꾸기 -----
+    // 끄는 동안 타일이 마우스 아래 칸으로 바로 옮겨 가서 놓았을 때의 모습을 미리 보여 준다.
+
+    private ShellEntry? _dragEntry;
+    private bool _dragMoved, _dropped;
+    private DateTime _lastFlip;
+
+    private bool IsSelfDrag(IDataObject data) =>
+        _dragEntry != null && data.GetData(DataFormats.FileDrop) is string[] { Length: 1 } paths &&
+        string.Equals(paths[0], _dragEntry.Path, StringComparison.OrdinalIgnoreCase);
+
+    private void PreviewReorder(DragEventArgs e)
+    {
+        // 위·아래 끝에 대고 있으면 페이지를 넘긴다(너무 빨리 넘어가지 않게 0.6초에 한 번).
+        double y = e.GetPosition(Scroller).Y;
+        if ((y < 18 || y > Scroller.ActualHeight - 18) && DateTime.Now - _lastFlip > TimeSpan.FromMilliseconds(600))
+        {
+            int before = _page;
+            GoToPage(_page + (y < 18 ? -1 : 1));
+            if (_page != before) _lastFlip = DateTime.Now;
+        }
+
+        var p = e.GetPosition(ItemsPanel);
+        int count = ItemsPanel.Children.Count;
+        int col = Math.Clamp((int)(p.X / TileW), 0, Columns - 1);
+        int row = Math.Max(0, (int)(p.Y / TileH));
+        int target = Math.Min(row * Columns + col, count - 1);
+        var tile = ItemsPanel.Children.OfType<Border>().FirstOrDefault(b => b.Tag == _dragEntry);
+        if (tile == null) return;
+        int current = ItemsPanel.Children.IndexOf(tile);
+        if (target == current) return;
+        ItemsPanel.Children.RemoveAt(current);
+        ItemsPanel.Children.Insert(target, tile);
+        _dragMoved = true;
+    }
+
+    private void OnDragLeave(object sender, DragEventArgs e)
+    {
+        // 창 밖으로 나가면 미리 보기를 되돌린다(자식 요소 사이를 지날 때도 이 이벤트가 오므로 위치로 판단).
+        if (_dragEntry == null || !_dragMoved) return;
+        var p = e.GetPosition(this);
+        if (p.X >= 0 && p.Y >= 0 && p.X < ActualWidth && p.Y < ActualHeight) return;
+        _dragMoved = false;
+        Rebuild();
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e)
@@ -400,12 +454,26 @@ internal partial class ExpandedWindow : Window
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
+        if (IsSelfDrag(e.Data))
+        {
+            e.Effects = DragDropEffects.Move;
+            PreviewReorder(e);
+            e.Handled = true;
+            return;
+        }
         e.Effects = FileOps.CanAccept(e.Data, Group.Folder) ? DragDropEffects.Move : DragDropEffects.None;
         e.Handled = true;
     }
 
     private void OnDrop(object sender, DragEventArgs e)
     {
+        if (IsSelfDrag(e.Data))
+        {
+            _dropped = true;
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
             FileOps.AddToGroup(paths, Group.Folder, _mgr.Root);
         e.Effects = DragDropEffects.None;

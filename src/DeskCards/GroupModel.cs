@@ -31,9 +31,10 @@ internal sealed class GroupModel : IDisposable
     private readonly DispatcherTimer _debounce;
     private bool _disposed;
 
-    public GroupModel(string folder)
+    public GroupModel(string folder, IReadOnlyList<string>? order = null)
     {
         Folder = folder;
+        _order = order;
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reload(); };
         Reload();
@@ -43,6 +44,33 @@ internal sealed class GroupModel : IDisposable
     public string Folder { get; private set; }
     public string Name => Path.GetFileName(Folder);
     public List<ShellEntry> Items { get; private set; } = new();
+    private IReadOnlyList<string>? _order;
+
+    /// <summary>사용자가 정한 순서(파일 이름 목록). 없으면 이름 순.</summary>
+    public IReadOnlyList<string>? Order
+    {
+        get => _order;
+        set
+        {
+            _order = value;
+            Items = Arrange(Items, e => System.IO.Path.GetFileName(e.Path), e => e.Name, _order);
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>
+    /// 정한 순서(파일 이름)대로 놓고, 순서에 없는 항목(새로 넣은 것 등)은 그 뒤에 이름 순으로 붙인다.
+    /// 순서에만 있고 폴더에 없는 이름은 건너뛴다.
+    /// </summary>
+    public static List<T> Arrange<T>(IEnumerable<T> items, Func<T, string> file, Func<T, string> name, IReadOnlyList<string>? order)
+    {
+        var byName = items.OrderBy(name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        if (order is not { Count: > 0 }) return byName;
+        var rank = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < order.Count; i++) rank.TryAdd(order[i], i);
+        // OrderBy는 안정 정렬이라 순서에 없는 항목끼리는 이름 순이 유지된다.
+        return byName.OrderBy(e => rank.TryGetValue(file(e), out int r) ? r : int.MaxValue).ToList();
+    }
     public event Action? Changed;
 
     public void Reload()
@@ -67,7 +95,7 @@ internal sealed class GroupModel : IDisposable
         {
             // 폴더가 사라지는 중일 수 있다. 관리자가 정리한다.
         }
-        Items = list.OrderBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        Items = Arrange(list, e => System.IO.Path.GetFileName(e.Path), e => e.Name, _order);
         Changed?.Invoke();
     }
 
