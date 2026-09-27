@@ -17,19 +17,14 @@ namespace DeskCards;
 /// </summary>
 internal partial class CardWindow : Window
 {
-    private const string OverflowTag = "overflow";
-
     // 배율 적용 전 기준 단위(DIP)의 배치 값
-    public const double Inset = 4, TopPad = 4, LabelH = 28;
+    public const double Inset = 4, TopPad = 4, LabelH = CardView.LabelH;
 
     private static uint _taskbarCreatedMsg;
 
     private readonly GroupManager _mgr;
-    private Point _downPos;
-    private object? _downTarget;
     private bool _pending, _editing, _selected;
     private CardLayout _layout = new();
-    private double _iconSize = 40;
     private double _appliedScale = 1;
     private bool _closed;
     private Native.POINT _moveCursorStart;
@@ -41,8 +36,17 @@ internal partial class CardWindow : Window
         InitializeComponent();
         Group = group;
         _mgr = mgr;
-        Group.Changed += Rebuild;
-        Rebuild();
+        View = new CardView(group, mgr, onDesktop: true)
+        {
+            Expand = hover =>
+            {
+                if (hover && ExpandedWindow.IsOpenFor(this)) return;
+                ExpandedWindow.Open(this, _mgr, hover: hover);
+            },
+            CardMenu = () => Menus.ForCard(this, _mgr),
+            Editing = () => _editing,
+        };
+        Layout.Children.Add(View);
 
         SourceInitialized += OnSourceInitialized;
         PreviewMouseLeftButtonDown += OnDown;
@@ -52,7 +56,8 @@ internal partial class CardWindow : Window
         DragOver += OnDragOver;
         DragLeave += (_, _) => UpdateBorder(false);
         Drop += OnDrop;
-        MouseRightButtonUp += OnRightUp;
+        // 아이콘 칸 밖(가장자리 여백)을 우클릭해도 카드 메뉴.
+        MouseRightButtonUp += (_, e) => { e.Handled = true; Menus.ForCard(this, _mgr).ShowAtCursor(); };
 
         GripCorner.DragStarted += (_, _) => OnGripStart();
         GripCorner.DragDelta += (_, _) => OnGripDelta();
@@ -60,140 +65,38 @@ internal partial class CardWindow : Window
     }
 
     public GroupModel Group { get; }
+    public CardView View { get; }
     private IntPtr Handle => Hwnd.Of(this);
     public bool ClosingByManager { get; set; }
     public bool IsEditing => _editing;
     public CardLayout CurrentLayout => _layout;
 
-    public void Rebuild()
-    {
-        Label.Text = Group.Name;
-        Cells.Children.Clear();
-        Cells.Columns = _layout.Cols;
-        Cells.Rows = _layout.Rows;
-        var items = Group.Items;
-        Placeholder.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-        // 칸이 모자라면 마지막 칸을 '더보기' 묶음으로 쓴다.
-        int slots = _layout.Cols * _layout.Rows;
-        bool overflow = items.Count > slots;
-        int direct = overflow ? slots - 1 : items.Count;
-        for (int i = 0; i < direct; i++)
-        {
-            var img = new Image { Source = items[i].Icon, Width = _iconSize, Height = _iconSize };
-            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-            Cells.Children.Add(MakeCell(img, items[i], items[i].Name));
-        }
-
-        if (overflow)
-        {
-            double mini = _iconSize * 0.48;
-            var grid = new UniformGrid { Rows = 2, Columns = 2, Width = mini * 2 + 8, Height = mini * 2 + 8 };
-            foreach (var e in items.Skip(direct).Take(4))
-            {
-                var img = new Image { Source = e.Icon, Width = mini, Height = mini, Margin = new Thickness(2) };
-                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-                grid.Children.Add(img);
-            }
-            var more = MakeCell(grid, OverflowTag, null);
-            more.MouseEnter += (_, _) => StartHoverExpand();
-            more.MouseLeave += (_, _) => _hoverTimer?.Stop();
-            Cells.Children.Add(more);
-        }
-    }
-
-    private DispatcherTimer? _hoverTimer;
-
-    /// <summary>더보기 칸에 마우스를 잠시 올려 두면 펼친다(일반 설정). 펼친 창은 그 밖으로 나가면 바로 접힌다.</summary>
-    private void StartHoverExpand()
-    {
-        if (_editing || !_mgr.HoverExpand || Mouse.LeftButton == MouseButtonState.Pressed) return;
-        _hoverTimer ??= new DispatcherTimer();
-        _hoverTimer.Stop();
-        _hoverTimer.Interval = TimeSpan.FromMilliseconds(_mgr.HoverExpandDelay);
-        _hoverTimer.Tick -= OnHoverTick;
-        _hoverTimer.Tick += OnHoverTick;
-        _hoverTimer.Start();
-    }
-
-    private void OnHoverTick(object? sender, EventArgs e)
-    {
-        _hoverTimer?.Stop();
-        if (_editing || _closed || Mouse.LeftButton == MouseButtonState.Pressed || ExpandedWindow.IsOpenFor(this)) return;
-        ExpandedWindow.Open(this, _mgr, hover: true);
-    }
-
-    private Border MakeCell(UIElement content, object tag, string? tip)
-    {
-        var b = new Border
-        {
-            CornerRadius = new CornerRadius(6),
-            Margin = new Thickness(3),
-            Background = Brushes.Transparent,
-            Tag = tag,
-            Child = content,
-            ToolTip = tip,
-        };
-        b.MouseEnter += (_, _) => { if (!_editing) b.SetResourceReference(Border.BackgroundProperty, "HoverBg"); };
-        b.MouseLeave += (_, _) => b.Background = Brushes.Transparent;
-        return b;
-    }
-
     // ----- 입력 -----
-    // 평소: 아이콘 클릭 = 실행, 더보기 칸 클릭 = 펼치기(빈 칸·이름은 아무 일 없음), 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
+    // 평소 클릭·끌기·우클릭은 CardView가 한다. 카드 자체는 움직이지 않는다.
     // 편집 모드: 누르기 = 고르기, 아무 데나 끌기 = 자유 이동(안내선), 오른쪽 아래 모서리 끌기 = 크기 조절.
+
+    private Point _downPos;
 
     private void OnDown(object sender, MouseButtonEventArgs e)
     {
-        var src = e.OriginalSource as DependencyObject;
-        if (_editing) _mgr.Select(this);
-        if (IsWithin<Thumb>(src))
-        {
-            _pending = false;
-            return;
-        }
+        if (!_editing) return;
+        _mgr.Select(this);
+        _pending = !IsWithin<Thumb>(e.OriginalSource as DependencyObject);
         _downPos = e.GetPosition(this);
-        _downTarget = FindTag(src);
-        _pending = true;
     }
 
     private void OnMove(object sender, MouseEventArgs e)
     {
-        if (!_pending || e.LeftButton != MouseButtonState.Pressed) return;
+        if (!_pending || !_editing || e.LeftButton != MouseButtonState.Pressed) return;
         var d = e.GetPosition(this) - _downPos;
         if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         _pending = false;
-
-        if (_editing)
-        {
-            try { DragMove(); } catch (InvalidOperationException) { }
-            _mgr.SavePosition(this);
-        }
-        else if (_downTarget is ShellEntry entry)
-        {
-            FileOps.DragOut(this, entry.Path);
-        }
+        try { DragMove(); } catch (InvalidOperationException) { }
+        _mgr.SavePosition(this);
     }
 
-    private void OnUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_pending) return;
-        _pending = false;
-        if (_editing) return;
-        if (_downTarget is ShellEntry entry) FileOps.Launch(entry.Path);
-        else if (_downTarget as string == OverflowTag) ExpandedWindow.Open(this, _mgr);
-    }
-
-    private object? FindTag(DependencyObject? d)
-    {
-        while (d != null && d != this)
-        {
-            if (d is Border { Tag: not null } b) return b.Tag;
-            d = GetParent(d);
-        }
-        return null;
-    }
+    private void OnUp(object sender, MouseButtonEventArgs e) => _pending = false;
 
     private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject
     {
@@ -367,7 +270,8 @@ internal partial class CardWindow : Window
     private void UpdateBorder(bool dropTarget)
     {
         // 고른 카드는 배경화면 색에 묻히지 않도록 강조색으로 은은하게 빛나게 한다.
-        var glow = (System.Windows.Media.Effects.DropShadowEffect)Card.Effect;
+        var card = View.Card;
+        var glow = (System.Windows.Media.Effects.DropShadowEffect)card.Effect;
         bool strong = dropTarget || _selected;
         glow.Color = strong && TryFindResource("Accent") is SolidColorBrush accent ? accent.Color : Colors.Black;
         glow.ShadowDepth = strong ? 0 : 2;
@@ -376,31 +280,19 @@ internal partial class CardWindow : Window
 
         if (strong)
         {
-            Card.SetResourceReference(Border.BorderBrushProperty, "Accent");
-            Card.BorderThickness = new Thickness(2.5);
+            card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            card.BorderThickness = new Thickness(2.5);
         }
         else if (_editing)
         {
-            Card.SetResourceReference(Border.BorderBrushProperty, "Accent");
-            Card.BorderThickness = new Thickness(1.5);
+            card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            card.BorderThickness = new Thickness(1.5);
         }
         else
         {
-            Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
-            Card.BorderThickness = new Thickness(1);
+            card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+            card.BorderThickness = new Thickness(1);
         }
-    }
-
-    // ----- 메뉴 -----
-    // 아이콘 위 우클릭 = 항목 메뉴(펼친 창과 같음), 그 밖 = 카드 메뉴.
-
-    private void OnRightUp(object sender, MouseButtonEventArgs e)
-    {
-        e.Handled = true;
-        if (!_editing && FindTag(e.OriginalSource as DependencyObject) is ShellEntry entry)
-            Menus.ForEntry(entry).ShowAtCursor();
-        else
-            Menus.ForCard(this, _mgr).ShowAtCursor();
     }
 
     // ----- 바탕화면 층에 붙이기 -----
@@ -542,17 +434,7 @@ internal partial class CardWindow : Window
         Layout.Margin = new Thickness(Inset * t, TopPad * t, Inset * t, 0); // 여백은 변환 밖이라 직접 곱한다
 
         // 기준 단위에서 칸 크기는 항상 같으므로 아이콘도 같다(기본 72 → 40).
-        double cell = size.Width - 2 * Inset;
-        cell /= _layout.Cols;
-        double pad = cell * 0.17;
-        Cells.Margin = new Thickness(pad);
-        double inner = (cell * _layout.Cols - 2 * pad) / _layout.Cols - 6;
-        double icon = Math.Clamp(Math.Round(inner * 0.74), 16, 128);
-        if (Math.Abs(icon - _iconSize) > 0.5 || Cells.Columns != _layout.Cols || Cells.Rows != _layout.Rows)
-        {
-            _iconSize = icon;
-            Rebuild();
-        }
+        View.Apply(_layout, _mgr.CellSize);
     }
 
     /// <summary>크기를 다시 적용하고, 작업 영역 밖으로 나갔으면 안쪽으로 당긴다.</summary>
@@ -596,8 +478,7 @@ internal partial class CardWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
-        _hoverTimer?.Stop();
-        Group.Changed -= Rebuild;
+        View.Detach();
         base.OnClosed(e);
     }
 }

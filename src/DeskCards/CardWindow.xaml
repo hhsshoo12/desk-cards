@@ -25,34 +25,8 @@
     </Window.Resources>
 
     <Grid>
-        <!-- 여백·크기·배율은 CardWindow.LayoutFor가 정한다. -->
-        <Grid x:Name="Layout" Margin="4,4,4,0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="28" />
-            </Grid.RowDefinitions>
-
-            <Border x:Name="Card" CornerRadius="8" BorderThickness="1"
-                    Background="{DynamicResource CardBg}" BorderBrush="{DynamicResource CardBorder}">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="10" ShadowDepth="2" Direction="270" Opacity="0.22" />
-                </Border.Effect>
-            </Border>
-
-            <UniformGrid x:Name="Cells" Rows="2" Columns="2" Margin="12" />
-
-            <TextBlock x:Name="Placeholder" Text="여기로 끌어다 놓기" FontSize="12"
-                       Foreground="{DynamicResource SubFg}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       Visibility="Collapsed" IsHitTestVisible="False" />
-
-            <TextBlock x:Name="Label" Grid.Row="1" Margin="4,5,4,0" FontSize="13" Foreground="White"
-                       HorizontalAlignment="Center" TextTrimming="CharacterEllipsis">
-                <TextBlock.Effect>
-                    <DropShadowEffect BlurRadius="4" ShadowDepth="1" Direction="270" Opacity="0.9" Color="Black" />
-                </TextBlock.Effect>
-            </TextBlock>
-
-        </Grid>
+        <!-- 여백·크기·배율은 CardWindow.LayoutFor가 정한다. 안에 CardView가 들어간다. -->
+        <Grid x:Name="Layout" Margin="4,4,4,0" />
 
         <!-- 편집 모드 크기 조절: 비율을 유지한 채 통째로 키우고 줄이므로 모서리 하나만 둔다. -->
         <Thumb x:Name="GripCorner" Style="{StaticResource CornerGrip}" Width="22" Height="22"
