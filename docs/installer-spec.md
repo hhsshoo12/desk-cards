@@ -91,6 +91,8 @@
 1. 릴리스 목록 API를 `GET`한다. 헤더: `User-Agent: DeskCards-Setup/<설치기 버전>`, `Accept: application/vnd.github+json`.
 2. 응답(JSON 배열)에서 `draft`와 `prerelease`가 모두 `false`이고 `tag_name`이 정규식 `^app-v(\d+)\.(\d+)\.(\d+)$`(대소문자 무시)에 맞는 릴리스만 고른다.
 3. 태그의 숫자 세 개를 `System.Version`으로 비교해 가장 큰 것을 고른다(릴리스 날짜나 목록 순서를 믿지 않는다).
+   - **설치기 자신의 버전보다 낮은 앱 릴리스는 후보에서 뺀다.** 설치기 0.2.0은 `app-v0.2.0` 이상만 받는다(`app-v0.1.0`은 예전 형식이므로 받지 않는다).
+   - 후보가 없으면 "받을 수 있는 앱 버전이 없어요"로 중단한다.
 4. 그 릴리스의 `assets`에서 이름이 `DeskCards-win-x64.zip`, `DeskCards-win-x64.zip.sha256`인 항목의 `browser_download_url`을 쓴다. 둘 중 하나라도 없으면 "받을 수 있는 앱 버전이 없어요"로 중단한다.
 5. JSON 해석은 .NET Framework 기본 포함 라이브러리(`System.Runtime.Serialization.Json.DataContractJsonSerializer` 또는 `System.Web.Script.Serialization.JavaScriptSerializer`)로 한다. NuGet 패키지를 쓰지 않는다. 필요한 필드(`tag_name`, `draft`, `prerelease`, `assets[].name`, `assets[].browser_download_url`)만 읽는다.
 6. API가 403/429(요청 한도)면 "잠시 후 다시 시도해 주세요"로, 네트워크 오류면 "인터넷에 연결한 뒤 다시 시도해 주세요"로 안내한다.
@@ -122,6 +124,7 @@
 
 1. **버전 확인**: 5장 "최신 앱 찾기"로 최신 앱 버전과 파일 주소를 얻는다. 실패하면 "인터넷에 연결한 뒤 다시 시도해 주세요" 화면을 보여 주고 [다시 시도]/[닫기]만 제공한다.
    업데이트 모드에서 설치된 버전(`DisplayVersion`)과 같으면 "이미 최신 버전이에요" 안내와 함께 [다시 설치]를 제공한다.
+   설치된 버전이 받을 버전보다 **높으면** 설치하지 않는다("설치된 버전(X)이 더 새로워요"). 다운그레이드는 지원하지 않는다.
    버전 비교는 `System.Version`으로 한다. 어느 쪽이든 해석할 수 없으면 "다른 버전"으로 본다.
    4단계에서 zip 안의 `version.txt`가 태그의 버전과 다르면 설치를 거부한다.
 2. **다운로드**: 1단계에서 얻은 주소로 zip과 `.sha256`을 `%TEMP%\DeskCards-Setup-<GUID>\`에 받는다.
@@ -280,7 +283,7 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 6. `StartupApproved` 판정: 값 없음 = 켜짐, `02…` = 켜짐, `03…` = 꺼짐, `Run` 없음 = 꺼짐.
 7. 제거 시 그룹 폴더와(체크하지 않았으면) 설정 폴더가 남는다.
 8. 설치 폴더에 다른 파일이 있으면 제거 후에도 폴더와 그 파일이 남는다.
-9. 최신 앱 찾기: 저장된 API 응답 JSON으로 검사한다. `installer-v…`, `v0.1.0`, draft, prerelease는 제외되고, `app-v0.10.0`이 `app-v0.9.0`보다 새 버전으로 골라지며(문자열 비교 금지), 필요한 파일이 없는 릴리스면 오류가 난다.
+9. 최신 앱 찾기: 설치기 버전보다 낮은 `app-v…`는 제외된다. 설치된 버전이 더 높으면 설치하지 않는다. 그 밖에 저장된 API 응답 JSON으로 검사한다. `installer-v…`, `v0.1.0`, draft, prerelease는 제외되고, `app-v0.10.0`이 `app-v0.9.0`보다 새 버전으로 골라지며(문자열 비교 금지), 필요한 파일이 없는 릴리스면 오류가 난다.
 10. zip 안 `version.txt`가 태그 버전과 다르면 설치 폴더를 바꾸지 않는다.
 
 실행 방법을 `README.md`의 "회귀 테스트" 절에 추가한다. `python -m unittest` 줄은 지운다.
