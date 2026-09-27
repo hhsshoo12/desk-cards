@@ -9,12 +9,15 @@ internal static class Theme
 {
     public static bool IsLight { get; private set; } = true;
 
+    /// <summary>창 배경에 Mica·아크릴을 쓸 수 있는지(22H2부터).</summary>
+    public static bool HasBackdrop => Environment.OSVersion.Version.Build >= 22621;
+
     public static void Apply()
     {
         IsLight = ReadAppsUseLightTheme();
         var r = Application.Current.Resources;
-        // 22H2부터는 설정 창에 Mica를 깔고 배경을 비운다.
-        bool mica = Environment.OSVersion.Version.Build >= 22621;
+        // 시스템 배경을 쓸 수 있으면 설정 창·펼친 창 바탕을 비치게 둔다.
+        bool mica = HasBackdrop;
         if (IsLight)
         {
             r["CardBg"] = Brush("#D9F3F3F3");
@@ -22,7 +25,7 @@ internal static class Theme
             r["HoverBg"] = Brush("#14000000");
             r["Fg"] = Brush("#FF1B1B1B");
             r["SubFg"] = Brush("#FF5F5F5F");
-            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B8FAFAFA" : "#F7F3F3F3");
+            r["PopupBg"] = Brush(mica ? "#B8FAFAFA" : "#F7F3F3F3");
             r["Accent"] = Brush("#FF005FB8");
             r["SectionBg"] = Brush("#B3FFFFFF");
             r["SectionLine"] = Brush("#0F000000");
@@ -43,7 +46,7 @@ internal static class Theme
             r["HoverBg"] = Brush("#18FFFFFF");
             r["Fg"] = Brush("#FFFFFFFF");
             r["SubFg"] = Brush("#FFC5C5C5");
-            r["PopupBg"] = Brush(Environment.OSVersion.Version.Build >= 22621 ? "#B82C2C2C" : "#F7202020");
+            r["PopupBg"] = Brush(mica ? "#B82C2C2C" : "#F7202020");
             r["Accent"] = Brush("#FF60CDFF");
             r["SectionBg"] = Brush("#0FFFFFFF");
             r["SectionLine"] = Brush("#14FFFFFF");

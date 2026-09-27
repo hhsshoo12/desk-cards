@@ -4,17 +4,16 @@ using System.Runtime.InteropServices;
 namespace DeskCards;
 
 /// <summary>
-/// 바탕화면 아이콘 격자(탐색기의 SysListView32 칸 간격)를 읽는다.
-/// 칸은 목록 창의 왼쪽 위(보통 주 모니터 0,0)에서 시작해 간격만큼 반복된다. 모든 값은 물리 픽셀이다.
+/// 바탕화면 아이콘 간격(탐색기의 SysListView32)과, 새 카드 자리를 찾는 작업 영역 격자. 모든 값은 물리 픽셀이다.
 /// </summary>
 internal static class DesktopGrid
 {
-    /// <summary>카드 하나가 차지하는 칸 수(가로×세로).</summary>
-    public const int CardCols = 2, CardRows = 2;
+    /// <summary>기본 카드의 가로가 바탕화면 아이콘 몇 칸인지.</summary>
+    public const int CardCols = 2;
 
     private const int LVM_GETITEMSPACING = 0x1000 + 51;
 
-    private static int _cx, _cy, _ox, _oy;
+    private static int _cx;
     private static long _cachedAt;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -23,21 +22,8 @@ internal static class DesktopGrid
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-    /// <summary>
-    /// 카드 이동 격자. 아이콘 칸이 아니라 모니터 작업 영역(작업 표시줄 제외) 기준이다.
-    /// 카드가 움직일 수 있는 폭(작업 영역 − 카드 크기)을 정수 칸으로 나누므로, 첫 칸에서는 왼쪽 위 모서리에,
-    /// 마지막 칸에서는 오른쪽 아래 모서리에 카드가 정확히 붙는다. 칸 간격은 카드 크기의 절반 근처로 잡아
-    /// 카드끼리 나란히 놓아도 거의 딱 붙는다.
-    /// </summary>
-    public static (int X, int Y) Snap(int x, int y, int w, int h)
-    {
-        var wa = WorkAreaAt(x + w / 2, y + h / 2);
-        var (nx, ny) = Counts(wa, w, h);
-        double stepX = StepOf(wa.Width - w, nx), stepY = StepOf(wa.Height - h, ny);
-        int i = stepX > 0 ? Math.Clamp((int)Math.Round((x - wa.Left) / stepX), 0, nx) : 0;
-        int j = stepY > 0 ? Math.Clamp((int)Math.Round((y - wa.Top) / stepY), 0, ny) : 0;
-        return (wa.Left + (int)Math.Round(i * stepX), wa.Top + (int)Math.Round(j * stepY));
-    }
+    // 작업 영역 격자: 카드가 움직일 수 있는 폭(작업 영역 − 카드 크기)을 정수 칸으로 나누므로, 첫 칸에서는
+    // 왼쪽 위 모서리에, 마지막 칸에서는 오른쪽 아래 모서리에 카드가 정확히 붙는다. 칸 간격은 카드 크기의 절반 근처다.
 
     /// <summary>작업 영역에서 가로/세로로 몇 칸 움직일 수 있는지(0칸 = 한 자리뿐).</summary>
     public static (int Nx, int Ny) Counts(System.Drawing.Rectangle wa, int w, int h) =>
@@ -59,27 +45,25 @@ internal static class DesktopGrid
 
     private static double StepOf(int free, int count) => count == 0 ? 0 : free / (double)count;
 
-    public static bool TryGet(out int ox, out int oy, out int cx, out int cy)
+    /// <summary>바탕화면 아이콘 가로 간격. 읽지 못하면 false.</summary>
+    public static bool TryGetIconSpacing(out int cx)
     {
-        // 끄는 동안 WM_MOVING마다 불리므로 잠깐 캐시한다.
         long now = Environment.TickCount64;
         if (_cx > 0 && now - _cachedAt < 1000)
         {
-            (ox, oy, cx, cy) = (_ox, _oy, _cx, _cy);
+            cx = _cx;
             return true;
         }
 
-        ox = oy = cx = cy = 0;
+        cx = 0;
         var lv = FindDesktopListView();
         if (lv == IntPtr.Zero) return false;
         long s = SendMessage(lv, LVM_GETITEMSPACING, IntPtr.Zero, IntPtr.Zero).ToInt64();
         cx = (int)(s & 0xFFFF);
-        cy = (int)((s >> 16) & 0xFFFF);
-        if (cx < 16 || cy < 16 || !Native.GetWindowRect(lv, out var r)) return false;
-        ox = r.Left;
-        oy = r.Top;
+        int cy = (int)((s >> 16) & 0xFFFF);
+        if (cx < 16 || cy < 16) return false;
 
-        (_ox, _oy, _cx, _cy, _cachedAt) = (ox, oy, cx, cy, now);
+        (_cx, _cachedAt) = (cx, now);
         return true;
     }
 

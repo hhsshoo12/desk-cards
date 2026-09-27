@@ -4,7 +4,6 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 
@@ -12,7 +11,7 @@ namespace DeskCards;
 
 /// <summary>
 /// 편집 모드 동안 화면 위쪽 가운데에 뜨는 막대(Windows 캡처 도구 막대 모양).
-/// 카드를 끌어 옮기고 모서리로 크기를 바꾸는 동안, 고른 카드의 이름·칸 수·폴더·삭제를 여기서 한다.
+/// 카드를 끌어 옮기고 모서리로 크기를 바꾸는 동안, 고른 카드의 이름·칸 수·삭제를 여기서 한다.
 /// </summary>
 internal partial class EditBar : Window
 {
@@ -99,10 +98,7 @@ internal partial class EditBar : Window
     /// <summary>카드들을 막 위로 올린 뒤 막대가 그 아래로 가려지지 않게 다시 맨 위로.</summary>
     public static void BringToTop()
     {
-        if (_bar == null) return;
-        var hwnd = new WindowInteropHelper(_bar).Handle;
-        if (hwnd != IntPtr.Zero)
-            Native.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        if (_bar != null) Hwnd.SetZOrder(Hwnd.Of(_bar), Hwnd.Topmost);
     }
 
     public static void CloseBar()
@@ -291,14 +287,8 @@ internal partial class EditBar : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        long style = Native.GetWindowLongPtr(hwnd, Native.GWL_STYLE).ToInt64();
-        Native.SetWindowLongPtr(hwnd, Native.GWL_STYLE, new IntPtr(style & ~Native.WS_SYSMENU));
-        var src = HwndSource.FromHwnd(hwnd);
-        if (src?.CompositionTarget != null) src.CompositionTarget.BackgroundColor = Colors.Transparent;
-        Native.SetDwm(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, Theme.IsLight ? 0 : 1);
-        Native.SetDwm(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, 2); // 둥근 모서리
-        Native.SetDwm(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);      // 아크릴
+        Hwnd.RemoveSysMenu(Hwnd.Of(this));
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         PlaceTop();
     }
 

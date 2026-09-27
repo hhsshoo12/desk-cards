@@ -2,7 +2,6 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 
 namespace DeskCards;
 
@@ -27,12 +26,7 @@ internal partial class DialogWindow : Window
         if (cancel) AddButton("취소", MessageBoxResult.Cancel, accent: false).IsCancel = true;
         else ok.IsCancel = true;
 
-        SourceInitialized += (_, _) =>
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            Native.SetDwm(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, Theme.IsLight ? 0 : 1);
-            Native.SetDwm(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, 2); // 둥근 모서리 + 시스템 테두리·그림자
-        };
+        SourceInitialized += (_, _) => Hwnd.ApplyFluent(this); // 둥근 모서리 + 시스템 테두리·그림자
         Loaded += (_, _) => ok.Focus();
         // 제목 표시줄이 없으니 창 아무 데나 끌어서 옮긴다.
         MouseLeftButtonDown += (_, e) => { if (e.OriginalSource is not Button) DragMove(); };

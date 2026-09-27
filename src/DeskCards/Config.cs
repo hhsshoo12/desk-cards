@@ -31,12 +31,13 @@ internal sealed class Config
     /// <summary>배율 계산 방식 버전. 2부터 Zoom에 Windows 배율이 포함된다.</summary>
     public int ScaleVersion { get; set; }
 
-    private string FilePath = Path.Combine(
-        AppPaths.ConfigDir, "config.json");
+    private static string DefaultPath => Path.Combine(AppPaths.ConfigDir, "config.json");
+
+    private string _filePath = DefaultPath;
 
     public static Config Load(string? filePath = null)
     {
-        filePath ??= Path.Combine(AppPaths.ConfigDir, "config.json");
+        filePath ??= DefaultPath;
         foreach (string candidate in new[] { filePath, filePath + ".bak" })
         {
             try
@@ -45,7 +46,7 @@ internal sealed class Config
                 var cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(candidate));
                 if (cfg != null)
                 {
-                    cfg.FilePath = filePath;
+                    cfg._filePath = filePath;
                     var positions = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
                     foreach (var (name, p) in cfg.Positions ?? new())
                         if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
@@ -66,23 +67,23 @@ internal sealed class Config
                 // 주 파일이 손상되었으면 마지막으로 온전히 저장된 사본을 읽는다.
             }
         }
-        return new Config { FilePath = filePath };
+        return new Config { _filePath = filePath };
     }
 
     public void Save()
     {
-        string temporary = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        string temporary = _filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
             byte[] json = JsonSerializer.SerializeToUtf8Bytes(this, new JsonSerializerOptions { WriteIndented = true });
             using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 stream.Write(json);
                 stream.Flush(flushToDisk: true);
             }
-            if (File.Exists(FilePath)) File.Replace(temporary, FilePath, FilePath + ".bak");
-            else File.Move(temporary, FilePath);
+            if (File.Exists(_filePath)) File.Replace(temporary, _filePath, _filePath + ".bak");
+            else File.Move(temporary, _filePath);
         }
         catch
         {

@@ -11,10 +11,10 @@ internal static class Dialogs
 {
     /// <param name="heading">굵은 제목. 없으면 <paramref name="text"/>를 제목으로 쓴다.</param>
     /// <param name="primary">파란 버튼 글자(기본 "확인"). 예: "삭제".</param>
+    /// <remarks>아이콘은 없다. Windows 11 대화 상자처럼 제목으로 알린다.</remarks>
     public static MessageBoxResult Show(string text, MessageBoxButton buttons = MessageBoxButton.OK,
-        MessageBoxImage image = MessageBoxImage.None, string? heading = null, string? primary = null)
+        string? heading = null, string? primary = null)
     {
-        _ = image; // 아이콘은 쓰지 않는다(Windows 11 대화 상자처럼 제목으로 알린다).
         var dialog = heading == null
             ? new DialogWindow(text, "", buttons, primary)
             : new DialogWindow(heading, text, buttons, primary);

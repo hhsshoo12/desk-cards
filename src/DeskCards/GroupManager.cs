@@ -11,8 +11,6 @@ namespace DeskCards;
 /// <summary>그룹 루트 폴더의 하위 폴더마다 카드 창을 하나씩 띄우고 동기화한다.</summary>
 internal sealed class GroupManager
 {
-    private const double CardW = 196, CardH = 206;
-
     private readonly Config _cfg;
     private readonly Dictionary<string, CardWindow> _cards = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _debounce;
@@ -83,12 +81,7 @@ internal sealed class GroupManager
             }
             _cfg.FollowWindowsScale = value;
             _cfg.Save();
-            foreach (var card in _cards.Values)
-            {
-                card.FitToScreen();
-                SavePosition(card);
-            }
-            RaiseChanged();
+            RefitAll();
         }
     }
 
@@ -142,7 +135,7 @@ internal sealed class GroupManager
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
     public IReadOnlyList<Native.RECT> CardRects(CardWindow except) =>
         _cards.Values.Where(c => c != except)
-            .Select(c => Native.GetWindowRect(new System.Windows.Interop.WindowInteropHelper(c).Handle, out var r) ? r : default)
+            .Select(c => Native.GetWindowRect(Hwnd.Of(c), out var r) ? r : default)
             .Where(r => r.Right > r.Left)
             .ToList();
 
@@ -238,14 +231,15 @@ internal sealed class GroupManager
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _debounce.Dispatcher.BeginInvoke(() =>
     {
-        if (_shuttingDown) return;
-        foreach (var card in _cards.Values)
-        {
-            card.FitToScreen();
-            SavePosition(card);
-        }
-        RaiseChanged();
+        if (!_shuttingDown) RefitAll();
     });
+
+    /// <summary>모든 카드를 화면 안으로 다시 맞추고 위치를 저장한다.</summary>
+    private void RefitAll()
+    {
+        foreach (var card in _cards.Values) card.Refit();
+        RaiseChanged();
+    }
 
     private void OnFolderRenamed(RenamedEventArgs e)
     {
@@ -254,15 +248,21 @@ internal sealed class GroupManager
         if (_cards.TryGetValue(oldName, out var card) &&
             string.Equals(card.Group.Folder, e.OldFullPath, StringComparison.Ordinal) && Directory.Exists(e.FullPath))
         {
-            _cards.Remove(oldName);
-            _cards[name] = card;
-            if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[name] = position;
-            if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[name] = layout;
-            _cfg.Save();
+            Rekey(card, oldName, name);
             card.Group.MovedTo(e.FullPath);
             EditChanged?.Invoke();
         }
         Bump();
+    }
+
+    /// <summary>그룹 이름이 바뀌었을 때 카드 목록과 저장된 위치·모양을 새 이름으로 옮긴다.</summary>
+    private void Rekey(CardWindow card, string oldName, string newName)
+    {
+        _cards.Remove(oldName);
+        _cards[newName] = card;
+        if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[newName] = position;
+        if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
+        _cfg.Save();
     }
 
     private void RecreateCard(CardWindow card)
@@ -341,8 +341,7 @@ internal sealed class GroupManager
         _cards[group.Name] = card;
         card.Show();
         // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
-        card.FitToScreen();
-        SavePosition(card);
+        card.Refit();
         if (Editing)
         {
             card.BeginEdit();
@@ -356,10 +355,7 @@ internal sealed class GroupManager
         if (sender is not CardWindow card || card.ClosingByManager || _shuttingDown) return;
         // 탐색기가 재시작되면 소유자(Progman)와 함께 카드가 파괴된다. 잠시 뒤 다시 띄운다.
         _cards.Remove(card.Group.Name);
-        if (Selected == card) Select(null);
-        ExpandedWindow.CloseFor(card);
-        card.Group.Changed -= RaiseChanged;
-        card.Group.Dispose();
+        Detach(card);
         var retry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         retry.Tick += (_, _) =>
         {
@@ -377,10 +373,16 @@ internal sealed class GroupManager
     private void RemoveCard(string name)
     {
         if (!_cards.Remove(name, out var card)) return;
-        if (Selected == card) Select(null);
-        ExpandedWindow.CloseFor(card);
         card.ClosingByManager = true;
         card.Close();
+        Detach(card);
+    }
+
+    /// <summary>목록에서 빠진 카드의 선택·펼친 창·폴더 감시를 정리한다.</summary>
+    private void Detach(CardWindow card)
+    {
+        if (Selected == card) Select(null);
+        ExpandedWindow.CloseFor(card);
         card.Group.Changed -= RaiseChanged;
         card.Group.Dispose();
     }
@@ -444,13 +446,7 @@ internal sealed class GroupManager
             return false;
         }
 
-        _cards.Remove(oldName);
-        _cards[newName] = card;
-        _cfg.Positions.Remove(oldName);
-        if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
-        var p = card.ActualPosition;
-        _cfg.Positions[newName] = new[] { p.X, p.Y };
-        _cfg.Save();
+        Rekey(card, oldName, newName);
         card.Group.MovedTo(dest);
         RaiseChanged();
         EditChanged?.Invoke();
@@ -471,7 +467,7 @@ internal sealed class GroupManager
         if (entries.Length > 0)
         {
             var r = Dialogs.Show($"안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
-                MessageBoxButton.OKCancel, MessageBoxImage.Question, heading: $"'{g.Name}' 그룹을 삭제할까요?", primary: "삭제");
+                MessageBoxButton.OKCancel, heading: $"'{g.Name}' 그룹을 삭제할까요?", primary: "삭제");
             if (r != MessageBoxResult.OK) return false;
             foreach (var path in entries)
                 if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
@@ -514,42 +510,31 @@ internal sealed class GroupManager
         return vs.Contains(new Point(x + 40, y + 40));
     }
 
+    /// <summary>
+    /// 새 카드 자리. 주 모니터 작업 영역을 반 카드 간격 격자로 나눠 오른쪽 위부터 아래로,
+    /// 다음 열은 왼쪽으로 가며 비어 있는 첫 자리를 찾는다. 새 카드는 기본 크기다.
+    /// </summary>
     private Point NextFreeSlot()
     {
-        // 주 모니터 오른쪽 위부터 아래로, 다음 열은 왼쪽으로 채운다.
         var wa = SystemParameters.WorkArea;
         var taken = _cards.Values.Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
 
+        double s = Native.PrimaryScale();
+        double k = _cfg.DefaultZoom * ZoomFactor(s);
+        var baseSize = CardWindow.BaseSize(new CardLayout(), CellSize);
+        int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
+        var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
+        var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
+        for (int i = nx; i >= 0; i -= 2)
         {
-            // 카드 이동 격자(작업 영역 기준, 2칸 = 카드 하나)로 오른쪽 위부터 찾는다. 새 카드는 기본 크기다.
-            double s = Native.PrimaryScale();
-            double k = _cfg.DefaultZoom * ZoomFactor(s);
-            var baseSize = CardWindow.BaseSize(new CardLayout(), CellSize);
-            int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
-            var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
-            var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
-            for (int i = nx; i >= 0; i -= 2)
+            for (int j = 0; j <= ny; j += 2)
             {
-                for (int j = 0; j <= ny; j += 2)
-                {
-                    var (px, py) = DesktopGrid.CellAt(waPx, wPx, hPx, i, j);
-                    var r = new Rect(px / s, py / s, wPx / s, hPx / s);
-                    var probe = new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
-                    if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
-                }
+                var (px, py) = DesktopGrid.CellAt(waPx, wPx, hPx, i, j);
+                var r = new Rect(px / s, py / s, wPx / s, hPx / s);
+                var probe = new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
+                if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
             }
         }
-
-        for (int col = 0; col < 20; col++)
-        {
-            for (double y = wa.Top + 16; y + CardH <= wa.Bottom; y += CardH)
-            {
-                double x = wa.Right - 16 - CardW * (col + 1);
-                var r = new Rect(x + 4, y + 4, CardW - 8, CardH - 8);
-                if (!taken.Any(t => t.IntersectsWith(r)))
-                    return new Point(Math.Round(x / 8) * 8, Math.Round(y / 8) * 8);
-            }
-        }
-        return new Point(wa.Left + 40, wa.Top + 40);
+        return new Point(wa.Left + 40, wa.Top + 40); // 빈 자리가 없으면 겹쳐서라도 보이게
     }
 }

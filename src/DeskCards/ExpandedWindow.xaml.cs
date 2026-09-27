@@ -264,8 +264,7 @@ internal partial class ExpandedWindow : Window
     {
         // 카드 가운데를 기준으로 펼치고, 모니터 작업 영역 안으로 맞춘다.
         var dpi = VisualTreeHelper.GetDpi(_card);
-        var hwnd = new WindowInteropHelper(_card).Handle;
-        var wa = System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea;
+        var wa = System.Windows.Forms.Screen.FromHandle(Hwnd.Of(_card)).WorkingArea;
         double waL = wa.Left / dpi.DpiScaleX, waT = wa.Top / dpi.DpiScaleY;
         double waR = wa.Right / dpi.DpiScaleX, waB = wa.Bottom / dpi.DpiScaleY;
 
@@ -279,16 +278,10 @@ internal partial class ExpandedWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        // 시스템 메뉴를 빼서 캡션의 × 버튼이 그려지지 않게 한다.
-        long style = Native.GetWindowLongPtr(hwnd, Native.GWL_STYLE).ToInt64();
-        Native.SetWindowLongPtr(hwnd, Native.GWL_STYLE, new IntPtr(style & ~Native.WS_SYSMENU));
-        var src = HwndSource.FromHwnd(hwnd);
-        if (src?.CompositionTarget != null) src.CompositionTarget.BackgroundColor = Colors.Transparent;
-        src?.AddHook(WndProc);
-        Native.SetDwm(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, Theme.IsLight ? 0 : 1);
-        Native.SetDwm(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, 2); // 둥근 모서리
-        Native.SetDwm(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);      // 아크릴
+        var hwnd = Hwnd.Of(this);
+        Hwnd.RemoveSysMenu(hwnd);
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+        HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
