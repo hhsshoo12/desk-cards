@@ -225,12 +225,17 @@ internal partial class SettingsWindow : Window
         AddRow(Row("", "안내선 · 자동 맞춤",
             "카드를 옮기거나 크기를 바꿀 때 다른 카드·화면 가운데와 줄이 맞으면 보라색 선을 보여 주고 붙여요. Alt를 누르고 있으면 잠시 꺼져요.",
             Switch(_mgr.ShowGuides, v => _mgr.ShowGuides = v)));
+        // 한 칸 = 0.1초. 0 = 즉시, 1~10 = 0.1~1초, 11 = 꺼짐.
+        const int hoverOff = Config.HoverDelayMax / 100 + 1;
         AddRow(Row("", "더보기에 올려 두면 펼치기",
-            "카드의 더보기 칸에 마우스를 잠시 올려 두면 누르지 않아도 펼쳐져요. 펼쳐진 창 밖으로 마우스를 옮기면 바로 접혀요.",
-            Switch(_mgr.HoverExpand, v => _mgr.HoverExpand = v)));
-        AddRow(Row("", "펼칠 때까지 기다리는 시간", "0.1초부터 1초까지 골라요.",
-            Stepper(() => _mgr.HoverExpandDelay / 100, v => _mgr.HoverExpandDelay = v * 100,
-                Config.HoverDelayMin / 100, Config.HoverDelayMax / 100, v => $"{v / 10.0:0.0}초")));
+            "카드의 더보기 칸에 마우스를 올려 두면 이 시간 뒤에 누르지 않아도 펼쳐지고, 펼쳐진 창 밖으로 옮기면 바로 접혀요. 1초에서 더 늘리면 꺼져요.",
+            Stepper(() => _mgr.HoverExpand ? _mgr.HoverExpandDelay / 100 : hoverOff,
+                v =>
+                {
+                    _mgr.HoverExpand = v < hoverOff;
+                    if (v < hoverOff) _mgr.HoverExpandDelay = v * 100;
+                },
+                0, hoverOff, v => v == 0 ? "즉시" : v == hoverOff ? "꺼짐" : $"{v / 10.0:0.0}초")));
         if (Updater.Instance is { } updater)
             AddRow(Row("", "자동 업데이트",
                 "새 버전이 나오면 미리 받아 두었다가, 다음에 앱을 켤 때(보통 PC를 다시 켤 때) 새 버전으로 열어요.",
@@ -726,7 +731,20 @@ internal partial class SettingsWindow : Window
             set(next);
             num.Text = format(get());
         }
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        // 마우스를 올리고 휠을 굴리면 한 칸(120)마다 한 단계씩 바뀐다. 터치패드의 작은 값은 모아서 센다.
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Transparent };
+        int wheel = 0;
+        panel.MouseWheel += (_, e) =>
+        {
+            e.Handled = true;
+            wheel += e.Delta;
+            while (Math.Abs(wheel) >= 120)
+            {
+                Step(wheel > 0 ? +1 : -1);
+                wheel -= Math.Sign(wheel) * 120;
+            }
+        };
+        panel.MouseLeave += (_, _) => wheel = 0;
         panel.Children.Add(StepButton("", () => Step(-1)));
         panel.Children.Add(num);
         panel.Children.Add(StepButton("", () => Step(+1)));

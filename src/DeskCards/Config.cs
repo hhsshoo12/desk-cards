@@ -22,10 +22,10 @@ internal sealed class Config
     /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지. 기본 켜짐.</summary>
     public bool HoverExpand { get; set; } = true;
 
-    /// <summary>더보기 칸에 올려 두고 펼칠 때까지 기다리는 시간(ms, 100~1000).</summary>
+    /// <summary>더보기 칸에 올려 두고 펼칠 때까지 기다리는 시간(ms, 0~1000, 0.1초 단위). 0은 즉시.</summary>
     public int HoverExpandDelay { get; set; } = HoverDelayDefault;
 
-    public const int HoverDelayMin = 100, HoverDelayMax = 1000, HoverDelayDefault = 400;
+    public const int HoverDelayMin = 0, HoverDelayMax = 1000, HoverDelayDefault = 400;
 
     /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
     public double CellSize { get; set; }
@@ -44,6 +44,9 @@ internal sealed class Config
 
     /// <summary>받아 두고 다음 실행 때 바꿔 끼울 버전(예: "0.2.2"). 없으면 null.</summary>
     public string? PendingUpdate { get; set; }
+
+    public static int NormalizeHoverDelay(int ms) =>
+        Math.Clamp((int)Math.Round(ms / 100.0) * 100, HoverDelayMin, HoverDelayMax);
 
     private static string DefaultPath => Path.Combine(AppPaths.ConfigDir, "config.json");
 
@@ -73,7 +76,7 @@ internal sealed class Config
                     if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
                     else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
-                    cfg.HoverExpandDelay = Math.Clamp(cfg.HoverExpandDelay, HoverDelayMin, HoverDelayMax);
+                    cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
                     return cfg;
                 }
             }

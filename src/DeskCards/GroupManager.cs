@@ -75,7 +75,7 @@ internal sealed class GroupManager
         get => _cfg.HoverExpandDelay;
         set
         {
-            value = Math.Clamp(value, Config.HoverDelayMin, Config.HoverDelayMax);
+            value = Config.NormalizeHoverDelay(value);
             if (_cfg.HoverExpandDelay == value) return;
             _cfg.HoverExpandDelay = value;
             _cfg.Save();
