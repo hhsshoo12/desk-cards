@@ -32,7 +32,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -119,7 +119,7 @@ internal static class FileOps
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"{Path.GetFileName(p)}: {ex.Message}", "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Dialogs.Show($"{Path.GetFileName(p)}: {ex.Message}", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -135,7 +135,7 @@ internal static class FileOps
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Desk Cards", MessageBoxButton.OK, MessageBoxImage.Warning);
+            Dialogs.Show(ex.Message, MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
     }

@@ -158,8 +158,22 @@ internal sealed class GroupManager
         if (!Editing)
         {
             Editing = true;
+            // 설정 창은 잠시 숨겼다가 편집이 끝나면 되살린다. 다른 앱 창은 바탕화면 보기로 치우고 되살리지 않는다.
+            SettingsWindow.HideForEdit();
+            ExpandedWindow.CloseCurrent();
+            bool toggled = DesktopShell.ShowDesktop();
             foreach (var c in _cards.Values) c.BeginEdit();
-            EditBar.Open(this);
+            // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).
+            var delay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(toggled ? 350 : 1) };
+            delay.Tick += (_, _) =>
+            {
+                delay.Stop();
+                if (!Editing) return;
+                EditDim.ShowAll(this);
+                foreach (var c in _cards.Values) c.RaiseForEdit(); // 막 위로
+                EditBar.Open(this);
+            };
+            delay.Start();
         }
         Select(select ?? Selected);
     }
@@ -169,6 +183,7 @@ internal sealed class GroupManager
         if (!Editing) return;
         Editing = false;
         Selected = null;
+        EditDim.CloseAll();
         foreach (var c in _cards.Values) c.EndEdit();
         EditBar.CloseBar();
         EditChanged?.Invoke();
@@ -377,7 +392,7 @@ internal sealed class GroupManager
     {
         if (!FileOps.IsValidGroupName(newName))
         {
-            MessageBox.Show("사용할 수 없는 폴더 이름이에요. 예약된 이름, 끝의 점·공백, \\ / : * ? \" < > | 문자는 사용할 수 없어요.", "Desk Cards");
+            Dialogs.Show("사용할 수 없는 폴더 이름이에요. 예약된 이름, 끝의 점·공백, \\ / : * ? \" < > | 문자는 사용할 수 없어요.");
             return false;
         }
         string oldName = card.Group.Name;
@@ -386,7 +401,7 @@ internal sealed class GroupManager
         bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase);
         if (!caseOnly && (Directory.Exists(dest) || File.Exists(dest)))
         {
-            MessageBox.Show($"'{newName}' 그룹이 이미 있어요.", "Desk Cards");
+            Dialogs.Show($"'{newName}' 그룹이 이미 있어요.");
             return false;
         }
         try
@@ -409,7 +424,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Desk Cards");
+            Dialogs.Show(ex.Message);
             return false;
         }
 
@@ -434,13 +449,13 @@ internal sealed class GroupManager
         try { entries = Directory.GetFileSystemEntries(g.Folder); }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Desk Cards");
+            Dialogs.Show(ex.Message);
             return false;
         }
         if (entries.Length > 0)
         {
-            var r = MessageBox.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
-                "Desk Cards", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            var r = Dialogs.Show($"'{g.Name}' 그룹을 삭제할까요?\n안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
+                MessageBoxButton.OKCancel, MessageBoxImage.Question);
             if (r != MessageBoxResult.OK) return false;
             foreach (var path in entries)
                 if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
@@ -451,7 +466,7 @@ internal sealed class GroupManager
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"폴더를 지우지 못했어요: {ex.Message}", "Desk Cards");
+            Dialogs.Show($"폴더를 지우지 못했어요: {ex.Message}");
             return false;
         }
         _cfg.Positions.Remove(g.Name);

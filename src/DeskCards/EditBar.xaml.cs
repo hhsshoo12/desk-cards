@@ -71,7 +71,7 @@ internal partial class EditBar : Window
         foreach (var b in _cardButtons) Items.Children.Add(b);
         Items.Children.Add(Sep());
         Items.Children.Add(Btn("", "설정", () => SettingsWindow.Open(_mgr, _mgr.Selected)));
-        Items.Children.Add(Btn("", "끝내기 (Esc)", () => _mgr.EndEditMode()));
+        Items.Children.Add(DoneButton());
 
         _mgr.EditChanged += Refresh;
         _mgr.Changed += Refresh;
@@ -117,10 +117,7 @@ internal partial class EditBar : Window
     private void DeleteSelected()
     {
         if (_mgr.Selected is not { } card) return;
-        // 확인 창이 막대 뒤로 숨지 않게 잠시 맨 위를 푼다.
-        Topmost = false;
-        _mgr.DeleteGroup(card);
-        Topmost = true;
+        _mgr.DeleteGroup(card); // 확인 창은 Dialogs가 이 막대를 소유자로 삼아 막대 위에 띄운다.
     }
 
     private void OnKey(object sender, KeyEventArgs e)
@@ -251,6 +248,17 @@ internal partial class EditBar : Window
         var b = new Button { Style = (Style)FindResource("BarButton"), Content = Glyph(glyph), ToolTip = tip };
         AutomationProperties.SetName(b, tip); // 화면 읽기 프로그램용
         b.Click += (_, _) => act();
+        return b;
+    }
+
+    private Button DoneButton()
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal };
+        content.Children.Add(Glyph("", 14)); // 체크
+        content.Children.Add(new TextBlock { Text = "완료", FontSize = 14, Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center });
+        var b = new Button { Style = (Style)FindResource("BarAccentButton"), Content = content, ToolTip = "편집 끝내기 (Esc)" };
+        AutomationProperties.SetName(b, "완료");
+        b.Click += (_, _) => _mgr.EndEditMode();
         return b;
     }
 

@@ -90,9 +90,12 @@ internal partial class ExpandedWindow : Window
         _current?.SafeClose();
         var w = new ExpandedWindow(card, mgr, editTitle);
         _current = w;
+        w.Topmost = mgr.Editing; // 편집 막대의 이름 바꾸기: 어두운 막 위에 뜬다.
         w.Show();
         w.Activate();
     }
+
+    public static void CloseCurrent() => _current?.SafeClose();
 
     public static void CloseFor(CardWindow card)
     {

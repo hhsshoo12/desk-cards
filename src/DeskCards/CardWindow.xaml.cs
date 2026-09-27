@@ -189,7 +189,18 @@ internal partial class CardWindow : Window
         GripCorner.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
         UpdateBorder(false);
+        RaiseForEdit();
     }
+
+    /// <summary>편집 중에는 어두운 막(EditDim) 위로 올라온다. 편집이 끝나면 다시 바탕화면 층으로 내려간다.</summary>
+    public void RaiseForEdit()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !_editing) return;
+        Native.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+    }
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
 
     public void EndEdit()
     {
@@ -198,6 +209,10 @@ internal partial class CardWindow : Window
         GripCorner.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder(false);
+        // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd != IntPtr.Zero)
+            Native.SetWindowPos(hwnd, Native.HWND_BOTTOM, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
         _mgr.SavePosition(this);
     }
 
@@ -402,9 +417,9 @@ internal partial class CardWindow : Window
     {
         if (msg == Native.WM_WINDOWPOSCHANGING)
         {
-            // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다.
+            // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
             var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
-            if ((wp.flags & Native.SWP_NOZORDER) == 0)
+            if ((wp.flags & Native.SWP_NOZORDER) == 0 && !_editing)
             {
                 wp.hwndInsertAfter = Native.HWND_BOTTOM;
                 Marshal.StructureToPtr(wp, lParam, false);

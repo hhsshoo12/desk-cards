@@ -39,6 +39,30 @@
             </Setter>
         </Style>
 
+        <!-- 파란 [✓ 완료] 버튼 -->
+        <Style x:Key="BarAccentButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource AccentFg}" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Height="32" CornerRadius="4" Padding="12,0,14,0" Margin="4,0,2,0"
+                                Background="{DynamicResource Accent}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.9" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 칸 수 펼침 목록의 항목 -->
         <Style x:Key="FlyoutItem" TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource Fg}" />

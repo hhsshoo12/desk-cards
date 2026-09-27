@@ -68,6 +68,7 @@ internal partial class SettingsWindow : Window
         _win ??= new SettingsWindow(mgr);
         if (card != null) _win.ShowCard(card);
         _win._hiddenForEdit = false;
+        _win.Topmost = mgr.Editing; // 편집 막대에서 열면 어두운 막 위에 뜬다.
         if (!_win.IsVisible) _win.Show();
         if (_win.WindowState == WindowState.Minimized) _win.WindowState = WindowState.Normal;
         _win.Activate();
@@ -98,9 +99,17 @@ internal partial class SettingsWindow : Window
         ScheduleBuild();
     }
 
+    /// <summary>편집을 시작할 때 떠 있던 설정 창은 숨겼다가, 편집이 끝나면 되살린다.</summary>
+    public static void HideForEdit()
+    {
+        if (_win == null || !_win.IsVisible) return;
+        _win._hiddenForEdit = true;
+        _win.Hide();
+    }
+
     private void OnEditChanged()
     {
-        // 설정에서 편집을 시작해 숨었으면, 편집이 끝날 때 다시 나타난다.
+        if (!_mgr.Editing) Topmost = false;
         if (_mgr.Editing || _mgr.IsShuttingDown || !_hiddenForEdit) return;
         _hiddenForEdit = false;
         Show();
@@ -108,12 +117,7 @@ internal partial class SettingsWindow : Window
         ScheduleBuild();
     }
 
-    private void StartEdit(CardWindow? card)
-    {
-        _hiddenForEdit = true;
-        Hide();
-        _mgr.BeginEditMode(card);
-    }
+    private void StartEdit(CardWindow? card) => _mgr.BeginEditMode(card);
 
     /// <summary>클릭 처리 도중에 화면을 갈아엎지 않도록 한 박자 늦게, 여러 번 와도 한 번만 다시 그린다.</summary>
     private void ScheduleBuild()
