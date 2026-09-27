@@ -65,7 +65,6 @@ internal partial class EditBar : Window
         {
             Btn("", "이름 바꾸기", () => { if (_mgr.Selected is { } c) ExpandedWindow.Open(c, _mgr, editTitle: true); }),
             _gridButton,
-            Btn("", "폴더 열기", () => { if (_mgr.Selected is { } c) FileOps.OpenFolder(c.Group.Folder); }),
             Btn("", "삭제 (Delete, 항목은 바탕화면으로)", DeleteSelected),
         };
         foreach (var b in _cardButtons) Items.Children.Add(b);
@@ -95,6 +94,15 @@ internal partial class EditBar : Window
             _bar.Show();
         }
         _bar.Activate();
+    }
+
+    /// <summary>카드들을 막 위로 올린 뒤 막대가 그 아래로 가려지지 않게 다시 맨 위로.</summary>
+    public static void BringToTop()
+    {
+        if (_bar == null) return;
+        var hwnd = new WindowInteropHelper(_bar).Handle;
+        if (hwnd != IntPtr.Zero)
+            Native.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
     public static void CloseBar()

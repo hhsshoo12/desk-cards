@@ -170,8 +170,8 @@ internal sealed class GroupManager
                 delay.Stop();
                 if (!Editing) return;
                 EditDim.ShowAll(this);
-                foreach (var c in _cards.Values) c.RaiseForEdit(); // 막 위로
                 EditBar.Open(this);
+                RaiseEditLayer();
             };
             delay.Start();
         }
@@ -193,7 +193,19 @@ internal sealed class GroupManager
     {
         Selected = card;
         foreach (var c in _cards.Values) c.SetSelected(c == card);
+        RaiseEditLayer();
         EditChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 편집 중에 모든 카드를 어두운 막 위로, 막대는 그 위로 다시 올린다.
+    /// 새 카드를 띄우면(바탕화면 층에 붙이는 과정에서) 다른 카드들이 막 뒤로 밀려나기 때문에 그때마다 부른다.
+    /// </summary>
+    private void RaiseEditLayer()
+    {
+        if (!Editing) return;
+        foreach (var c in _cards.Values) c.RaiseForEdit();
+        EditBar.BringToTop();
     }
 
     public void Start()
@@ -331,7 +343,11 @@ internal sealed class GroupManager
         // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
         card.FitToScreen();
         SavePosition(card);
-        if (Editing) card.BeginEdit();
+        if (Editing)
+        {
+            card.BeginEdit();
+            RaiseEditLayer();
+        }
         return card;
     }
 
