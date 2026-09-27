@@ -2,6 +2,18 @@
 
 앱의 C#/XAML, 파일 처리, 설정 저장, 폴더 감시, 설치·제거 Python 코드와 빌드 스크립트를 검토했다. 아래 문제를 수정했으며, 모든 사용 환경에서 문제가 없다는 뜻은 아니다.
 
+## 2026-09-27 웹 설치기 전환
+
+- `docs/installer-spec.md`에 따라 Python 설치기를 `net48` WPF 웹 설치기로 교체했다. 아래 Python 점검 내용은 이전 버전의 기록이다.
+- 앱과 설치기 버전은 각각 `0.2.0`이며 앱 릴리스(`app-v…`)와 설치기 릴리스(`installer-v…`)를 분리한다.
+- 최신 앱의 숫자 버전 선택, 다운그레이드 차단, SHA-256·ZIP 경로·크기·내부 버전 검증, 파일 교체 실패 시 복구를 구현했다.
+- 네트워크 오류, 요청 한도, 후보·파일 없음, 기타 HTTP·JSON 오류의 안내 및 다시 시도/닫기 버튼을 명세대로 구분한다.
+- `DeskCards.Quit` 정상 종료 요청, `StartupApproved`와 설정 스위치 동기화, AppUserModelID 및 ShellLink 등록을 추가했다.
+- 설치기 회귀 테스트 **57개**, 기존 앱 회귀 테스트 **15개** 통과. 설치기 테스트의 파일·레지스트리는 GUID별 임시 공간에서만 만들고 정리한다. 네트워크·프로세스 제어는 테스트 대역이다.
+- 앱, 설치기, 두 테스트 프로젝트가 `-warnaserror` 빌드를 통과했다. `installer/build.ps1`은 앱 ZIP·SHA-256과 단독 설치기 EXE를 생성한다. 업로드는 수행하지 않는다.
+- 배포 설치기는 **121,856바이트**이며 옆에 DLL·설정 파일 없이 실행됐다. 실제 GitHub 조회에서 호환 앱 릴리스가 없는 상태를 확인했고, 명세의 안내와 닫기 버튼을 표시했다. 기존 설치도 업데이트 대상으로 인식했다. 밝은/어두운 테마는 격리된 미리보기 창에서 확인했다.
+- 실제 사용자 경로의 설치→업데이트→제거 전체 실행과 구버전 앱 강제 종료는 수동 검증 대상으로 남긴다.
+
 ## 수정 사항
 
 | 영역 | 문제와 수정 |
@@ -38,7 +50,7 @@
 
 ```powershell
 dotnet run --project tests/DeskCards.RegressionTests -c Release --no-launch-profile
-python -m unittest discover -s tests -p test_installer.py -v
+dotnet run --project tests/DeskCards.Setup.Tests -c Release --no-launch-profile
 dotnet build src/DeskCards -c Release --nologo -warnaserror
 ```
 

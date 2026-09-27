@@ -3,8 +3,4 @@ obj/
 *.user
 .vs/
 publish/
-installer/payload/
-installer/build/
 installer/dist/
-installer/.venv/
-__pycache__/
