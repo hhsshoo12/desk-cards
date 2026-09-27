@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>.dard 카드 설계</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --panel2: #f0f2f5; --text: #1b1f24; --muted: #5d6673;
+  --border: #dde1e6; --accent: #0a64d8; --accent-soft: #e5efff;
+  --green: #188a4a; --yellow: #b88a00; --orange: #d4640a; --red: #cf2e2e; --gray: #8a929c;
+  --green-soft: #e3f5ea; --yellow-soft: #fbf3d6; --orange-soft: #fdebdc; --red-soft: #fbe3e3;
+  --code: #eef1f5; --shadow: 0 8px 28px rgba(20, 30, 50, .14);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15171b; --panel: #1e2126; --panel2: #262a30; --text: #e8eaed; --muted: #9aa3ae;
+    --border: #343941; --accent: #5aa2ff; --accent-soft: #1d2f4a;
+    --green: #4cc47f; --yellow: #e6bb35; --orange: #f08a3c; --red: #f06767; --gray: #7d8590;
+    --green-soft: #183224; --yellow-soft: #342c12; --orange-soft: #3a2616; --red-soft: #3b1d1d;
+    --code: #262a30; --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15171b; --panel: #1e2126; --panel2: #262a30; --text: #e8eaed; --muted: #9aa3ae;
+  --border: #343941; --accent: #5aa2ff; --accent-soft: #1d2f4a;
+  --green: #4cc47f; --yellow: #e6bb35; --orange: #f08a3c; --red: #f06767; --gray: #7d8590;
+  --green-soft: #183224; --yellow-soft: #342c12; --orange-soft: #3a2616; --red-soft: #3b1d1d;
+  --code: #262a30; --shadow: 0 8px 28px rgba(0, 0, 0, .5);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.65 "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+}
+code, pre { font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+pre { background: var(--code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; margin: 10px 0; line-height: 1.5; }
+a { color: var(--accent); }
+.layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); max-width: 1180px; margin: 0 auto; gap: 32px; padding: 0 24px; }
+nav.toc { position: sticky; top: 0; align-self: start; padding: 28px 0; max-height: 100vh; overflow-y: auto; }
+nav.toc .brand { font-weight: 700; font-size: 17px; margin-bottom: 4px; }
+nav.toc .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+nav.toc a { display: block; color: var(--muted); text-decoration: none; padding: 5px 10px; border-radius: 6px; font-size: 14px; border-left: 2px solid transparent; }
+nav.toc a:hover { background: var(--panel2); color: var(--text); }
+nav.toc a.active { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+.theme-btn { margin-top: 18px; background: var(--panel); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit; font-size: 13px; }
+main { padding: 28px 0 80px; min-width: 0; }
+header.hero { margin-bottom: 28px; }
+header.hero h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.3px; }
+header.hero p { margin: 0; color: var(--muted); }
+.pill { display: inline-block; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 600; margin-right: 6px; }
+section { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; margin-bottom: 20px; scroll-margin-top: 16px; }
+section h2 { margin: 0 0 12px; font-size: 21px; }
+section h3 { margin: 22px 0 8px; font-size: 16px; }
+section p { margin: 8px 0; }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; }
+.table-wrap { overflow-x: auto; }
+.dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; }
+.g { background: var(--green); } .y { background: var(--yellow); } .o { background: var(--orange); } .r { background: var(--red); } .n { background: var(--gray); }
+.tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+.tag.v1 { background: var(--accent-soft); color: var(--accent); }
+.tag.later { background: var(--panel2); color: var(--muted); }
+.tag.no { background: var(--red-soft); color: var(--red); }
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+.callout.warn { border-color: var(--orange); background: var(--orange-soft); }
+.callout.bad { border-color: var(--red); background: var(--red-soft); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.card-box { border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; background: var(--panel2); }
+.card-box h4 { margin: 0 0 6px; font-size: 14px; }
+.card-box ul { margin: 0; padding-left: 18px; }
+.flow { display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.flow .step { flex: 1 1 150px; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--panel2); font-size: 13px; }
+.flow .step b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--muted); }
+
+/* level legend */
+.levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0; }
+.level { border-radius: 10px; padding: 12px 14px; border: 1px solid var(--border); }
+.level .name { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.level .how { font-size: 13px; margin-top: 4px; }
+.level.g { background: var(--green-soft); } .level.y { background: var(--yellow-soft); } .level.o { background: var(--orange-soft); } .level.r { background: var(--red-soft); }
+
+/* installer demo */
+.demo { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 20px; align-items: start; }
+.demo-controls { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--panel2); font-size: 14px; }
+.demo-controls label { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; cursor: pointer; }
+.demo-controls .grp { font-size: 12px; color: var(--muted); margin: 10px 0 2px; font-weight: 600; }
+.demo-controls .grp:first-child { margin-top: 0; }
+.dialog { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); max-width: 460px; overflow: visible; }
+.dialog .titlebar { padding: 10px 16px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.dialog .body { padding: 18px 20px 8px; }
+.dialog .cardname { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+.dialog .cardicon { width: 44px; height: 44px; border-radius: 10px; background: linear-gradient(135deg, #4aa3ff, #7b5cff); display: grid; place-items: center; color: #fff; font-size: 22px; }
+.dialog .cardname b { font-size: 16px; display: block; }
+.dialog .cardname span { font-size: 12px; color: var(--muted); }
+.dialog h5 { margin: 14px 0 6px; font-size: 14px; }
+.perm { display: flex; justify-content: space-between; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--border); font-size: 14px; gap: 10px; }
+.perm:last-child { border-bottom: 0; }
+.ico { position: relative; width: 22px; height: 22px; border-radius: 50%; color: #fff; font-weight: 800; font-size: 13px; display: grid; place-items: center; cursor: help; flex: none; border: 0; padding: 0; font-family: inherit; }
+.ico.g { background: var(--green); } .ico.y { background: var(--yellow); } .ico.o { background: var(--orange); } .ico.r { background: var(--red); }
+.tip { display: none; position: absolute; right: 0; top: 28px; width: 280px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); padding: 10px 12px; font-size: 13px; font-weight: 400; text-align: left; z-index: 20; line-height: 1.55; cursor: default; }
+.ico:hover .tip, .ico:focus .tip, .ico.open .tip { display: block; }
+.tip ul { margin: 4px 0; padding-left: 18px; }
+.tip .lim { color: var(--muted); margin-top: 6px; }
+.dialog .empty { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+.combo { background: var(--orange-soft); border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 10px; }
+.dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 20px; background: var(--panel2); border-top: 1px solid var(--border); border-radius: 0 0 10px 10px; margin-top: 12px; }
+.btn { border: 1px solid var(--border); background: var(--panel); color: var(--text); padding: 6px 18px; border-radius: 6px; font: inherit; font-size: 14px; cursor: pointer; }
+.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.manifest-out { margin-top: 12px; }
+
+details { border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; margin: 8px 0; background: var(--panel2); }
+details summary { cursor: pointer; font-weight: 600; }
+details[open] summary { margin-bottom: 6px; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: 1fr; padding: 0 16px; gap: 0; }
+  nav.toc { position: static; max-height: none; padding: 20px 0 0; display: flex; flex-wrap: wrap; gap: 4px; }
+  nav.toc .brand, nav.toc .sub { width: 100%; }
+  nav.toc a { border-left: 0; background: var(--panel); border: 1px solid var(--border); font-size: 13px; }
+  .levels { grid-template-columns: 1fr 1fr; }
+  .demo, .grid2 { grid-template-columns: 1fr; }
+  section { padding: 18px 16px; }
+  .tip { width: 240px; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" id="toc">
+  <div class="brand">.dard 설계</div>
+  <div class="sub">Desk Cards 카드 패키지 · 초안</div>
+  <a href="#overview">개요</a>
+  <a href="#package">패키지 구조</a>
+  <a href="#arch">동작 구조</a>
+  <a href="#levels">권한 4단계</a>
+  <a href="#v1perms">1차 권한</a>
+  <a href="#demo">설치 창 미리보기</a>
+  <a href="#api">desk API 초안</a>
+  <a href="#webview">WebView 정책</a>
+  <a href="#integrity">스스로 업데이트 방지</a>
+  <a href="#limits">횟수 제한</a>
+  <a href="#later">나중에 할 것</a>
+  <a href="#decisions">결정 기록</a>
+  <a href="#open">남은 질문</a>
+  <button class="theme-btn" id="themeBtn" type="button">테마 바꾸기</button>
+</nav>
+
+<main>
+<header class="hero">
+  <span class="pill">설계 초안</span><span class="pill">2026-09-27</span>
+  <h1>.dard 카드 패키지 설계</h1>
+  <p>Desk Cards를 폴더 카드 앱에서 <b>카드 플랫폼</b>으로 넓히기 위한 카드 형식과 권한 모델입니다.</p>
+</header>
+
+<section id="overview">
+  <h2>개요</h2>
+  <p>Desk Cards의 카드는 폴더 카드 하나만 있는 게 아니라, 누구나 만들어 얹을 수 있는 <b>카드 종류</b> 중 하나입니다. 레인미터나 Windows 7 가젯과 같은 계열입니다.</p>
+  <p>새 카드는 <code>.dard</code> 파일 하나로 배포합니다. 안에는 <b>HTML 한 장</b>과 <b>매니페스트</b>만 있고, 카드가 네이티브 기능을 쓰려면 Desk Cards가 WebView에 넣어 주는 <code>desk</code> 라이브러리를 부릅니다.</p>
+  <div class="grid2">
+    <div class="card-box">
+      <h4>목표</h4>
+      <ul>
+        <li>AI가 만들기 쉬울 것: HTML/JS 한 장이면 카드가 됨</li>
+        <li>설치할 때 무엇을 하는 카드인지 한눈에 보일 것</li>
+        <li>설치 크기 256MB 이하 (WebView2는 이미 Windows에 있음)</li>
+      </ul>
+    </div>
+    <div class="card-box">
+      <h4>1차에서 하지 않는 것</h4>
+      <ul>
+        <li>완벽한 보안 (가능한 권한을 크게 줄여서 해결)</li>
+        <li>프로그램 실행, 파일 쓰기, 클립보드 읽기</li>
+        <li>파이썬·Lua 같은 백엔드 언어</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="package">
+  <h2>패키지 구조</h2>
+  <p><code>.dard</code>는 확장자만 바꾼 zip입니다. 파일은 딱 두 개입니다.</p>
+<pre>날씨.dard  (zip)
+├─ manifest.json   카드 정보와 권한
+└─ card.html       카드 전체 (CSS·JS·이미지 모두 인라인)</pre>
+  <p class="muted">React로 빌드하든 인라인 합성기를 쓰든, 결과물은 HTML 한 장이어야 합니다. 외부 파일·CDN은 불러올 수 없습니다.</p>
+  <h3>manifest.json 예시</h3>
+<pre>{
+  "dard": 1,                        // desk API 버전 (권한이 돌려주는 필드가 이 버전에 고정됨)
+  "id": "com.example.weather",
+  "name": "날씨",
+  "version": "1.0.0",
+  "author": "홍길동",
+  "grid": [2, 2],                   // 처음 크기 (칸)
+  "permissions": {
+    "system": ["cpu", "memory", "battery", "network"],
+    "notify": true,
+    "system.control": ["volume"],
+    "internet": ["api.openweathermap.org"]
+  }
+}</pre>
+  <ul>
+    <li><b>와일드카드 금지</b>: <code>internet</code>에는 도메인을 정확히 적습니다. <code>*.example.com</code>은 거부합니다.</li>
+    <li><b>적은 항목만 쓸 수 있음</b>: <code>system</code>에 <code>cpu</code>만 적었으면 메모리는 읽을 수 없습니다. 설치 창 풍선에도 적은 항목만 나옵니다.</li>
+  </ul>
+</section>
+
+<section id="arch">
+  <h2>동작 구조</h2>
+  <div class="flow">
+    <div class="step"><b>card.html</b>WebView2 안에서 실행. 카드마다 origin이 따로 있음</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>desk 라이브러리</b>호스트가 페이지에 주입. <code>desk.system.get()</code> 같은 함수 제공</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>postMessage (JSON)</b>카드와 호스트 사이의 유일한 통로</div>
+    <div class="arrow">→</div>
+    <div class="step"><b>호스트 (C#)</b>권한과 횟수 제한을 검사한 뒤 실제 작업 수행</div>
+  </div>
+  <ul>
+    <li><b>AddHostObjectToScript는 쓰지 않습니다.</b> C# 객체를 JS에 직접 노출하면 검사하지 않은 메서드가 새기 쉽습니다. 모든 요청은 JSON 메시지 한 가지 모양으로만 받습니다.</li>
+    <li><b>권한 검사는 호스트에서만</b> 합니다. <code>desk</code> 라이브러리 안의 검사는 편의용일 뿐 믿지 않습니다.</li>
+    <li><b>카드별 origin</b>: <code>https://&lt;카드ID&gt;.card.desk/</code>처럼 가상 호스트를 카드마다 따로 매핑합니다. 그래서 localStorage·IndexedDB가 카드끼리 섞이지 않습니다.</li>
+  </ul>
+</section>
+
+<section id="levels">
+  <h2>권한 4단계</h2>
+  <div class="levels">
+    <div class="level g"><div class="name"><span class="dot g"></span>초록 (i)</div><div class="how">읽기만 하는 무해한 정보.<br>알리기만 함. "n개"에 안 셈.</div></div>
+    <div class="level y"><div class="name"><span class="dot y"></span>노랑 (!)</div><div class="how">민폐가 될 수 있음.<br>설치할 때 한 번 승인.</div></div>
+    <div class="level o"><div class="name"><span class="dot o"></span>주황 (!)</div><div class="how">개인정보·피해 위험.<br>설치할 때 한 번 승인.</div></div>
+    <div class="level r"><div class="name"><span class="dot r"></span>빨강 (!!)</div><div class="how">샌드박스 밖·되돌릴 수 없음.<br>요청할 때마다 승인. <span class="tag later">1차 없음</span></div></div>
+  </div>
+  <h3>나누는 기준</h3>
+  <ul>
+    <li><b>카드 자기 영역 안의 일</b> → 표시 안 함 (⚪): 카드 크기·이름·설정, 카드 전용 저장소, 테마, 클릭했을 때 URL 열기·복사</li>
+    <li><b>읽기만 하고 누가 알아도 괜찮은 정보</b> → 초록</li>
+    <li><b>피해는 없지만 사용자를 괴롭힐 수 있음</b> → 노랑</li>
+    <li><b>정보가 밖으로 새거나 피해가 생길 수 있음</b> → 주황</li>
+    <li><b>카드 밖으로 나가거나 되돌릴 수 없음</b> → 빨강</li>
+  </ul>
+  <h3>풍선 문구 틀</h3>
+<pre>[무엇을 할 수 있는지]      ← 모든 색
+[왜 주의해야 하는지]        ← 노랑·주황·빨강만
+[범위 또는 걸려 있는 제한]  ← 있을 때만</pre>
+  <p class="muted">화면에는 뭉뚱그린 이름만 보여 주고(권한 피로 방지), 자세한 내용은 아이콘에 마우스를 올리거나 누르면 풍선으로 보여 줍니다.</p>
+</section>
+
+<section id="v1perms">
+  <h2>1차 권한</h2>
+  <p>첫 구현·배포에서는 권한을 <b>세 가지</b>만 만듭니다.</p>
+  <div class="table-wrap"><table>
+    <tr><th>색</th><th>화면 이름</th><th>키</th><th>하는 일</th></tr>
+    <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 온도, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
+    <tr><td><span class="dot y"></span>노랑</td><td>알림 보내기</td><td><code>notify</code></td><td>Windows 알림 띄우기</td></tr>
+    <tr><td><span class="dot y"></span>노랑</td><td>소리·화면 밝기 조절</td><td><code>system.control</code></td><td>시스템 볼륨·음소거, 화면 밝기 읽기/바꾸기</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 연결</td><td><code>internet</code></td><td>매니페스트에 적힌 도메인과만 통신</td></tr>
+  </table></div>
+  <h3><code>system</code> 필드 (dard 1 고정)</h3>
+  <p class="muted">필드를 나중에 추가하면 <code>dard: 2</code>가 되고, 카드가 새 필드를 쓰려면 다시 승인을 받아야 합니다. 그래야 기존 카드가 몰래 새 정보를 읽는 일이 없습니다.</p>
+  <div class="table-wrap"><table>
+    <tr><th>매니페스트 항목</th><th>돌려주는 값</th></tr>
+    <tr><td><code>cpu</code></td><td>전체 사용률 %</td></tr>
+    <tr><td><code>gpu</code></td><td>사용률 % (없으면 null)</td></tr>
+    <tr><td><code>memory</code></td><td>사용량·전체 (바이트)</td></tr>
+    <tr><td><code>temperature</code></td><td>CPU·GPU 온도 ℃ (못 읽으면 null)</td></tr>
+    <tr><td><code>battery</code></td><td>잔량 %, 충전 중 여부, 배터리 유무</td></tr>
+    <tr><td><code>storage</code></td><td>드라이브별 남은 공간·전체 (드라이브 문자와 용량만, 볼륨 이름 없음)</td></tr>
+    <tr><td><code>uptime</code></td><td>켜진 시간 (초)</td></tr>
+    <tr><td><code>network</code></td><td>연결 여부, 유선/무선, 링크 속도 Mbps (IP·Wi-Fi 이름 없음)</td></tr>
+  </table></div>
+</section>
+
+<section id="demo">
+  <h2>설치 창 미리보기</h2>
+  <p class="muted">왼쪽에서 매니페스트를 바꿔 보면 설치 창이 바뀝니다. 아이콘에 마우스를 올리거나 누르면 풍선이 나옵니다.</p>
+  <div class="demo">
+    <div class="demo-controls" id="controls">
+      <div class="grp">🟢 시스템 상태 읽기</div>
+      <label><input type="checkbox" data-sys="cpu" checked> CPU 사용량</label>
+      <label><input type="checkbox" data-sys="gpu"> GPU 사용량</label>
+      <label><input type="checkbox" data-sys="memory" checked> 메모리</label>
+      <label><input type="checkbox" data-sys="temperature"> 온도</label>
+      <label><input type="checkbox" data-sys="battery" checked> 배터리</label>
+      <label><input type="checkbox" data-sys="storage"> 저장 공간</label>
+      <label><input type="checkbox" data-sys="uptime"> 켜진 시간</label>
+      <label><input type="checkbox" data-sys="network" checked> 네트워크 간단 상태</label>
+      <div class="grp">🟡 노랑</div>
+      <label><input type="checkbox" id="pNotify" checked> 알림 보내기</label>
+      <label><input type="checkbox" id="pVolume"> 소리 조절</label>
+      <label><input type="checkbox" id="pBright"> 화면 밝기 조절</label>
+      <div class="grp">🟠 주황</div>
+      <label><input type="checkbox" id="pInternet" checked> 외부 네트워크와 연결</label>
+      <label style="padding-left:24px"><input type="text" id="domains" value="api.openweathermap.org" style="width:100%;font:inherit;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text)"></label>
+    </div>
+    <div>
+      <div class="dialog" id="dialog"></div>
+      <details class="manifest-out"><summary>이 설정의 manifest.json</summary><pre id="manifestOut"></pre></details>
+    </div>
+  </div>
+</section>
+
+<section id="api">
+  <h2>desk API 초안</h2>
+  <p>모든 함수는 Promise를 돌려줍니다. 권한이 없으면 <code>PermissionError</code>, 횟수 제한에 걸리면 <code>RateLimitError</code>로 거부됩니다.</p>
+  <div class="table-wrap"><table>
+    <tr><th>함수</th><th>권한</th><th>설명</th></tr>
+    <tr><td><code>desk.card.size()</code> / <code>on("resize")</code></td><td>⚪</td><td>카드 크기(칸·픽셀)와 변경 알림</td></tr>
+    <tr><td><code>desk.card.settings.get/set()</code></td><td>⚪</td><td>카드별 설정 (호스트 설정 창의 카드 상세에도 표시 가능)</td></tr>
+    <tr><td><code>desk.theme()</code> / <code>on("theme")</code></td><td>⚪</td><td>다크/라이트, 강조색, 배율</td></tr>
+    <tr><td><code>desk.openUrl(url)</code></td><td>⚪</td><td>기본 브라우저로 열기. 사용자가 누른 직후에만, <code>http(s)</code>만</td></tr>
+    <tr><td><code>desk.system.get(fields?)</code></td><td><span class="dot g"></span><code>system</code></td><td>현재 값 한 번 읽기</td></tr>
+    <tr><td><code>desk.system.watch(fields, ms, cb)</code></td><td><span class="dot g"></span><code>system</code></td><td>주기적으로 받기 (최소 1000ms). 호스트가 한 번 읽어서 여러 카드에 나눠 줌</td></tr>
+    <tr><td><code>desk.notify({title, body})</code></td><td><span class="dot y"></span><code>notify</code></td><td>Windows 알림. 알림 이름은 카드 이름으로 고정</td></tr>
+    <tr><td><code>desk.volume.get/set(n)</code>, <code>mute(bool)</code></td><td><span class="dot y"></span><code>system.control</code></td><td>시스템 볼륨 0~100</td></tr>
+    <tr><td><code>desk.brightness.get/set(n)</code></td><td><span class="dot y"></span><code>system.control</code></td><td>화면 밝기 0~100 (지원하는 모니터만)</td></tr>
+    <tr><td><code>desk.fetch(url, init)</code></td><td><span class="dot o"></span><code>internet</code></td><td>호스트가 대신 요청. 적힌 도메인·<code>https</code>만. 쿠키 없음</td></tr>
+  </table></div>
+  <div class="callout">
+    <b>왜 그냥 <code>fetch</code>가 아니라 <code>desk.fetch</code>인가요?</b><br>
+    카드 origin이 <code>https://…card.desk</code>라서 대부분의 외부 API가 CORS로 막힙니다. 호스트가 대신 요청하면 CORS 문제가 없고, 도메인 검사와 횟수 제한도 한곳에서 할 수 있습니다. 브라우저 기본 <code>fetch</code>는 CSP <code>connect-src</code>로 같은 도메인만 허용해 두고, 되면 써도 됩니다.
+  </div>
+</section>
+
+<section id="webview">
+  <h2>WebView 정책</h2>
+  <p>우리 API가 아니어도 WebView2 자체 기능으로 할 수 있는 일이 많습니다. 세 가지로 나눕니다.</p>
+  <div class="grid2">
+    <div class="card-box">
+      <h4>✅ 허용 (권한 없음)</h4>
+      <ul>
+        <li>HTML/CSS, 애니메이션, SVG, Canvas 2D, WebGL, WebGPU</li>
+        <li>Web Worker, <code>OffscreenCanvas</code>, <code>crypto.subtle</code>, <code>Intl</code></li>
+        <li>localStorage, IndexedDB, OPFS (카드 전용, 카드당 50MB)</li>
+        <li>마우스·키보드·휠·포인터 입력</li>
+        <li><code>prefers-color-scheme</code>, <code>prefers-reduced-motion</code></li>
+        <li>화면 크기, 배율, 코어 수, <code>navigator.onLine</code></li>
+        <li>클립보드 쓰기 (사용자가 누른 직후)</li>
+        <li><code>&lt;input type="file"&gt;</code>, 끌어다 놓기로 파일 <b>읽기</b> (사용자가 고른 것만)</li>
+        <li>소리 재생 (카드를 한 번 누르기 전까지는 음소거)</li>
+      </ul>
+    </div>
+    <div class="card-box">
+      <h4>⛔ 차단</h4>
+      <ul>
+        <li>위치, 카메라, 마이크, 화면 캡처(<code>getDisplayMedia</code>)</li>
+        <li>웹 알림 (<code>desk.notify</code>만 사용)</li>
+        <li>클립보드 읽기</li>
+        <li>USB, HID, 시리얼, 블루투스, MIDI</li>
+        <li>로컬 글꼴 목록, 창 관리, 유휴 감지, 스포이트, 음성 인식</li>
+        <li><code>alert</code> / <code>confirm</code> / <code>prompt</code> / <code>print</code></li>
+        <li>전체 화면, 포인터 잠금</li>
+        <li>페이지 이동, 새 창, 다운로드, 서비스 워커</li>
+        <li>우클릭 메뉴, 개발자 도구, 확대/축소, 자동 완성 (개발자 모드에서만 켬)</li>
+        <li><b>WebRTC</b>, WebAssembly, 외부 리소스 전부</li>
+      </ul>
+    </div>
+  </div>
+  <h3>어떻게 막나</h3>
+  <ul>
+    <li><b>권한 요청</b>: <code>PermissionRequested</code>에서 전부 거부</li>
+    <li><b>모달 창</b>: <code>ScriptDialogOpening</code>에서 막음</li>
+    <li><b>이동·새 창·다운로드</b>: <code>NavigationStarting</code>, <code>NewWindowRequested</code>, <code>DownloadStarting</code>에서 취소</li>
+    <li><b>외부 리소스</b>: <code>WebResourceRequested</code>로 모든 요청을 가로채서 카드 자신 외에는 거부</li>
+  </ul>
+  <div class="callout warn">
+    <b>네트워크 옆길 주의</b><br>
+    WebRTC는 요청 가로채기와 CSP를 <b>둘 다</b> 거치지 않고, 로컬 IP까지 알려 줍니다. <code>internet</code> 권한이 없는 카드도 밖과 통신할 수 있게 되므로 반드시 끕니다 (실행 인자 + 주입 스크립트로 <code>RTCPeerConnection</code> 제거). WebSocket과 DNS 미리 가져오기도 CSP·설정으로 막습니다. 구현 후 실제로 새지 않는지 테스트 카드로 확인해야 합니다.
+  </div>
+  <p>그 밖에 카드는 <b>배경 타이머 절전을 끕니다</b>. 바탕화면 카드는 늘 "보이지 않는 창" 취급을 받아서, 끄지 않으면 시계가 멈춥니다.</p>
+</section>
+
+<section id="integrity">
+  <h2>스스로 업데이트 방지</h2>
+  <p>카드가 인터넷에서 코드를 받아 실행하면 설치 때 본 카드와 다른 카드가 됩니다. 다음 네 가지로 막습니다.</p>
+  <ol>
+    <li><b>CSP</b>: <code>eval</code>, <code>new Function</code>, 문자열 타이머, 외부 스크립트, <code>javascript:</code> URL, WebAssembly 금지</li>
+    <li><b>스크립트 해시</b>: 설치할 때 card.html 안의 모든 <code>&lt;script&gt;</code> 해시를 계산해서 <code>script-src 'sha256-…'</code>로 고정</li>
+    <li><b>읽기 전용 설치 폴더</b>: 카드는 자기 설치 폴더에 쓸 수 없음</li>
+    <li><b>불러올 때 해시 확인</b>: 파일이 바뀌었으면 카드를 켜지 않음</li>
+  </ol>
+<pre>default-src 'none';
+script-src 'sha256-…' 'sha256-…';
+style-src 'unsafe-inline';
+img-src data: blob:;
+media-src data: blob:;
+font-src data:;
+connect-src &lt;internet에 적힌 도메인&gt;;
+worker-src blob:;
+base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
+  <div class="callout">
+    <b>남는 한계</b>: 받아 온 <b>데이터</b>에 따라 동작이 바뀌는 건 막을 수 없습니다. 하지만 그 동작도 승인된 권한 안에서만 일어납니다. 그래서 권한을 좁게 두는 게 핵심입니다.
+  </div>
+  <p>업데이트로 권한이 <b>늘면</b> 다시 설치 창을 띄웁니다. 권한이 같거나 줄면 그대로 업데이트합니다.</p>
+</section>
+
+<section id="limits">
+  <h2>횟수 제한</h2>
+  <div class="callout bad"><b>보안 장치가 아닙니다.</b> 민폐 방지 장치입니다. HTTP 요청 한 번으로도 데이터는 충분히 샐 수 있습니다. 풍선에서도 "안전해요" 같은 표현 없이 제한이 있다는 사실만 보여 줍니다.</div>
+  <div class="table-wrap"><table>
+    <tr><th>권한</th><th>제한</th></tr>
+    <tr><td><span class="dot y"></span>알림 보내기</td><td>1분에 3개</td></tr>
+    <tr><td><span class="dot y"></span>소리·화면 밝기 조절</td><td>1초에 1번, 한 번에 ±20%까지</td></tr>
+    <tr><td><span class="dot o"></span>외부 네트워크와 연결</td><td>1분에 60번</td></tr>
+    <tr><td><span class="dot g"></span>시스템 상태 읽기</td><td><code>watch</code> 최소 간격 1초</td></tr>
+  </table></div>
+</section>
+
+<section id="later">
+  <h2>나중에 할 것</h2>
+  <p class="muted">여기까지 정해 둔 내용입니다. 1차에서는 만들지 않습니다.</p>
+  <div class="table-wrap"><table>
+    <tr><th>색</th><th>권한</th><th>키</th><th>메모</th></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>네트워크 세부 상태 읽기</td><td><code>network.detail</code></td><td>IP, Wi-Fi 이름 → 위치 추정 가능</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>시스템 세부 상태 읽기</td><td><code>system.detail</code></td><td>로그인 사용자 이름, PC 이름, Windows 버전, 하드웨어 모델</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>PC 사용 기록 읽기</td><td><code>system.activity</code></td><td>열린 앱 목록·개수, 지금 쓰는 창, 재생 중인 미디어</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>파일 열기</td><td><code>open</code></td><td>기본 앱으로 열기. <b>허용 목록</b>(pdf, txt, md, csv, docx, xlsx, pptx, 이미지, 소리, 영상)만. 매크로 형식·스크립트·바로가기 제외</td></tr>
+    <tr><td><span class="dot r"></span>빨강</td><td>프로그램 실행</td><td><code>launch</code></td><td>매니페스트에 적힌 exe와 <b>고정된 인자</b>만, 번호로 호출. 셸·스크립트 실행기·우회 도구 exe는 거부. 실행 직전 exe 해시 확인. 매번 확인 창</td></tr>
+    <tr><td><span class="dot r"></span>빨강</td><td>클립보드 읽기</td><td><code>clipboard.read</code></td><td>매번 확인 창</td></tr>
+    <tr><td><span class="dot r"></span>빨강</td><td>내 파일 읽기</td><td><code>files.read</code></td><td>파일·폴더 선택 창 = 승인. 고른 폴더는 기억하고 설정에서 취소 가능. 너무 넓은 폴더 경고, 시스템 폴더 거부, <code>accept</code> 형식만 보임</td></tr>
+    <tr><td><span class="dot r"></span>빨강</td><td>내 파일 저장</td><td><code>files.write</code></td><td>저장 창 = 승인. 같은 파일은 이번 실행 동안만 다시 저장 가능</td></tr>
+    <tr><td>⛔</td><td>명령어 실행</td><td><code>shell</code></td><td><span class="tag no">영구 없음</span> API 자체를 만들지 않음</td></tr>
+  </table></div>
+  <h3>빨강 요청 창 규칙</h3>
+  <ul>
+    <li>사용자가 카드를 누른 직후(1초 안)에만 요청 가능</li>
+    <li>카드 HTML이 흉내 낼 수 없는, 호스트가 그리는 창에 정확한 내용 표시</li>
+    <li>기본 버튼은 [거부]</li>
+    <li>3번 거부하면 앱을 다시 켤 때까지 자동 거부</li>
+    <li>"다시 묻지 않기" 없음</li>
+    <li><code>launch</code>가 있으면 설치 창 맨 위에 "이 카드는 다른 프로그램을 실행할 수 있습니다. 실행된 프로그램은 Desk Cards의 제한을 받지 않습니다." 경고</li>
+  </ul>
+  <h3>조합 경고</h3>
+  <ul>
+    <li><code>internet</code> + 사용 기록·세부 상태 → "내가 누구이고 뭘 하는지 밖으로 보낼 수 있어요"</li>
+    <li><code>internet</code> + <code>files.read</code> → "고른 파일을 밖으로 보낼 수 있어요"</li>
+  </ul>
+</section>
+
+<section id="decisions">
+  <h2>결정 기록</h2>
+  <p class="muted">왜 이렇게 정했는지 남겨 둡니다.</p>
+  <details><summary>백엔드 언어(파이썬·Lua·Deno)를 버리고 WebView에 라이브러리를 주입한 이유</summary>
+    <ul>
+      <li><b>파이썬 import 허용 목록</b>: <code>random._os</code>나 <code>().__class__.__base__.__subclasses__()</code> 같은 방법으로 우회됩니다. PEP 578 감사 훅도 단독으로는 샌드박스가 아닙니다.</li>
+      <li><b>Node</b>: 권한 모델이 "안전벨트"일 뿐, 악성 코드 방어용이 아니라고 공식 문서에 적혀 있습니다.</li>
+      <li><b>Deno</b>: 권한 모델은 매니페스트와 잘 맞지만 97MB라서 256MB 목표에 부담입니다.</li>
+      <li><b>Lua 5.1</b>: 가볍지만 API를 전부 직접 만들어야 하고, AI가 카드를 만들기 어렵습니다. LuaJIT는 x64에서 메모리 제한을 걸 수 없고 ffi·바이트코드가 구멍입니다.</li>
+      <li><b>WebView 주입</b>: 샌드박스(Chromium)는 이미 있고, 크기는 0MB이며, 네이티브 기능은 호스트가 JSON 요청을 검사해서 해 주면 됩니다.</li>
+    </ul>
+  </details>
+  <details><summary>shell을 영구히 없앤 이유</summary>
+    <p>PowerShell 한 줄이면 파일·인터넷·사용 기록 등 다른 모든 권한을 할 수 있습니다. 막을 방법을 고민하는 것보다 API가 없는 게 가장 안전합니다. 같은 이유로 <code>launch</code>에서도 셸·스크립트 실행기 exe를 거부합니다.</p>
+  </details>
+  <details><summary>open을 금지 목록이 아니라 허용 목록으로 한 이유</summary>
+    <p>금지 목록은 빠지는 게 반드시 생깁니다 (<code>.docm</code>, <code>.xlsm</code>, <code>.chm</code> 등). 안전하다고 확인한 문서·미디어 형식만 열어 줍니다.</p>
+  </details>
+  <details><summary>launch 인자를 매니페스트에 고정한 이유</summary>
+    <p>실행 중에 인자를 자유롭게 넣을 수 있으면, 명령 실행 기능이 있는 수많은 exe를 통해 사실상 셸이 됩니다. 금지 목록으로는 다 막을 수 없습니다. 인자를 고정하면 설치 창에서 본 것과 실제 실행되는 것이 같아집니다.</p>
+  </details>
+  <details><summary>파일 권한을 "선택 창 = 승인"으로 한 이유</summary>
+    <p>매니페스트에 경로를 적게 하면 시작프로그램 폴더처럼 위험한 곳을 지정하는 문제가 생깁니다. 사용자가 Windows 창에서 직접 고르게 하면 카드는 경로를 정할 수 없고, 따로 "허용할까요?" 창도 필요 없습니다. 메모 카드처럼 자주 저장하는 카드는 카드 전용 저장소(localStorage·IndexedDB)를 쓰면 됩니다.</p>
+  </details>
+  <details><summary>권한을 뭉뚱그려 보여 주는 이유</summary>
+    <p>목록이 길고 자세하면 사용자가 읽지 않고 "예"만 누르게 됩니다. 화면에는 짧은 이름과 색만, 자세한 건 풍선에 둡니다. 실제 검사는 매니페스트의 정확한 범위로 합니다.</p>
+  </details>
+  <details><summary>WebAssembly를 막은 이유</summary>
+    <p>wasm을 허용하면 인터넷에서 받은 바이너리를 실행할 수 있어서 스스로 업데이트 방지가 무너집니다. 게임(Canvas·WebGL)이나 이미지 처리(Canvas·WebGL·순수 JS 라이브러리)는 wasm 없이 충분합니다.</p>
+  </details>
+  <details><summary>1차 범위를 크게 줄인 이유</summary>
+    <p>처음부터 완벽한 보안을 목표로 하면 끝이 나지 않습니다. 위험한 권한을 아예 빼고 시작하면, 남은 권한은 막을 구멍이 적습니다. 나머지는 실제 카드를 만들어 보면서 필요한 것부터 추가합니다.</p>
+  </details>
+</section>
+
+<section id="open">
+  <h2>남은 질문</h2>
+  <ul>
+    <li><b>카드 서명</b>: 만든 사람을 확인할 방법이 필요한가? (1차는 서명 없이 "만든 사람: 홍길동 (확인 안 됨)" 표시)</li>
+    <li><b>권한 취소</b>: 1차는 카드를 지우는 것만. 나중에 설정의 카드 상세에서 권한별 끄기</li>
+    <li><b>카드 설치 위치</b>: <code>%LOCALAPPDATA%\DeskCards\cards\&lt;id&gt;\</code> (카드가 쓸 수 없는 곳)</li>
+    <li><b>기존 폴더 카드</b>: 내장 카드 종류로 두고 .dard로 옮기지 않음</li>
+    <li><b>설치 크기</b>: 지금 uninstall.exe가 81MB (설치 파일 전체 복사본). 페이로드 없이 다시 만들면 약 10MB</li>
+    <li><b>온도 읽기</b>: 관리자 권한 없이 CPU 온도를 안정적으로 읽을 방법 확인 필요 (못 읽으면 null)</li>
+  </ul>
+</section>
+</main>
+</div>
+
+<script>
+(function () {
+  // theme toggle (per-viewer convenience only)
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("dard-theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var dark = root.getAttribute("data-theme") ? root.getAttribute("data-theme") === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = dark ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("dard-theme", next); } catch (e) {}
+  });
+
+  // active section in toc
+  var links = Array.prototype.slice.call(document.querySelectorAll("nav.toc a"));
+  var obs = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) {
+      if (!en.isIntersecting) return;
+      links.forEach(function (a) { a.classList.toggle("active", a.getAttribute("href") === "#" + en.target.id); });
+    });
+  }, { rootMargin: "-20% 0px -70% 0px" });
+  document.querySelectorAll("main section").forEach(function (s) { obs.observe(s); });
+
+  // installer demo
+  var SYS = { cpu: "CPU 사용량", gpu: "GPU 사용량", memory: "메모리 사용량", temperature: "CPU·GPU 온도",
+    battery: "배터리 잔량과 충전 상태", storage: "드라이브별 저장 공간", uptime: "켜진 시간",
+    network: "인터넷 연결 여부, 유선·무선, 속도" };
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function icon(cls, mark, html) {
+    return '<button type="button" class="ico ' + cls + '" aria-label="자세히">' + mark + '<span class="tip">' + html + '</span></button>';
+  }
+  function row(name, ico) { return '<div class="perm"><span>' + name + '</span>' + ico + '</div>'; }
+
+  function render() {
+    var sys = Array.prototype.slice.call(document.querySelectorAll("[data-sys]")).filter(function (c) { return c.checked; })
+      .map(function (c) { return c.getAttribute("data-sys"); });
+    var notify = $("pNotify").checked, vol = $("pVolume").checked, bright = $("pBright").checked;
+    var internet = $("pInternet").checked;
+    var domains = $("domains").value.split(/[\s,]+/).filter(Boolean);
+    $("domains").disabled = !internet;
+
+    var counted = [], info = [];
+    if (internet) counted.push(row("외부 네트워크와 연결", icon("o", "!",
+      "이 카드는 인터넷으로 데이터를 주고받을 수 있어요.<br><br>카드가 볼 수 있는 정보를 밖으로 보낼 수도 있어요." +
+      '<div class="lim">연결하는 곳:<ul>' + (domains.length ? domains.map(function (d) { return "<li>" + esc(d) + "</li>"; }).join("") : "<li>(없음)</li>") +
+      "</ul>1분에 60번까지 요청할 수 있어요.</div>")));
+    if (notify) counted.push(row("알림 보내기", icon("y", "!",
+      "이 카드는 Windows 알림을 띄울 수 있어요.<br><br>알림을 너무 자주 보내면 방해가 될 수 있어요." +
+      '<div class="lim">1분에 3개까지로 제한돼요.</div>')));
+    if (vol || bright) {
+      var what = vol && bright ? "소리 크기와 화면 밝기" : vol ? "소리 크기" : "화면 밝기";
+      counted.push(row(vol && bright ? "소리·화면 밝기 조절" : vol ? "소리 조절" : "화면 밝기 조절", icon("y", "!",
+        "이 카드는 " + what + "를 바꿀 수 있어요.<br><br>갑자기 크게 바꾸거나 계속 바꾸면 방해가 될 수 있어요." +
+        '<div class="lim">1초에 1번, 한 번에 ±20%까지로 제한돼요.</div>')));
+    }
+    if (sys.length) info.push(row("시스템 상태 읽기", icon("g", "i",
+      "이 카드는 다음 정보를 읽을 수 있어요.<ul>" + sys.map(function (k) { return "<li>" + SYS[k] + "</li>"; }).join("") + "</ul>" +
+      '<div class="lim">개인 파일, 사용 기록, IP 주소, Wi-Fi 이름은 읽지 않아요.</div>')));
+
+    var html = '<div class="titlebar">Desk Cards · 카드 설치</div><div class="body">' +
+      '<div class="cardname"><div class="cardicon">☁</div><div><b>날씨</b><span>만든 사람: 홍길동 (확인 안 됨) · 1.0.0</span></div></div>';
+    if (counted.length) html += "<h5>이 카드는 " + counted.length + "개의 권한을 요구합니다</h5>" + counted.join("");
+    else html += "<h5>이 카드는 권한을 요구하지 않습니다</h5>";
+    if (info.length) html += "<h5>이 카드가 읽는 정보</h5>" + info.join("");
+    html += '</div><div class="buttons"><button class="btn" type="button">취소</button><button class="btn primary" type="button">설치</button></div>';
+    $("dialog").innerHTML = html;
+
+    var perms = {};
+    if (sys.length) perms.system = sys;
+    if (notify) perms.notify = true;
+    var ctl = []; if (vol) ctl.push("volume"); if (bright) ctl.push("brightness");
+    if (ctl.length) perms["system.control"] = ctl;
+    if (internet) perms.internet = domains;
+    $("manifestOut").textContent = JSON.stringify({ dard: 1, id: "com.example.weather", name: "날씨", version: "1.0.0",
+      author: "홍길동", grid: [2, 2], permissions: perms }, null, 2);
+  }
+  $("controls").addEventListener("input", render);
+  // tap-to-open tooltips on touch
+  $("dialog").addEventListener("click", function (e) {
+    var b = e.target.closest(".ico");
+    document.querySelectorAll(".ico.open").forEach(function (x) { if (x !== b) x.classList.remove("open"); });
+    if (b && !e.target.closest(".tip")) b.classList.toggle("open");
+  });
+  render();
+})();
+</script>
+</body>
+</html>
