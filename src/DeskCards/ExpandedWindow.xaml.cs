@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 
 namespace DeskCards;
 
@@ -52,7 +53,13 @@ internal partial class ExpandedWindow : Window
         Deactivated += (_, _) => { if (!_busy) SafeClose(); };
         PreviewKeyDown += OnKey;
         PreviewMouseWheel += OnWheel;
-        GearButton.Click += (_, _) => { SafeClose(); SettingsWindow.Open(_mgr, _card); };
+        // 이 창이 닫히는 도중에 설정 창을 처음 만들면 설정 창 내용이 그려지지 않고 하얗게 남는다.
+        // 그래서 이 창이 완전히 닫힌 다음에 연다.
+        GearButton.Click += (_, _) =>
+        {
+            Closed += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => SettingsWindow.Open(_mgr, _card));
+            SafeClose();
+        };
         ItemsPanel.PreviewMouseLeftButtonDown += OnDown;
         ItemsPanel.PreviewMouseMove += OnMove;
         ItemsPanel.PreviewMouseLeftButtonUp += OnUp;
