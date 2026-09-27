@@ -79,6 +79,15 @@ internal static class Program
             }
             finally { mgr.Shutdown(); }
         });
+        Test("card bar zone grows from the edge inside the work area", () =>
+        {
+            var screen = System.Windows.Forms.Screen.PrimaryScreen!;
+            var b = screen.Bounds;
+            var touch = EdgeBar.ZoneRect(screen, ScreenEdge.Right, 0);
+            var wide = EdgeBar.ZoneRect(screen, ScreenEdge.Right, 25);
+            Check(touch.Width == 1 && touch.Right == b.Right && wide.Right == b.Right
+                && Math.Abs(wide.Width - (1 + b.Width * 0.025)) <= 1 && wide.Top == screen.WorkingArea.Top && wide.Bottom == screen.WorkingArea.Bottom);
+        });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {
@@ -241,21 +250,27 @@ internal static class Program
                         var content = (FrameworkElement)settings.Content;
                         bool inside = Visuals<Button>(settings).Where(b => b.IsVisible)
                             .All(b => b.TranslatePoint(new Point(b.ActualWidth, 0), content).X <= content.ActualWidth - 12);
-                        Check(descriptions.Count > 0 && descriptions.All(t => t.ActualWidth >= 200) && inside);
+                        // 짧아서 한 줄에 다 들어가는 설명은 원래 폭이 좁으니 괜찮다. 여러 줄로 꺾였는데 좁으면 문제.
+                        bool Readable(TextBlock t) => t.ActualWidth >= 150 || t.ActualHeight <= 20;
+                        var narrow = descriptions.Where(t => !Readable(t)).Select(t => $"{t.Text[..10]}={t.ActualWidth:0}");
+                        var clipped = Visuals<Button>(settings).Where(b => b.IsVisible && b.TranslatePoint(new Point(b.ActualWidth, 0), content).X > content.ActualWidth - 12).Select(b => b.Content);
+                        if (!(descriptions.Count > 0 && descriptions.All(Readable) && inside))
+                            throw new Exception($"width {width}: narrow [{string.Join(", ", narrow)}] clipped [{string.Join(", ", clipped)}]");
                     }
                 });
-                Test("key combo dialog opens over settings and cancels", () =>
+                Test("key combo subpage opens and returns with escape", () =>
                 {
-                    bool seen = false;
-                    settings.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
-                    {
-                        var dialog = app.Windows.OfType<DialogWindow>().Single();
-                        seen = dialog.Owner == settings && !dialog.Primary.IsEnabled;
-                        if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
-                            Snapshot(dialog, Path.Combine(dir, "key-dialog.png"));
-                        dialog.Close();
-                    });
-                    Check(KeyComboDialog.Ask(settings, KeyCombo.Default) == null && seen);
+                    var go = typeof(SettingsWindow).GetMethod("Go", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    var kind = go.GetParameters()[0].ParameterType;
+                    go.Invoke(settings, new[] { Enum.Parse(kind, "BarKeys") });
+                    settings.Width = 900;
+                    settings.UpdateLayout();
+                    Pump(50);
+                    if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                        Snapshot(settings, Path.Combine(dir, "bar-keys.png"));
+                    bool editor = Visuals<KeyComboEditor>(settings).Count() == 1;
+                    go.Invoke(settings, new[] { Enum.Parse(kind, "Bar") });
+                    Check(editor && !Visuals<KeyComboEditor>(settings).Any());
                 });
                 mgr.BeginEditMode(card);
                 Check(mgr.Editing && mgr.Selected == card && card.IsEditing);

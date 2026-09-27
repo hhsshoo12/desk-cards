@@ -39,6 +39,7 @@ internal static class Theme
             r["ToggledBg"] = Brush("#B3FFFFFF");
             r["Danger"] = Brush("#FFC42B1C");
             r["MenuLine"] = Brush("#14000000");
+            r["MonitorBg"] = Brush("#FFD6D6D6");
         }
         else
         {
@@ -61,6 +62,7 @@ internal static class Theme
             r["ToggledBg"] = Brush("#15FFFFFF");
             r["Danger"] = Brush("#FFFF99A4");
             r["MenuLine"] = Brush("#1FFFFFFF");
+            r["MonitorBg"] = Brush("#FF3D3D3D");
         }
     }
 

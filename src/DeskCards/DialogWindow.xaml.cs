@@ -21,7 +21,7 @@ internal partial class DialogWindow : Window
         bool cancel = buttons == MessageBoxButton.OKCancel;
         if (!cancel) Buttons.Children.Add(new Border()); // 왼쪽 빈 칸
         _result = cancel ? MessageBoxResult.Cancel : MessageBoxResult.OK;
-        var ok = Primary = AddButton(primary ?? "확인", MessageBoxResult.OK, accent: true);
+        var ok = AddButton(primary ?? "확인", MessageBoxResult.OK, accent: true);
         ok.IsDefault = true;
         if (cancel) AddButton("취소", MessageBoxResult.Cancel, accent: false).IsCancel = true;
         else ok.IsCancel = true;
@@ -33,12 +33,6 @@ internal partial class DialogWindow : Window
     }
 
     public MessageBoxResult Result => _result;
-
-    /// <summary>파란 버튼(확인·저장 등). 내용에 따라 누를 수 있게 하거나 막을 때 쓴다.</summary>
-    public Button Primary { get; }
-
-    /// <summary>안내 글 아래에 내용을 더한다(예: 조합키 입력 칸).</summary>
-    public void AddContent(UIElement content) => Body.Children.Add(content);
 
     private Button AddButton(string text, MessageBoxResult result, bool accent)
     {

@@ -103,6 +103,16 @@ internal sealed class GroupManager
         }
     }
 
+    public int BarZone
+    {
+        get => _cfg.BarZone;
+        set
+        {
+            value = Math.Clamp(value, 0, Config.BarZoneMax);
+            Store(_cfg.BarZone != value, () => _cfg.BarZone = value);
+        }
+    }
+
     /// <summary>바뀌었을 때만 적용하고 저장한 뒤 알린다.</summary>
     private void Store(bool changed, Action apply)
     {

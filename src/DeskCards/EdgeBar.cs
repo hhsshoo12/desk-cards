@@ -174,16 +174,26 @@ internal static class EdgeBar
         if (!mgr.BarEnabled || _suspended || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
         if (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed) return false;
         if (edge == Native.TaskbarEdgeOn(screen) || ExpandedWindow.IsOpen || FluentMenu.IsOpen) return false;
+        return ZoneRect(screen, edge, mgr.BarZone).Contains(pt.X, pt.Y) && !Native.IsFullScreenBusy();
+    }
+
+    /// <summary>
+    /// 마우스를 대면 게이지가 도는 띠(물리 픽셀). 가장자리에 딱 붙은 1픽셀부터, 인식 영역(zone, 0.1% 단위)만큼 안쪽까지.
+    /// 가장자리를 따라서는 작업 영역 안(작업 표시줄 옆은 빼고)만.
+    /// </summary>
+    public static System.Drawing.Rectangle ZoneRect(Forms.Screen screen, ScreenEdge edge, int zone)
+    {
         var b = screen.Bounds;
         var wa = screen.WorkingArea;
-        bool at = edge switch
+        bool side = edge is ScreenEdge.Left or ScreenEdge.Right;
+        int depth = 1 + (int)Math.Round((side ? b.Width : b.Height) * zone / 1000.0);
+        return edge switch
         {
-            ScreenEdge.Left => pt.X <= b.Left && pt.Y >= wa.Top && pt.Y < wa.Bottom,
-            ScreenEdge.Right => pt.X >= b.Right - 1 && pt.Y >= wa.Top && pt.Y < wa.Bottom,
-            ScreenEdge.Top => pt.Y <= b.Top && pt.X >= wa.Left && pt.X < wa.Right,
-            _ => pt.Y >= b.Bottom - 1 && pt.X >= wa.Left && pt.X < wa.Right,
+            ScreenEdge.Left => new(b.Left, wa.Top, depth, wa.Height),
+            ScreenEdge.Right => new(b.Right - depth, wa.Top, depth, wa.Height),
+            ScreenEdge.Top => new(wa.Left, b.Top, wa.Width, depth),
+            _ => new(wa.Left, b.Bottom - depth, wa.Width, depth),
         };
-        return at && !Native.IsFullScreenBusy();
     }
 }
 
@@ -278,18 +288,9 @@ internal sealed class BarWindow : Window
         _mgr = mgr;
         _edge = edge;
         _screen = screen;
-        var wa = screen.WorkingArea;
-        _scale = Native.MonitorScaleAt(wa.Left + wa.Width / 2, wa.Top + wa.Height / 2);
-        int gap = (int)Math.Round(Gap * _scale);
+        _scale = ScaleOf(screen);
+        _final = FinalRect(screen, edge, mgr.BarSize);
         bool side = edge is ScreenEdge.Left or ScreenEdge.Right;
-        int thick = (int)Math.Round((side ? wa.Width : wa.Height) * mgr.BarSize / 100.0);
-        _final = edge switch
-        {
-            ScreenEdge.Left => new(wa.Left + gap, wa.Top + gap, thick, wa.Height - 2 * gap),
-            ScreenEdge.Right => new(wa.Right - gap - thick, wa.Top + gap, thick, wa.Height - 2 * gap),
-            ScreenEdge.Top => new(wa.Left + gap, wa.Top + gap, wa.Width - 2 * gap, thick),
-            _ => new(wa.Left + gap, wa.Bottom - gap - thick, wa.Width - 2 * gap, thick),
-        };
 
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.NoResize;
@@ -345,6 +346,28 @@ internal sealed class BarWindow : Window
         _mgr.Changed += OnGroupsChanged;
         SourceInitialized += OnSourceInitialized;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { BeginClose(); e.Handled = true; } };
+    }
+
+    private static double ScaleOf(Forms.Screen screen)
+    {
+        var wa = screen.WorkingArea;
+        return Native.MonitorScaleAt(wa.Left + wa.Width / 2, wa.Top + wa.Height / 2);
+    }
+
+    /// <summary>다 나왔을 때 바의 자리(물리 픽셀): 작업 영역 안, 가장자리에서 틈(8)만큼 떨어져, 두께는 작업 영역의 sizePercent%.</summary>
+    public static System.Drawing.Rectangle FinalRect(Forms.Screen screen, ScreenEdge edge, int sizePercent)
+    {
+        var wa = screen.WorkingArea;
+        int gap = (int)Math.Round(Gap * ScaleOf(screen));
+        bool side = edge is ScreenEdge.Left or ScreenEdge.Right;
+        int thick = (int)Math.Round((side ? wa.Width : wa.Height) * sizePercent / 100.0);
+        return edge switch
+        {
+            ScreenEdge.Left => new(wa.Left + gap, wa.Top + gap, thick, wa.Height - 2 * gap),
+            ScreenEdge.Right => new(wa.Right - gap - thick, wa.Top + gap, thick, wa.Height - 2 * gap),
+            ScreenEdge.Top => new(wa.Left + gap, wa.Top + gap, wa.Width - 2 * gap, thick),
+            _ => new(wa.Left + gap, wa.Bottom - gap - thick, wa.Width - 2 * gap, thick),
+        };
     }
 
     /// <summary>다 들어가서 닫혔는지.</summary>

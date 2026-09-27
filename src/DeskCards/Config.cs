@@ -48,7 +48,10 @@ internal sealed class Config
     /// <summary>바 두께. 모니터 작업 영역의 %(10~33, 3분의 1까지).</summary>
     public int BarSize { get; set; } = BarSizeMax;
 
-    public const int BarDelayMax = 2000, BarSizeMin = 10, BarSizeMax = 33;
+    /// <summary>인식 영역: 가장자리에서 이만큼 안쪽까지 대고 있어도 된다(0.1% 단위, 0 = 딱 붙었을 때만 ~ 25 = 2.5%).</summary>
+    public int BarZone { get; set; }
+
+    public const int BarDelayMax = 2000, BarSizeMin = 10, BarSizeMax = 33, BarZoneMax = 25;
 
     /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
     public double CellSize { get; set; }
@@ -106,6 +109,7 @@ internal sealed class Config
                     cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
                     cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
                     cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
+                    cfg.BarZone = Math.Clamp(cfg.BarZone, 0, BarZoneMax);
                     if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
                     var edges = new Dictionary<string, ScreenEdge?>(StringComparer.OrdinalIgnoreCase);
                     foreach (var (display, edge) in cfg.BarEdges ?? new())
