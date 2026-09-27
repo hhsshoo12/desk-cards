@@ -240,6 +240,15 @@ internal partial class ExpandedWindow : Window
     /// <summary>타일 우클릭 메뉴. 떠 있는 동안은 이 창이 비활성이 되어도 닫지 않는다.</summary>
     private void ShowItemMenu(ShellEntry entry)
     {
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            // Shift+우클릭은 탐색기처럼 바로 Windows 메뉴(숨은 항목 포함). 메뉴가 닫힐 때까지 돌아오지 않는다.
+            _busy = true;
+            ShellMenu.ShowAtCursor(entry.Path, extended: true);
+            _busy = false;
+            if (!IsActive) SafeClose();
+            return;
+        }
         _busy = true;
         var menu = Menus.ForEntry(entry, Group, _mgr, launched: SafeClose);
         menu.Closed += (_, _) =>

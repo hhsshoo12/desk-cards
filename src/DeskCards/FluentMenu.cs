@@ -40,7 +40,7 @@ internal sealed class FluentMenu : Window
     private FluentMenu? _sub;
     private Func<Size, Point>? _place;
     private Point _anchor; // 띄울 자리(물리 픽셀). 이 모니터의 배율로 크기를 계산한다.
-    private bool _closing;
+    private bool _closing, _running;
 
     public FluentMenu() : this(null) { }
 
@@ -77,7 +77,7 @@ internal sealed class FluentMenu : Window
         Loaded += OnLoaded;
         if (parent == null)
         {
-            Deactivated += (_, _) => CloseAll();
+            Deactivated += (_, _) => { if (!_running) CloseAll(); };
             PreviewKeyDown += (_, e) => e.Handled = Deepest().HandleKey(e.Key == Key.System ? e.SystemKey : e.Key);
         }
         else
@@ -286,9 +286,23 @@ internal sealed class FluentMenu : Window
         if (!row.Enabled || _closing) return;
         if (row.Fill != null) { OpenSub(row, keyboard: true); return; }
         var act = row.Act;
-        RootMenu().CloseAll();
-        // 메뉴가 사라진 다음에 실행해야 새로 뜨는 창(대화 상자 등)이 활성 창이 된다.
-        if (act != null) Dispatcher.BeginInvoke(act);
+        var root = RootMenu();
+        // 메뉴를 먼저 숨기고 실행해야 새로 뜨는 창(대화 상자, 탐색기 메뉴 등)이 앞에 온다.
+        // 닫기(Closed)는 실행이 끝난 뒤에 알려서, 메뉴를 띄운 창이 그동안 스스로 닫히지 않게 한다.
+        root._running = true;
+        root.HideAll();
+        Dispatcher.BeginInvoke(() =>
+        {
+            try { act?.Invoke(); }
+            finally { root._running = false; root.CloseAll(); }
+        });
+    }
+
+    private void HideAll()
+    {
+        _hoverTimer.Stop();
+        _sub?.HideAll();
+        Hide();
     }
 
     private void OpenSub(Row row, bool keyboard)

@@ -24,7 +24,9 @@ internal static class Menus
                 }
             }, enabled: others.Count > 0)
             .Item("", "바탕화면으로 꺼내기", () => FileOps.MoveTo(entry.Path, FileOps.UserDesktop))
-            .Item("", "휴지통으로 이동", () => FileOps.Recycle(entry.Path));
+            .Item("", "휴지통으로 이동", () => FileOps.Recycle(entry.Path))
+            .Separator()
+            .Item("", "추가 옵션 표시", () => ShellMenu.ShowAtCursor(entry.Path));
     }
 
     public static FluentMenu ForCard(CardWindow card, GroupManager mgr) => new FluentMenu()
