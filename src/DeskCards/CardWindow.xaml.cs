@@ -27,6 +27,7 @@ internal partial class CardWindow : Window
     private readonly GroupManager _mgr;
     private Point _downPos;
     private object? _downTarget;
+    private bool _downOnLabel;
     private bool _pending, _editing, _selected;
     private CardLayout _layout = new();
     private double _iconSize = 40;
@@ -140,7 +141,7 @@ internal partial class CardWindow : Window
     }
 
     // ----- 입력 -----
-    // 평소: 아이콘 클릭 = 실행, 빈 곳 클릭 = 펼치기, 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
+    // 평소: 아이콘 클릭 = 실행, 더보기 칸·이름 클릭 = 펼치기(빈 칸은 아무 일 없음), 아이콘 끌기 = 밖으로 꺼내기. 카드는 움직이지 않는다.
     // 편집 모드: 누르기 = 고르기, 아무 데나 끌기 = 자유 이동(안내선), 오른쪽 아래 모서리 끌기 = 크기 조절.
 
     private void OnDown(object sender, MouseButtonEventArgs e)
@@ -154,6 +155,7 @@ internal partial class CardWindow : Window
         }
         _downPos = e.GetPosition(this);
         _downTarget = FindTag(src);
+        _downOnLabel = IsWithin(src, Label);
         _pending = true;
     }
 
@@ -182,7 +184,7 @@ internal partial class CardWindow : Window
         _pending = false;
         if (_editing) return;
         if (_downTarget is ShellEntry entry) FileOps.Launch(entry.Path);
-        else ExpandedWindow.Open(this, _mgr);
+        else if (_downTarget as string == OverflowTag || _downOnLabel) ExpandedWindow.Open(this, _mgr);
     }
 
     private object? FindTag(DependencyObject? d)
@@ -193,6 +195,13 @@ internal partial class CardWindow : Window
             d = GetParent(d);
         }
         return null;
+    }
+
+    private static bool IsWithin(DependencyObject? d, DependencyObject target)
+    {
+        for (; d != null; d = GetParent(d))
+            if (d == target) return true;
+        return false;
     }
 
     private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject
