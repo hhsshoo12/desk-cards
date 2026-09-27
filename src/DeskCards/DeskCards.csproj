@@ -13,7 +13,7 @@
     <Company>hhsshoo12</Company>
     <AssemblyName>DeskCards</AssemblyName>
     <RootNamespace>DeskCards</RootNamespace>
-    <Version>0.2.5</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
