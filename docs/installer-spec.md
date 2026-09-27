@@ -45,9 +45,13 @@
 | 설치 폴더 | `%LOCALAPPDATA%\Programs\Desk Cards` (고정) |
 | 앱 exe | `DeskCards.exe` |
 | 제거기 | `uninstall.exe` (설치기와 같은 파일) |
-| 앱 zip URL | `https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-win-x64.zip` |
-| 해시 URL | `https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-win-x64.zip.sha256` |
-| 버전 URL | `https://github.com/hhsshoo12/desk-cards/releases/latest/download/version.txt` |
+| 릴리스 목록 API | `https://api.github.com/repos/hhsshoo12/desk-cards/releases?per_page=100` |
+| 앱 릴리스 태그 | `app-v<주.부.수>` (예: `app-v0.2.0`) |
+| 설치기 릴리스 태그 | `installer-v<주.부.수>` (예: `installer-v1.0.0`) |
+| 앱 zip 파일 이름 | `DeskCards-win-x64.zip` |
+| 해시 파일 이름 | `DeskCards-win-x64.zip.sha256` |
+| 설치기 파일 이름 | `DeskCards-Setup.exe` |
+| 설치기 다운로드 주소(README용) | `https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-Setup.exe` |
 | 제거 등록 키 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\DeskCards` |
 | 자동 실행 키 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, 값 이름 `DeskCards` |
 | 시작 앱 승인 키 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run`, 값 이름 `DeskCards` |
@@ -60,16 +64,36 @@
 | 앱 종료 요청 이벤트 | `DeskCards.Quit` (이름 있는 `EventWaitHandle`, AutoReset) |
 | 앱 단일 실행 Mutex | `DeskCards.SingleInstance` (이미 앱에 있음) |
 
-## 5. 릴리스 파일 형식
+## 5. 릴리스 구성
 
-GitHub 릴리스마다 다음 네 파일을 올린다. 이름에 버전을 넣지 않는다(`latest/download` 주소가 항상 같도록).
+앱과 설치기는 **따로** 릴리스한다. 버전도 따로 올린다.
+
+### 앱 릴리스 (태그 `app-vX.Y.Z`)
 
 | 파일 | 내용 |
 |---|---|
-| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(현재 build.ps1과 같은 self-contained 단일 exe, 내부 압축 켬)와 `version.txt` |
+| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(현재 build.ps1과 같은 self-contained 단일 exe, 내부 압축 켬)와 `version.txt`(`X.Y.Z` 한 줄, BOM 있어도 읽혀야 함) |
 | `DeskCards-win-x64.zip.sha256` | zip의 SHA-256 소문자 16진수 64자. 뒤에 공백과 파일 이름이 붙어 있어도 첫 토큰만 읽는다 |
-| `version.txt` | 버전 문자열 한 줄(예: `0.2.0`). BOM이 있어도 읽혀야 한다 |
+
+- "Latest" 표시를 하지 않는다(`gh release create ... --latest=false`).
+
+### 설치기 릴리스 (태그 `installer-vX.Y.Z`)
+
+| 파일 | 내용 |
+|---|---|
 | `DeskCards-Setup.exe` | 설치기 |
+
+- 설치기 릴리스에 **"Latest" 표시를 한다**. 그래서 README의 `releases/latest/download/DeskCards-Setup.exe` 주소가 항상 최신 설치기를 가리킨다.
+- 설치기는 앱을 찾을 때 "Latest" 표시를 쓰지 않는다(아래 "최신 앱 찾기").
+
+### 최신 앱 찾기
+
+1. 릴리스 목록 API를 `GET`한다. 헤더: `User-Agent: DeskCards-Setup/<설치기 버전>`, `Accept: application/vnd.github+json`.
+2. 응답(JSON 배열)에서 `draft`와 `prerelease`가 모두 `false`이고 `tag_name`이 정규식 `^app-v(\d+)\.(\d+)\.(\d+)$`(대소문자 무시)에 맞는 릴리스만 고른다.
+3. 태그의 숫자 세 개를 `System.Version`으로 비교해 가장 큰 것을 고른다(릴리스 날짜나 목록 순서를 믿지 않는다).
+4. 그 릴리스의 `assets`에서 이름이 `DeskCards-win-x64.zip`, `DeskCards-win-x64.zip.sha256`인 항목의 `browser_download_url`을 쓴다. 둘 중 하나라도 없으면 "받을 수 있는 앱 버전이 없어요"로 중단한다.
+5. JSON 해석은 .NET Framework 기본 포함 라이브러리(`System.Runtime.Serialization.Json.DataContractJsonSerializer` 또는 `System.Web.Script.Serialization.JavaScriptSerializer`)로 한다. NuGet 패키지를 쓰지 않는다. 필요한 필드(`tag_name`, `draft`, `prerelease`, `assets[].name`, `assets[].browser_download_url`)만 읽는다.
+6. API가 403/429(요청 한도)면 "잠시 후 다시 시도해 주세요"로, 네트워크 오류면 "인터넷에 연결한 뒤 다시 시도해 주세요"로 안내한다.
 
 ## 6. 실행 모드
 
@@ -84,19 +108,22 @@ GitHub 릴리스마다 다음 네 파일을 올린다. 이름에 버전을 넣�
 
 1. `src/DeskCards/DeskCards.csproj`의 `<Version>`을 읽는다.
 2. 앱을 지금과 같은 옵션으로 게시한다: `-c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none`.
-3. `installer/dist/`에 5장의 네 파일을 만든다. `version.txt`는 BOM 없는 UTF-8.
-4. 설치기를 `-c Release`로 빌드해 `DeskCards-Setup.exe`로 복사한다.
-5. 업로드는 하지 않는다. 마지막에 올릴 파일 목록과 `gh release create` 예시 명령을 출력만 한다.
+3. `installer/dist/app/`에 앱 릴리스 파일 두 개를 만든다. zip 안의 `version.txt`는 BOM 없는 UTF-8.
+4. 설치기를 `-c Release`로 빌드해 `installer/dist/installer/DeskCards-Setup.exe`로 복사한다. 설치기 버전은 `installer/DeskCards.Setup/DeskCards.Setup.csproj`의 `<Version>`이다.
+5. `-App`, `-Installer` 스위치로 둘 중 하나만 만들 수도 있게 한다(기본은 둘 다).
+6. 업로드는 하지 않는다. 마지막에 올릴 파일과 예시 명령을 출력만 한다.
+   - 앱: `gh release create app-vX.Y.Z installer/dist/app/* --title "Desk Cards X.Y.Z" --latest=false`
+   - 설치기: `gh release create installer-vX.Y.Z installer/dist/installer/DeskCards-Setup.exe --title "Desk Cards 설치기 X.Y.Z" --latest`
 
 ## 8. 설치 / 업데이트 흐름
 
 모든 단계는 `%TEMP%\DeskCards-Setup.log`에 기록한다(시각, 단계, 예외 전문).
 
-1. **버전 확인**: `version.txt` URL을 받는다. 실패하면 "인터넷에 연결한 뒤 다시 시도해 주세요" 화면을 보여 주고 [다시 시도]/[닫기]만 제공한다.
+1. **버전 확인**: 5장 "최신 앱 찾기"로 최신 앱 버전과 파일 주소를 얻는다. 실패하면 "인터넷에 연결한 뒤 다시 시도해 주세요" 화면을 보여 주고 [다시 시도]/[닫기]만 제공한다.
    업데이트 모드에서 설치된 버전(`DisplayVersion`)과 같으면 "이미 최신 버전이에요" 안내와 함께 [다시 설치]를 제공한다.
    버전 비교는 `System.Version`으로 한다. 어느 쪽이든 해석할 수 없으면 "다른 버전"으로 본다.
-   이 값은 화면 표시와 비교용이다. 등록에 쓰는 버전은 실제로 받은 zip 안의 `version.txt`다(그 사이 릴리스가 바뀔 수 있으므로).
-2. **다운로드**: zip과 `.sha256`을 `%TEMP%\DeskCards-Setup-<GUID>\`에 받는다.
+   4단계에서 zip 안의 `version.txt`가 태그의 버전과 다르면 설치를 거부한다.
+2. **다운로드**: 1단계에서 얻은 주소로 zip과 `.sha256`을 `%TEMP%\DeskCards-Setup-<GUID>\`에 받는다.
    - `User-Agent: DeskCards-Setup/<설치기 버전>` 헤더를 넣는다. 리디렉션을 따른다.
    - TLS 프로토콜을 코드에 고정하지 않는다(OS 기본값 사용).
    - 진행률(받은 MB / 전체 MB, 속도)을 표시한다. [취소]하면 임시 폴더를 지우고 아무것도 바꾸지 않은 채 끝낸다.
@@ -252,17 +279,19 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 6. `StartupApproved` 판정: 값 없음 = 켜짐, `02…` = 켜짐, `03…` = 꺼짐, `Run` 없음 = 꺼짐.
 7. 제거 시 그룹 폴더와(체크하지 않았으면) 설정 폴더가 남는다.
 8. 설치 폴더에 다른 파일이 있으면 제거 후에도 폴더와 그 파일이 남는다.
+9. 최신 앱 찾기: 저장된 API 응답 JSON으로 검사한다. `installer-v…`, `v0.1.0`, draft, prerelease는 제외되고, `app-v0.10.0`이 `app-v0.9.0`보다 새 버전으로 골라지며(문자열 비교 금지), 필요한 파일이 없는 릴리스면 오류가 난다.
+10. zip 안 `version.txt`가 태그 버전과 다르면 설치 폴더를 바꾸지 않는다.
 
 실행 방법을 `README.md`의 "회귀 테스트" 절에 추가한다. `python -m unittest` 줄은 지운다.
 
 ## 16. 문서
 
-- `README.md`의 "설치" 절: 설치 파일 이름을 `DeskCards-Setup.exe`로, "설치할 때 인터넷 연결이 필요합니다"를 추가, 설치 위치 선택 문구를 삭제한다.
+- `README.md`의 "설치" 절: 다운로드 링크를 `https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-Setup.exe`로, 설치 파일 이름을 `DeskCards-Setup.exe`로, "설치할 때 인터넷 연결이 필요합니다"를 추가, 설치 위치 선택 문구를 삭제한다.
 - `README.md`의 "직접 빌드하기": Python 요구 사항을 지운다.
 
 ## 17. 기존 설치(0.1.0)에서 넘어오기
 
-- 현재 GitHub 최신 릴리스(v0.1.0)에는 5장의 파일이 없다. 새 설치기는 5장의 파일을 담은 다음 릴리스가 올라간 뒤에야 동작한다. 이 순서를 README나 build.ps1 출력에 적는다.
+- 기존 릴리스 `v0.1.0`은 5장 형식이 아니다(태그가 `app-v`로 시작하지 않음). 새 설치기는 이를 무시한다. 첫 배포는 `app-vX.Y.Z`를 먼저 올리고, 그다음 `installer-vX.Y.Z`를 "Latest"로 올리는 순서다. 이 순서를 build.ps1 출력에 적는다.
 - 0.1.0은 Python 설치기로 같은 폴더·같은 등록 키에 설치되어 있다. 새 설치기는 이를 업데이트 모드로 처리해야 한다.
   - 0.1.0 앱에는 `DeskCards.Quit` 처리가 없으므로 5단계의 강제 종료 경로를 탄다(정상).
   - 기존 81MB `uninstall.exe`(PyInstaller)는 7단계에서 새 제거기로 덮어쓴다.
@@ -272,6 +301,6 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 
 - `dotnet build -warnaserror`가 앱, 설치기, 두 테스트 프로젝트에서 경고 없이 통과한다.
 - 모든 테스트가 통과한다.
-- `installer/build.ps1`이 5장의 네 파일을 만든다. `DeskCards-Setup.exe`는 1MB 이하이며 옆에 dll이 없어도 실행된다.
+- `installer/build.ps1`이 5장의 앱 릴리스 파일 두 개와 설치기 파일을 만든다. `DeskCards-Setup.exe`는 1MB 이하이며 옆에 dll이 없어도 실행된다.
 - 커밋은 기능 단위로 나눈다. 커밋 작성자 이메일은 저장소에 설정된 `269848033+hhsshoo12@users.noreply.github.com`을 그대로 쓴다(바꾸지 않는다).
 - 실제 설치/제거는 수동으로 확인한다. 자동 테스트에서 실제 설치 경로에 설치하지 않는다.
