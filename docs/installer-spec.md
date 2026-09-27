@@ -47,7 +47,7 @@
 | 제거기 | `uninstall.exe` (설치기와 같은 파일) |
 | 릴리스 목록 API | `https://api.github.com/repos/hhsshoo12/desk-cards/releases?per_page=100` |
 | 앱 릴리스 태그 | `app-v<주.부.수>` (예: `app-v0.2.0`) |
-| 설치기 릴리스 태그 | `installer-v<주.부.수>` (예: `installer-v1.0.0`) |
+| 설치기 릴리스 태그 | `installer-v<주.부.수>` (예: `installer-v0.2.0`) |
 | 앱 zip 파일 이름 | `DeskCards-win-x64.zip` |
 | 해시 파일 이름 | `DeskCards-win-x64.zip.sha256` |
 | 설치기 파일 이름 | `DeskCards-Setup.exe` |
@@ -110,6 +110,7 @@
 2. 앱을 지금과 같은 옵션으로 게시한다: `-c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none`.
 3. `installer/dist/app/`에 앱 릴리스 파일 두 개를 만든다. zip 안의 `version.txt`는 BOM 없는 UTF-8.
 4. 설치기를 `-c Release`로 빌드해 `installer/dist/installer/DeskCards-Setup.exe`로 복사한다. 설치기 버전은 `installer/DeskCards.Setup/DeskCards.Setup.csproj`의 `<Version>`이다.
+   첫 배포 버전은 앱과 설치기 모두 `0.2.0`이다(앱 csproj의 `<Version>`도 `0.2.0`으로 올린다). 이후 두 버전은 따로 올린다.
 5. `-App`, `-Installer` 스위치로 둘 중 하나만 만들 수도 있게 한다(기본은 둘 다).
 6. 업로드는 하지 않는다. 마지막에 올릴 파일과 예시 명령을 출력만 한다.
    - 앱: `gh release create app-vX.Y.Z installer/dist/app/* --title "Desk Cards X.Y.Z" --latest=false`
