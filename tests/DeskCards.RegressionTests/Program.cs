@@ -88,6 +88,22 @@ internal static class Program
             Check(touch.Width == 1 && touch.Right == b.Right && wide.Right == b.Right
                 && Math.Abs(wide.Width - (1 + b.Width * 0.025)) <= 1 && wide.Top == screen.WorkingArea.Top && wide.Bottom == screen.WorkingArea.Bottom);
         });
+        Test("zone preview slides out, holds 1.5 s, then hides", () =>
+        {
+            var screen = System.Windows.Forms.Screen.PrimaryScreen!;
+            BarPreview.Zone(screen, ScreenEdge.Right, 25);
+            Pump(400);
+            var band = app.Windows.OfType<ZoneBand>().Single();
+            var fill = Visuals<Border>(band).Single(b => b.Background is SolidColorBrush { Color.A: 0x80 });
+            double target = EdgeBar.ZoneRect(screen, ScreenEdge.Right, 25).Width / VisualTreeHelper.GetDpi(band).DpiScaleX;
+            bool shown = band.IsVisible && Math.Abs(fill.ActualWidth - target) < 1.5;
+            BarPreview.Zone(screen, ScreenEdge.Right, 10); // 바꾸면 유지 시간이 다시 시작된다
+            Pump(1200);
+            bool held = band.IsVisible;
+            Pump(900);
+            Check(shown && held && !band.IsVisible);
+            band.Close();
+        });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {
