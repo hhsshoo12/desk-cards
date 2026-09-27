@@ -1,11 +1,10 @@
 using System;
-using System.Diagnostics;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -117,8 +116,6 @@ internal partial class SettingsWindow : Window
         ScheduleBuild();
     }
 
-    private void StartEdit(CardWindow? card) => _mgr.BeginEditMode(card);
-
     /// <summary>클릭 처리 도중에 화면을 갈아엎지 않도록 한 박자 늦게, 여러 번 와도 한 번만 다시 그린다.</summary>
     private void ScheduleBuild()
     {
@@ -162,7 +159,7 @@ internal partial class SettingsWindow : Window
         Crumb("카드");
         AddRow(Row("", "카드 편집",
             "화면 위쪽에 편집 막대가 떠요. 카드를 끌어 옮기고, 오른쪽 아래 모서리로 크기를 바꾸고, 골라서 지울 수 있어요.",
-            Button("편집 시작", () => StartEdit(null), accent: true)));
+            Button("편집 시작", () => _mgr.BeginEditMode(), accent: true)));
         AddRow(Row("", "새 그룹", "빈 카드를 하나 만들고 이름을 정해요.",
             Button("만들기", () => _mgr.NewGroup())));
 
@@ -199,7 +196,7 @@ internal partial class SettingsWindow : Window
 
         Header("관리");
         AddRow(Row("", "위치 옮기기 · 크기 조절", "편집 막대를 띄우고 이 카드를 골라 둬요.",
-            Button("편집", () => StartEdit(card))));
+            Button("편집", () => _mgr.BeginEditMode(card))));
         AddRow(Row("", "폴더 열기", card.Group.Folder,
             Button("열기", () => FileOps.OpenFolder(card.Group.Folder))));
         var delete = Button("삭제", () =>
@@ -581,12 +578,8 @@ internal partial class SettingsWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        var src = HwndSource.FromHwnd(hwnd);
-        if (src?.CompositionTarget != null) src.CompositionTarget.BackgroundColor = Colors.Transparent;
-        Native.SetDwm(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, Theme.IsLight ? 0 : 1);
-        if (Environment.OSVersion.Version.Build >= 22621)
-            Native.SetDwm(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 2); // Mica
+        // Mica는 22H2부터. 그 전에는 Theme의 SettingsBg가 불투명한 바탕을 칠한다.
+        Hwnd.ApplyFluent(this, Theme.HasBackdrop ? Hwnd.Backdrop.Mica : Hwnd.Backdrop.None, roundCorners: false);
     }
 
     protected override void OnClosed(EventArgs e)

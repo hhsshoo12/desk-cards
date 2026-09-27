@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
@@ -165,7 +164,6 @@ internal static class SmartGuides
 internal sealed class GuideOverlay : Window
 {
     private const long WS_EX_TRANSPARENT = 0x20, WS_EX_LAYERED = 0x80000;
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
 
     private readonly Canvas _canvas = new();
     private System.Drawing.Rectangle _area;
@@ -184,10 +182,7 @@ internal sealed class GuideOverlay : Window
         Content = _canvas;
         SourceInitialized += (_, _) =>
         {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
-            Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE,
-                new IntPtr(ex | WS_EX_TRANSPARENT | WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE));
+            Hwnd.MakeNoActivateTool(Hwnd.Of(this), WS_EX_TRANSPARENT | WS_EX_LAYERED);
         };
     }
 
@@ -195,11 +190,11 @@ internal sealed class GuideOverlay : Window
     {
         if (lines.Count == 0) { Clear(); return; }
         if (!IsVisible) Show();
-        var hwnd = new WindowInteropHelper(this).Handle;
+        var hwnd = Hwnd.Of(this);
         if (_area != wa)
         {
             _area = wa;
-            Native.SetWindowPos(hwnd, HWND_TOPMOST, wa.Left, wa.Top, wa.Width, wa.Height, Native.SWP_NOACTIVATE);
+            Native.SetWindowPos(hwnd, Hwnd.Topmost, wa.Left, wa.Top, wa.Width, wa.Height, Native.SWP_NOACTIVATE);
         }
 
         double s = VisualTreeHelper.GetDpi(this).DpiScaleX;
