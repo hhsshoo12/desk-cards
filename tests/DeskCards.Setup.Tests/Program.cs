@@ -137,6 +137,17 @@ internal static class Program
             f.Existing(); Directory.CreateDirectory(f.Env.ConfigDir); Directory.CreateDirectory(f.Env.OldConfigDir);
             f.Engine.Uninstall(true, _ => { }); Check(!Directory.Exists(f.Env.ConfigDir) && !Directory.Exists(f.Env.OldConfigDir));
         });
+        Test("uninstall removes app self-update leftovers", f =>
+        {
+            f.Existing(); File.WriteAllText(f.Env.AppExe + ".old", "previous");
+            string staged = Path.Combine(f.Env.InstallDir, "update", "0.3.0"); Directory.CreateDirectory(staged); File.WriteAllText(Path.Combine(staged, "DeskCards.exe"), "staged");
+            f.Engine.Uninstall(false, _ => { }); Check(!Directory.Exists(f.Env.InstallDir));
+        });
+        Test("leftover old executable does not block update", f =>
+        {
+            f.Existing(); File.WriteAllText(f.Env.AppExe + ".old", "previous");
+            f.Install(); Check(File.ReadAllText(f.Env.AppExe) == "new app" && !File.Exists(f.Env.AppExe + ".old"));
+        });
         Test("uninstall preserves other files and containing folder", f =>
         {
             f.Existing(); string file = Path.Combine(f.Env.InstallDir, "other.txt"); File.WriteAllText(file, "keep");

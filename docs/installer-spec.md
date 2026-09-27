@@ -148,7 +148,7 @@
    이 단계부터 [취소]는 비활성화한다.
 6. **교체**:
    - 설치 폴더가 없으면 `stage\`의 내용을 설치 폴더로 옮긴다.
-   - 있으면 기존 `DeskCards.exe`를 `DeskCards.exe.old`로 이름을 바꾸고 새 파일을 옮긴다. 이후 단계에서 실패하면 `.old`를 되돌린다. 성공하면 `.old`를 지운다.
+   - 있으면 (앱 자체 업데이트가 남긴 `DeskCards.exe.old`가 있으면 먼저 지우고) 기존 `DeskCards.exe`를 `DeskCards.exe.old`로 이름을 바꾸고 새 파일을 옮긴다. 이후 단계에서 실패하면 `.old`를 되돌린다. 성공하면 `.old`를 지운다.
    - 설치 폴더의 예전 이름 파일(`DeskFolders.exe`)을 지운다.
    - 설치 폴더의 다른 파일은 건드리지 않는다.
 7. **제거기 복사**: 실행 중인 설치기 exe를 `uninstall.exe.new`로 복사한 뒤 `uninstall.exe`로 바꿔치기한다. 설치기가 이미 설치 폴더의 `uninstall.exe`에서 실행 중이면 건너뛴다.
@@ -221,7 +221,7 @@ Windows는 `Run` 값을 작업 관리자 "시작 앱"에 보여 주고, 사용�
 3. 8장 5단계와 같은 방식으로 앱을 끈다.
 4. 시작 메뉴·바탕화면 바로가기를 지운다.
 5. `Run`과 `StartupApproved\Run`의 `DeskCards`, `DeskFolders` 값을 지운다.
-6. 설치 폴더의 `DeskCards.exe`, `DeskFolders.exe`, `uninstall.exe`를 지운다. **하나라도 지우지 못하면 제거 등록 키를 남기고** 오류를 보여 준다(설정 앱에서 다시 제거할 수 있도록).
+6. 설치 폴더의 `DeskCards.exe`, `DeskCards.exe.old`, `DeskFolders.exe`, `uninstall.exe`와 앱 자체 업데이트가 받아 둔 `update\` 폴더를 지운다. **하나라도 지우지 못하면 제거 등록 키를 남기고** 오류를 보여 준다(설정 앱에서 다시 제거할 수 있도록).
 7. 제거 등록 키를 지운다.
 8. 시작 메뉴 흔적을 지운다(13장).
 9. 설치 폴더가 비어 있으면 지운다. 다른 파일이 있으면 남긴다.

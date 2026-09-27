@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
@@ -22,6 +24,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
         Native.SetCurrentProcessExplicitAppUserModelID("hhsshoo12.DeskCards");
+        // 업데이트로 다시 켜졌으면 옛 버전이 끝날 때까지 기다린다(그쪽이 아직 단일 실행 잠금을 쥐고 있다).
+        WaitForUpdatedFrom(e.Args);
         _mutex = new Mutex(true, "DeskCards.SingleInstance", out bool created);
         _showSettings = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskCards.ShowSettings");
         _quitRequest = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskCards.Quit");
@@ -36,12 +40,27 @@ public partial class App : Application
         // 예전 이름(DeskFolders)의 그룹·설정 폴더를 옮긴다. 설정을 읽기 전에 해야 한다.
         AppPaths.Migrate();
 
+        // 받아 둔 새 버전이 있으면 바꿔 끼우고 새 버전으로 다시 켠다.
+        var cfg = Config.Load();
+        var host = UpdateHost.Production(RelaunchInto);
+        try
+        {
+            if (Updater.ApplyPending(cfg, host, Updater.RunningVersion)) return;
+        }
+        catch
+        {
+            // 바꿔 끼우지 못하면 지금 버전으로 켠다. 설정의 [앱 재시작]으로 다시 시도할 수 있다.
+        }
+        if (host.Installed && cfg.PendingUpdate == null) UpdatePackage.Cleanup(host.InstallDir);
+
         Theme.Apply();
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
-        _mgr = new GroupManager();
+        _mgr = new GroupManager(config: cfg);
         _mgr.Start();
         CreateTray();
+        Updater.Instance = new Updater(cfg, host);
+        Updater.Instance.StartAuto();
 
         _listener = new Thread(() =>
         {
@@ -90,9 +109,34 @@ public partial class App : Application
         Shutdown();
     }
 
+    /// <summary>새 버전 exe를 띄우고 이 프로세스는 끝낸다. 새 버전은 이 프로세스가 끝나길 기다렸다가 켜진다.</summary>
+    private void RelaunchInto(string exe)
+    {
+        Process.Start(new ProcessStartInfo(exe, $"--updated-from {Environment.ProcessId}")
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(exe),
+        })?.Dispose();
+        Shutdown();
+    }
+
+    private static void WaitForUpdatedFrom(string[] args)
+    {
+        int i = Array.IndexOf(args, "--updated-from");
+        if (i < 0 || i + 1 >= args.Length || !int.TryParse(args[i + 1], out int pid)) return;
+        try
+        {
+            using var old = Process.GetProcessById(pid);
+            old.WaitForExit(15000);
+        }
+        catch (ArgumentException) { } // 이미 끝났다
+        catch (InvalidOperationException) { }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        Updater.Instance?.Stop();
         _stopListener.Set();
         _listener?.Join();
         _showSettings?.Dispose();

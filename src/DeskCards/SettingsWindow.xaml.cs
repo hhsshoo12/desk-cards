@@ -36,6 +36,7 @@ internal partial class SettingsWindow : Window
     private string? _cardName;      // 그 페이지를 만들 때의 이름(바뀌면 다시 그린다)
     private bool _hiddenForEdit, _buildQueued, _closed;
     private readonly List<Action> _refreshControls = new();
+    private Action? _updateRefresh; // 정보 페이지의 업데이트 줄을 지금 상태로
 
     private SettingsWindow(GroupManager mgr)
     {
@@ -46,6 +47,7 @@ internal partial class SettingsWindow : Window
 
         _mgr.Changed += OnChanged;
         _mgr.EditChanged += OnEditChanged;
+        if (Updater.Instance is { } updater) updater.Changed += OnUpdateChanged;
         SourceInitialized += OnSourceInitialized;
         StateChanged += (_, _) => Root.Margin = WindowState == WindowState.Maximized ? new Thickness(8) : new Thickness(0);
         // 항목 수 등이 바뀌었을 수 있으니 돌아올 때 목록을 확인한다. 누르는 중인 버튼이 바뀌지 않도록 달라졌을 때만 다시 그린다.
@@ -124,6 +126,8 @@ internal partial class SettingsWindow : Window
         Dispatcher.BeginInvoke(() => { _buildQueued = false; if (!_closed) Build(); });
     }
 
+    private void OnUpdateChanged() => _updateRefresh?.Invoke();
+
     private void UpdateSummary() => Summary.Text = $"카드 {_mgr.Cards.Count}개";
 
     private void Build()
@@ -132,6 +136,7 @@ internal partial class SettingsWindow : Window
         double offset = PageScroller.VerticalOffset;
         UpdateSummary();
         _refreshControls.Clear();
+        _updateRefresh = null;
         BuildNav();
         Page.Children.Clear();
         Breadcrumb.Children.Clear();
@@ -218,6 +223,10 @@ internal partial class SettingsWindow : Window
         AddRow(Row("", "안내선 · 자동 맞춤",
             "카드를 옮기거나 크기를 바꿀 때 다른 카드·화면 가운데와 줄이 맞으면 보라색 선을 보여 주고 붙여요. Alt를 누르고 있으면 잠시 꺼져요.",
             Switch(_mgr.ShowGuides, v => _mgr.ShowGuides = v)));
+        if (Updater.Instance is { } updater)
+            AddRow(Row("", "자동 업데이트",
+                "새 버전이 나오면 미리 받아 두었다가, 다음에 앱을 켤 때(보통 PC를 다시 켤 때) 새 버전으로 열어요.",
+                Switch(updater.AutoUpdate, v => updater.AutoUpdate = v)));
 
         Header("폴더");
         AddRow(Row("", "그룹 폴더", _mgr.Root, Button("열기", () => FileOps.OpenFolder(_mgr.Root))));
@@ -227,10 +236,102 @@ internal partial class SettingsWindow : Window
     {
         Crumb("정보");
         var icon = new Image { Source = LoadIcon(32), Width = 24, Height = 24 };
-        string version = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "";
-        AddRow(Row("", "Desk Cards", $"버전 {version}", null, null, icon));
+        AddRow(UpdateRow(icon));
         AddRow(Row("", "GitHub", RepoUrl, Button("열기", () => OpenUrl(RepoUrl))));
         AddRow(Row("", "설정 폴더", AppPaths.ConfigDir, Button("열기", () => FileOps.OpenFolder(AppPaths.ConfigDir))));
+    }
+
+    /// <summary>
+    /// 앱 이름 줄: 버전(새 버전이 있으면 "현재 → 최신")과 오른쪽 버튼.
+    /// 버튼은 최신(흰색, 누를 수 없음) → 업데이트(파란색) → 받는 동안 글씨 자리에 게이지 → 준비 완료 → 앱 재시작(파란색).
+    /// </summary>
+    private Border UpdateRow(UIElement icon)
+    {
+        var u = Updater.Instance;
+        var text = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
+
+        var fill = new ColumnDefinition { Width = new GridLength(0, GridUnitType.Star) };
+        var rest = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+        var track = new Grid { Height = 4, VerticalAlignment = VerticalAlignment.Center };
+        track.ColumnDefinitions.Add(fill);
+        track.ColumnDefinitions.Add(rest);
+        var trackBg = new Border { CornerRadius = new CornerRadius(2) };
+        trackBg.SetResourceReference(Border.BackgroundProperty, "ControlBorder");
+        Grid.SetColumnSpan(trackBg, 2);
+        var bar = new Border { CornerRadius = new CornerRadius(2) };
+        bar.SetResourceReference(Border.BackgroundProperty, "Accent");
+        track.Children.Add(trackBg);
+        track.Children.Add(bar);
+        var percent = new TextBlock { FontSize = 12, MinWidth = 36, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        percent.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
+        var gauge = new Grid { Width = 260, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 5, 0, 1) };
+        gauge.ColumnDefinitions.Add(new ColumnDefinition());
+        gauge.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(percent, 1);
+        gauge.Children.Add(track);
+        gauge.Children.Add(percent);
+
+        var detail = new Grid();
+        detail.Children.Add(text);
+        detail.Children.Add(gauge);
+
+        var button = new Button();
+        button.Click += (_, _) =>
+        {
+            switch (u?.State)
+            {
+                case UpdateState.Available: _ = u.DownloadAsync(); break;
+                case UpdateState.Ready: u.Restart(); break;
+                case UpdateState.Failed: _ = u.CheckAsync(); break;
+            }
+        };
+
+        void Refresh()
+        {
+            var state = u?.State ?? UpdateState.UpToDate;
+            var current = u?.Current ?? Updater.RunningVersion;
+            string version = u?.Latest is { } latest && latest > current
+                ? $"현재 버전 {current.ToString(3)} → 최신 버전 {latest.ToString(3)}"
+                : $"버전 {current.ToString(3)}";
+            bool downloading = state == UpdateState.Downloading;
+            gauge.Visibility = downloading ? Visibility.Visible : Visibility.Collapsed;
+            text.Visibility = downloading ? Visibility.Collapsed : Visibility.Visible;
+            double p = Math.Clamp(u?.Progress ?? 0, 0, 1);
+            fill.Width = new GridLength(p, GridUnitType.Star);
+            rest.Width = new GridLength(1 - p, GridUnitType.Star);
+            percent.Text = $"{Math.Round(p * 100)}%";
+
+            text.Text = state switch
+            {
+                UpdateState.Preparing => "업데이트 준비 중…",
+                UpdateState.Ready => "업데이트 준비 완료",
+                UpdateState.Failed => $"{version} · {u?.Error}",
+                _ => version,
+            };
+            text.SetResourceReference(TextBlock.ForegroundProperty, state == UpdateState.Ready ? "Accent" : "SubFg");
+
+            (string label, bool accent, bool enabled) = state switch
+            {
+                UpdateState.Checking or UpdateState.Idle => ("확인 중", false, false),
+                UpdateState.Available when u?.CanUpdate != true => ("개발 빌드", false, false),
+                UpdateState.Available => ("업데이트", true, true),
+                UpdateState.Downloading => ("받는 중", false, false),
+                UpdateState.Preparing => ("준비 중", false, false),
+                UpdateState.Ready => ("앱 재시작", true, true),
+                UpdateState.Failed => ("다시 시도", false, true),
+                _ => ("최신", false, false),
+            };
+            button.Content = label;
+            button.Style = (Style)FindResource(accent ? "AccentButton" : "StdButton");
+            button.IsEnabled = enabled;
+            if (enabled) button.ClearValue(ForegroundProperty);
+            else button.SetResourceReference(ForegroundProperty, "SubFg");
+        }
+
+        _updateRefresh = Refresh;
+        Refresh();
+        u?.CheckIfStale();
+        return Row("", "Desk Cards", null, button, null, icon, detail);
     }
 
     // ----- 왼쪽 메뉴 -----
@@ -334,7 +435,8 @@ internal partial class SettingsWindow : Window
     /// <summary>
     /// 설정 한 줄: [아이콘] 제목 / 설명 ........ [컨트롤]. click이 있으면 줄 전체를 누를 수 있고 오른쪽에 › 가 붙는다.
     /// </summary>
-    private static Border Row(string glyph, string title, string? desc, UIElement? control, Action? click = null, UIElement? icon = null)
+    private static Border Row(string glyph, string title, string? desc, UIElement? control, Action? click = null,
+        UIElement? icon = null, UIElement? detail = null)
     {
         var grid = new Grid { MinHeight = 44 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(40) });
@@ -359,6 +461,7 @@ internal partial class SettingsWindow : Window
             d.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
             texts.Children.Add(d);
         }
+        if (detail != null) texts.Children.Add(detail); // 설명 자리에 글씨 대신 넣을 것(게이지 등)
         Grid.SetColumn(texts, 1);
         grid.Children.Add(texts);
 
@@ -588,6 +691,7 @@ internal partial class SettingsWindow : Window
         _closed = true;
         _mgr.Changed -= OnChanged;
         _mgr.EditChanged -= OnEditChanged;
+        if (Updater.Instance is { } updater) updater.Changed -= OnUpdateChanged;
         if (_win == this) _win = null;
         base.OnClosed(e);
     }

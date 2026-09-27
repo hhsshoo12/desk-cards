@@ -53,6 +53,8 @@ internal sealed class SetupEngine
             }
             else
             {
+                // 앱이 스스로 업데이트하고 남긴 .old가 있으면 먼저 치운다.
+                DeleteFile(old);
                 if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); backedUp = true; }
                 replaced = true;
                 File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
@@ -130,7 +132,9 @@ internal sealed class SetupEngine
             Step("바로가기 삭제"); DeleteFile(_env.MenuLink); DeleteFile(_env.DesktopLink);
             Step("자동 실행 해제"); Registration.RemoveStartup();
             Step("앱 파일 삭제");
-            foreach (string name in new[] { "DeskCards.exe", "DeskFolders.exe", "uninstall.exe" }) DeleteFile(Path.Combine(_env.InstallDir, name));
+            foreach (string name in new[] { "DeskCards.exe", "DeskCards.exe.old", "DeskFolders.exe", "uninstall.exe" }) DeleteFile(Path.Combine(_env.InstallDir, name));
+            // 앱 자체 업데이트가 받아 둔 파일(update\)
+            SetupEnvironment.DeleteTree(Path.Combine(_env.InstallDir, "update"), _env.InstallDir);
             Step("설치된 앱 등록 삭제"); Registration.Delete(Registration.UninstallKey);
             Step("시작 메뉴 흔적 정리"); Registration.RemoveStartTraces();
             if (Directory.Exists(_env.InstallDir) && Directory.GetFileSystemEntries(_env.InstallDir).Length == 0) Directory.Delete(_env.InstallDir);

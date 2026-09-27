@@ -31,6 +31,12 @@ internal sealed class Config
     /// <summary>배율 계산 방식 버전. 2부터 Zoom에 Windows 배율이 포함된다.</summary>
     public int ScaleVersion { get; set; }
 
+    /// <summary>새 버전을 알아서 받아 두었다가 다음에 켤 때 바꿀지. 기본 켜짐.</summary>
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>받아 두고 다음 실행 때 바꿔 끼울 버전(예: "0.2.2"). 없으면 null.</summary>
+    public string? PendingUpdate { get; set; }
+
     private static string DefaultPath => Path.Combine(AppPaths.ConfigDir, "config.json");
 
     private string _filePath = DefaultPath;
