@@ -18,8 +18,9 @@ internal partial class SettingsWindow : Window
 {
     private const string IconFont = "Segoe Fluent Icons, Segoe MDL2 Assets";
     private const string RepoUrl = "https://github.com/hhsshoo12/desk-cards";
+    private const string DeveloperUrl = "https://github.com/hhsshoo12";
 
-    private enum PageKind { Cards, Card, General, About }
+    private enum PageKind { Cards, Card, General, About, Libraries }
 
     private static readonly (string Glyph, string Text, PageKind Page)[] NavItems =
     {
@@ -54,9 +55,9 @@ internal partial class SettingsWindow : Window
         Activated += (_, _) => { if (_page == PageKind.Cards && CardsSignature() != _cardsSignature) ScheduleBuild(); };
         PreviewKeyDown += (_, e) =>
         {
-            if (e.Key == Key.Escape && _page == PageKind.Card && Keyboard.FocusedElement is not TextBox)
+            if (e.Key == Key.Escape && _page is PageKind.Card or PageKind.Libraries && Keyboard.FocusedElement is not TextBox)
             {
-                Go(PageKind.Cards);
+                Go(_page == PageKind.Card ? PageKind.Cards : PageKind.About);
                 e.Handled = true;
             }
         };
@@ -146,6 +147,7 @@ internal partial class SettingsWindow : Window
             case PageKind.Cards: BuildCards(); break;
             case PageKind.Card: BuildCard(_card!); break;
             case PageKind.General: BuildGeneral(); break;
+            case PageKind.Libraries: BuildLibraries(); break;
             default: BuildAbout(); break;
         }
         PageScroller.ScrollToVerticalOffset(offset);
@@ -237,8 +239,37 @@ internal partial class SettingsWindow : Window
         Crumb("정보");
         var icon = new Image { Source = LoadIcon(32), Width = 24, Height = 24 };
         AddRow(UpdateRow(icon));
+
+        Header("개발 정보");
+        AddRow(Row("", "개발자", "hhsshoo12", Button("프로필", () => OpenUrl(DeveloperUrl))));
+        AddRow(Row("", "함께 만든 AI", "Claude (Anthropic) · Codex (OpenAI)", null));
+        AddRow(Row("", "저작권", "Copyright © 2026 hhsshoo12. All rights reserved.", null));
+        AddRow(Row("", "사용한 라이브러리", ".NET 10 · WPF · Windows Forms", null, () => Go(PageKind.Libraries)));
+
+        Header("링크");
         AddRow(Row("", "GitHub", RepoUrl, Button("열기", () => OpenUrl(RepoUrl))));
         AddRow(Row("", "설정 폴더", AppPaths.ConfigDir, Button("열기", () => FileOps.OpenFolder(AppPaths.ConfigDir))));
+    }
+
+    /// <summary>앱과 설치기가 쓰는 라이브러리·구성 요소와 그 라이선스.</summary>
+    private void BuildLibraries()
+    {
+        Crumb("정보", () => Go(PageKind.About));
+        Crumb("사용한 라이브러리");
+
+        Header("앱에 포함");
+        AddRow(Row("", ".NET 10 런타임", "MIT 라이선스 · .NET Foundation, Microsoft",
+            Button("라이선스", () => OpenUrl("https://github.com/dotnet/runtime/blob/main/LICENSE.TXT"))));
+        AddRow(Row("", "WPF (Windows Presentation Foundation)", "MIT 라이선스 · .NET Foundation, Microsoft",
+            Button("라이선스", () => OpenUrl("https://github.com/dotnet/wpf/blob/main/LICENSE.TXT"))));
+        AddRow(Row("", "Windows Forms", "MIT 라이선스 · .NET Foundation, Microsoft (트레이 아이콘)",
+            Button("라이선스", () => OpenUrl("https://github.com/dotnet/winforms/blob/main/LICENSE.TXT"))));
+        AddRow(Row("", ".NET 런타임에 포함된 제3자 구성 요소", "런타임이 함께 싣고 있는 오픈 소스 목록이에요.",
+            Button("목록", () => OpenUrl("https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT"))));
+
+        Header("Windows 구성 요소 (앱에 포함하지 않음)");
+        AddRow(Row("", "Segoe Fluent Icons", "아이콘 글꼴 · Windows 11 기본 글꼴", null));
+        AddRow(Row("", ".NET Framework 4.8", "설치기가 사용 · Windows 기본 구성 요소", null));
     }
 
     /// <summary>
@@ -339,7 +370,7 @@ internal partial class SettingsWindow : Window
     private void BuildNav()
     {
         Nav.Children.Clear();
-        var current = _page == PageKind.Card ? PageKind.Cards : _page;
+        var current = _page switch { PageKind.Card => PageKind.Cards, PageKind.Libraries => PageKind.About, _ => _page };
         foreach (var (glyph, text, page) in NavItems)
         {
             bool on = page == current;
