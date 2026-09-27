@@ -107,6 +107,21 @@ internal static class Native
         return (ScreenEdge)data.uEdge;
     }
 
+    /// <summary>
+    /// 이 디스플레이에서 작업 표시줄이 붙은 가장자리. 작업 영역이 화면보다 좁은 쪽으로 알아내고,
+    /// 자동 숨기기라 좁아지지 않았으면 주 작업 표시줄의 가장자리로 본다.
+    /// </summary>
+    public static ScreenEdge? TaskbarEdgeOn(System.Windows.Forms.Screen screen)
+    {
+        var b = screen.Bounds;
+        var wa = screen.WorkingArea;
+        if (wa.Bottom < b.Bottom) return ScreenEdge.Bottom;
+        if (wa.Top > b.Top) return ScreenEdge.Top;
+        if (wa.Left > b.Left) return ScreenEdge.Left;
+        if (wa.Right < b.Right) return ScreenEdge.Right;
+        return TaskbarEdge();
+    }
+
     [DllImport("shell32.dll")]
     private static extern int SHQueryUserNotificationState(out int state);
 

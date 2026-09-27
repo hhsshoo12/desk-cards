@@ -37,7 +37,11 @@ internal sealed class Config
     /// <summary>가장자리에 대고 있어야 하는 시간(ms, 0~2000, 0.1초 단위). 이 동안 커서 옆 게이지가 한 바퀴 돈다.</summary>
     public int BarDelay { get; set; } = 500;
 
+    /// <summary>따로 정하지 않은 디스플레이에서 여는 가장자리(마지막으로 고른 곳).</summary>
     public ScreenEdge BarEdge { get; set; } = ScreenEdge.Right;
+
+    /// <summary>디스플레이별 여는 가장자리. 디스플레이 이름(Screen.DeviceName) → 가장자리, null이면 그 디스플레이에서는 열지 않음.</summary>
+    public Dictionary<string, ScreenEdge?> BarEdges { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>바를 여는 조합키(가상 키 코드, 예: Alt + Shift). 설정에서 직접 눌러서 정한다.</summary>
     public List<int> BarKeys { get; set; } = KeyCombo.Default.ToList();
 
@@ -103,6 +107,10 @@ internal sealed class Config
                     cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
                     cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
                     if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
+                    var edges = new Dictionary<string, ScreenEdge?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var (display, edge) in cfg.BarEdges ?? new())
+                        if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
+                    cfg.BarEdges = edges;
                     cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
                     return cfg;
                 }

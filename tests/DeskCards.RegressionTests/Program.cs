@@ -63,6 +63,22 @@ internal static class Program
                 && !KeyCombo.IsValid(new[] { KeyCombo.Ctrl, 0x41, 0x42 }) && KeyCombo.ToHotkey(cfg.BarKeys) == (0x5u, 0x44u) && cfg.BarSize == 33
                 && cfg.BarDelay == 2000 && !cfg.ShowGuides && cfg.BarEnabled);
         });
+        Test("card bar edge is chosen per display", () =>
+        {
+            string path = Path.Combine(root, "bar-edges.json");
+            File.WriteAllText(path, """{"BarEdge":0,"BarEdges":{"D2":null,"D3":7,"D4":1}}""");
+            var cfg = Config.Load(path);
+            var mgr = new GroupManager(Path.Combine(root, "bar-edge-groups"), cfg);
+            try
+            {
+                bool loaded = mgr.BarEdgeFor("D2") == null && mgr.BarEdgeFor("D4") == ScreenEdge.Top
+                    && mgr.BarEdgeFor("D3") == ScreenEdge.Left && mgr.BarEdgeFor("D9") == ScreenEdge.Left;
+                mgr.SetBarEdge("D9", ScreenEdge.Bottom);
+                Check(loaded && mgr.BarEdgeFor("D9") == ScreenEdge.Bottom && mgr.BarEdgeFor("D7") == ScreenEdge.Bottom
+                    && Config.Load(path).BarEdges["D9"] == ScreenEdge.Bottom);
+            }
+            finally { mgr.Shutdown(); }
+        });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {

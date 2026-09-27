@@ -70,7 +70,19 @@ internal sealed class GroupManager
         }
     }
 
-    public ScreenEdge BarEdge { get => _cfg.BarEdge; set => Store(_cfg.BarEdge != value, () => _cfg.BarEdge = value); }
+    /// <summary>이 디스플레이에서 여는 가장자리. null이면 이 디스플레이에서는 열지 않는다.</summary>
+    public ScreenEdge? BarEdgeFor(string display) =>
+        _cfg.BarEdges.TryGetValue(display, out var edge) ? edge : _cfg.BarEdge;
+
+    /// <summary>디스플레이별 가장자리를 정한다. 고른 가장자리는 처음 보는 디스플레이의 기본값도 된다.</summary>
+    public void SetBarEdge(string display, ScreenEdge? edge)
+    {
+        if (_cfg.BarEdges.TryGetValue(display, out var old) && old == edge) return;
+        _cfg.BarEdges[display] = edge;
+        if (edge is { } e) _cfg.BarEdge = e;
+        _cfg.Save();
+        RaiseChanged();
+    }
     public IReadOnlyList<int> BarKeys
     {
         get => _cfg.BarKeys;

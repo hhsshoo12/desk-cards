@@ -263,13 +263,7 @@ internal partial class SettingsWindow : Window
             Switch(_mgr.BarEnabled, v => _mgr.BarEnabled = v)));
 
         Header("여는 법");
-        var taskbar = Native.TaskbarEdge();
-        string edgeDesc = taskbar == _mgr.BarEdge
-            ? "지금 고른 쪽에 작업 표시줄이 있어서 열리지 않아요. 다른 쪽을 골라 주세요."
-            : "한 곳만 고를 수 있어요. 작업 표시줄이 있는 쪽은 고를 수 없어요.";
-        AddRow(Row("", "여는 가장자리", edgeDesc, Choice(
-            new[] { (ScreenEdge.Top, "위"), (ScreenEdge.Bottom, "아래"), (ScreenEdge.Left, "왼쪽"), (ScreenEdge.Right, "오른쪽") },
-            () => _mgr.BarEdge, v => _mgr.BarEdge = v, v => v != taskbar)));
+        AddEdgeRows();
 
         string keyDesc = EdgeBar.HotkeyRegistered == false
             ? "이 조합은 Windows나 다른 앱이 이미 쓰고 있어서 등록하지 못했어요. 다른 조합으로 만들어 주세요."
@@ -283,6 +277,36 @@ internal partial class SettingsWindow : Window
         Header("모양");
         AddRow(Row("", "바 두께", "화면 너비(위·아래 바는 높이)의 몇 %로 할지 정해요. 3분의 1(33%)까지예요.",
             Stepper(() => _mgr.BarSize, v => _mgr.BarSize = v, Config.BarSizeMin, Config.BarSizeMax, v => $"{v}%")));
+    }
+
+    /// <summary>
+    /// 여는 가장자리. 디스플레이가 여럿이면 디스플레이마다 한 줄씩(열지 않음도 고를 수 있음).
+    /// 디스플레이마다 한 곳만, 그 디스플레이의 작업 표시줄 쪽은 고를 수 없다.
+    /// </summary>
+    private void AddEdgeRows()
+    {
+        var screens = System.Windows.Forms.Screen.AllScreens
+            .OrderBy(s => s.Bounds.Left).ThenBy(s => s.Bounds.Top).ToList();
+        bool many = screens.Count > 1;
+        for (int i = 0; i < screens.Count; i++)
+        {
+            var screen = screens[i];
+            string device = screen.DeviceName;
+            var taskbar = Native.TaskbarEdgeOn(screen);
+            var current = _mgr.BarEdgeFor(device);
+            var options = new List<(ScreenEdge?, string)>
+            {
+                (ScreenEdge.Top, "위"), (ScreenEdge.Bottom, "아래"), (ScreenEdge.Left, "왼쪽"), (ScreenEdge.Right, "오른쪽"),
+            };
+            if (many) options.Add((null, "안 열기"));
+
+            string where = $"{screen.Bounds.Width}×{screen.Bounds.Height}" + (screen.Primary ? " · 주 디스플레이" : "");
+            string desc = current != null && current == taskbar
+                ? "고른 쪽에 작업 표시줄이 있어서 열리지 않아요. 다른 쪽을 골라 주세요."
+                : many ? where + " · 왼쪽부터 순서예요." : "한 곳만 고를 수 있어요. 작업 표시줄이 있는 쪽은 고를 수 없어요.";
+            AddRow(Row("", many ? $"디스플레이 {i + 1}" : "여는 가장자리", desc,
+                Choice(options, () => _mgr.BarEdgeFor(device), v => _mgr.SetBarEdge(device, v), v => v == null || v != taskbar)));
+        }
     }
 
     /// <summary>
@@ -355,7 +379,6 @@ internal partial class SettingsWindow : Window
 
     /// <summary>나란히 놓인 버튼 중 하나를 고르는 칸. 고른 것은 강조색, 고를 수 없는 것은 흐리게.</summary>
     private UIElement Choice<T>(IEnumerable<(T value, string text)> items, Func<T> get, Action<T> set, Func<T, bool>? allowed = null)
-        where T : struct, Enum
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         foreach (var (value, text) in items)

@@ -120,7 +120,7 @@ internal static class EdgeBar
             else { _bar.CheckLeave(); return; }
         }
 
-        if (!Native.GetCursorPos(out var pt) || !AtEdge(pt, out var screen))
+        if (!Native.GetCursorPos(out var pt) || !AtEdge(pt, out var screen, out var edge))
         {
             Reset();
             _armed = true; // 한 번 조건에서 벗어나야 다시 열 수 있다(닫히자마자 또 열리지 않게).
@@ -134,7 +134,7 @@ internal static class EdgeBar
         {
             Reset();
             _armed = false;
-            _bar = new BarWindow(_mgr, screen, _mgr.BarEdge);
+            _bar = new BarWindow(_mgr, screen, edge);
             _bar.Open();
             return;
         }
@@ -151,16 +151,20 @@ internal static class EdgeBar
     }
 
     /// <summary>바를 열 조건(설정 켜짐, 조합키, 정한 가장자리, 작업 표시줄 쪽 아님, 전체 화면 아님, 버튼 안 누름)이 맞는지.</summary>
-    private static bool AtEdge(Native.POINT pt, out Forms.Screen screen)
+    private static bool AtEdge(Native.POINT pt, out Forms.Screen screen, out ScreenEdge edge)
     {
         screen = Forms.Screen.FromPoint(new System.Drawing.Point(pt.X, pt.Y));
         var mgr = _mgr!;
+        edge = default;
+        // 디스플레이마다 여는 가장자리가 다르다(열지 않는 디스플레이도 있다).
+        if (mgr.BarEdgeFor(screen.DeviceName) is not { } chosen) return false;
+        edge = chosen;
         if (!mgr.BarEnabled || _suspended || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
         if (Mouse.LeftButton == MouseButtonState.Pressed || Mouse.RightButton == MouseButtonState.Pressed) return false;
-        if (mgr.BarEdge == Native.TaskbarEdge() || ExpandedWindow.IsOpen || FluentMenu.IsOpen) return false;
+        if (edge == Native.TaskbarEdgeOn(screen) || ExpandedWindow.IsOpen || FluentMenu.IsOpen) return false;
         var b = screen.Bounds;
         var wa = screen.WorkingArea;
-        bool at = mgr.BarEdge switch
+        bool at = edge switch
         {
             ScreenEdge.Left => pt.X <= b.Left && pt.Y >= wa.Top && pt.Y < wa.Bottom,
             ScreenEdge.Right => pt.X >= b.Right - 1 && pt.Y >= wa.Top && pt.Y < wa.Bottom,
