@@ -58,6 +58,7 @@ public partial class App : Application
 
         _mgr = new GroupManager(config: cfg);
         _mgr.Start();
+        EdgeBar.Start(_mgr);
         CreateTray();
         Updater.Instance = new Updater(cfg, host);
         Updater.Instance.StartAuto();
@@ -130,6 +131,7 @@ public partial class App : Application
     {
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         Updater.Instance?.Stop();
+        EdgeBar.Stop();
         _stopListener.Set();
         _listener?.Join();
         _showSettings?.Dispose();

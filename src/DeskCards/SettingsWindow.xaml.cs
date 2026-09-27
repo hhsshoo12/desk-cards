@@ -236,6 +236,8 @@ internal partial class SettingsWindow : Window
                     if (v < hoverOff) _mgr.HoverExpandDelay = v * 100;
                 },
                 0, hoverOff, v => v == 0 ? "즉시" : v == hoverOff ? "꺼짐" : $"{v / 10.0:0.0}초")));
+        BuildBarSettings();
+
         if (Updater.Instance is { } updater)
             AddRow(Row("", "자동 업데이트",
                 "새 버전이 나오면 미리 받아 두었다가, 다음에 앱을 켤 때(보통 PC를 다시 켤 때) 새 버전으로 열어요.",
@@ -243,6 +245,52 @@ internal partial class SettingsWindow : Window
 
         Header("폴더");
         AddRow(Row("", "그룹 폴더", _mgr.Root, Button("열기", () => FileOps.OpenFolder(_mgr.Root))));
+    }
+
+    /// <summary>카드 바: 켜기, 여는 가장자리, 조합키, 대고 있을 시간, 두께.</summary>
+    private void BuildBarSettings()
+    {
+        Header("카드 바");
+        AddRow(Row("", "카드 바",
+            "조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 커서 둘레의 게이지가 한 바퀴 돌고 카드 바가 나와요. 바 밖으로 마우스를 옮기면 들어가요.",
+            Switch(_mgr.BarEnabled, v => _mgr.BarEnabled = v)));
+
+        var taskbar = Native.TaskbarEdge();
+        string edgeDesc = taskbar == _mgr.BarEdge
+            ? "지금 고른 쪽에 작업 표시줄이 있어서 열리지 않아요. 다른 쪽을 골라 주세요."
+            : "한 곳만 고를 수 있어요. 작업 표시줄이 있는 쪽은 고를 수 없어요.";
+        AddRow(Row("", "여는 가장자리", edgeDesc, Choice(
+            new[] { (ScreenEdge.Top, "위"), (ScreenEdge.Bottom, "아래"), (ScreenEdge.Left, "왼쪽"), (ScreenEdge.Right, "오른쪽") },
+            () => _mgr.BarEdge, v => _mgr.BarEdge = v, v => v != taskbar)));
+
+        AddRow(Row("", "조합키", "이 키를 누르고 있을 때만 열려요. Alt는 뗄 때 앞에 있는 앱의 메뉴가 선택될 수 있어요.", Choice(
+            new[] { (BarKey.Ctrl, "Ctrl"), (BarKey.Shift, "Shift"), (BarKey.Alt, "Alt") },
+            () => _mgr.BarModifier, v => _mgr.BarModifier = v)));
+
+        AddRow(Row("", "대고 있을 시간", "게이지가 한 바퀴 도는 시간이에요.",
+            Stepper(() => _mgr.BarDelay / 100, v => _mgr.BarDelay = v * 100,
+                0, Config.BarDelayMax / 100, v => v == 0 ? "즉시" : $"{v / 10.0:0.0}초")));
+
+        AddRow(Row("", "바 두께", "화면 너비(위·아래 바는 높이)의 몇 %로 할지 정해요. 3분의 1(33%)까지예요.",
+            Stepper(() => _mgr.BarSize, v => _mgr.BarSize = v, Config.BarSizeMin, Config.BarSizeMax, v => $"{v}%")));
+    }
+
+    /// <summary>나란히 놓인 버튼 중 하나를 고르는 칸. 고른 것은 강조색, 고를 수 없는 것은 흐리게.</summary>
+    private UIElement Choice<T>(IEnumerable<(T value, string text)> items, Func<T> get, Action<T> set, Func<T, bool>? allowed = null)
+        where T : struct, Enum
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var (value, text) in items)
+        {
+            var v = value;
+            bool selected = EqualityComparer<T>.Default.Equals(get(), v);
+            var b = Button(text, () => set(v), accent: selected);
+            b.Margin = new Thickness(4, 0, 0, 0);
+            b.MinWidth = 56;
+            b.IsEnabled = allowed?.Invoke(v) ?? true;
+            panel.Children.Add(b);
+        }
+        return panel;
     }
 
     private void BuildAbout()

@@ -56,6 +56,42 @@ internal sealed class GroupManager
         }
     }
 
+    // ----- 카드 바 -----
+
+    public bool BarEnabled { get => _cfg.BarEnabled; set => Store(_cfg.BarEnabled != value, () => _cfg.BarEnabled = value); }
+
+    public int BarDelay
+    {
+        get => _cfg.BarDelay;
+        set
+        {
+            value = Math.Clamp((int)Math.Round(value / 100.0) * 100, 0, Config.BarDelayMax);
+            Store(_cfg.BarDelay != value, () => _cfg.BarDelay = value);
+        }
+    }
+
+    public ScreenEdge BarEdge { get => _cfg.BarEdge; set => Store(_cfg.BarEdge != value, () => _cfg.BarEdge = value); }
+    public BarKey BarModifier { get => _cfg.BarModifier; set => Store(_cfg.BarModifier != value, () => _cfg.BarModifier = value); }
+
+    public int BarSize
+    {
+        get => _cfg.BarSize;
+        set
+        {
+            value = Math.Clamp(value, Config.BarSizeMin, Config.BarSizeMax);
+            Store(_cfg.BarSize != value, () => _cfg.BarSize = value);
+        }
+    }
+
+    /// <summary>바뀌었을 때만 적용하고 저장한 뒤 알린다.</summary>
+    private void Store(bool changed, Action apply)
+    {
+        if (!changed) return;
+        apply();
+        _cfg.Save();
+        RaiseChanged();
+    }
+
     /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지.</summary>
     public bool HoverExpand
     {

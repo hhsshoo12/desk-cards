@@ -84,6 +84,68 @@ internal static class Native
         return PrimaryScale();
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    [DllImport("shell32.dll")]
+    private static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
+
+    /// <summary>작업 표시줄이 붙은 가장자리. 알 수 없으면 null.</summary>
+    public static ScreenEdge? TaskbarEdge()
+    {
+        const uint ABM_GETTASKBARPOS = 5;
+        var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>() };
+        if (SHAppBarMessage(ABM_GETTASKBARPOS, ref data) == IntPtr.Zero || data.uEdge > 3) return null;
+        return (ScreenEdge)data.uEdge;
+    }
+
+    [DllImport("shell32.dll")]
+    private static extern int SHQueryUserNotificationState(out int state);
+
+    /// <summary>전체 화면 게임·영상·발표 중인지. 이때는 카드 바를 열지 않는다.</summary>
+    public static bool IsFullScreenBusy()
+    {
+        // 2 = 전체 화면 앱, 3 = Direct3D 전체 화면, 4 = 프레젠테이션 모드
+        return SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    private static extern bool AttachThreadInput(uint attach, uint to, bool on);
+
+    /// <summary>
+    /// 다른 앱이 앞에 있을 때도 이 창을 활성 창으로 가져온다. Windows는 배경 앱이 앞으로 나서는 걸 막으므로
+    /// 잠깐 지금 앞에 있는 앱의 입력 큐에 붙었다가 뗀다.
+    /// </summary>
+    public static void ForceForeground(IntPtr hwnd)
+    {
+        var fg = GetForegroundWindow();
+        uint fgThread = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, IntPtr.Zero);
+        uint me = GetCurrentThreadId();
+        bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+        SetForegroundWindow(hwnd);
+        if (attached) AttachThreadInput(me, fgThread, false);
+    }
+
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
 

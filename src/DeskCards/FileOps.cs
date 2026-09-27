@@ -161,14 +161,19 @@ internal static class FileOps
         catch { }
     }
 
+    /// <summary>항목을 끌어내는 중인지(카드 바가 그동안 들어가지 않게).</summary>
+    public static bool Dragging { get; private set; }
+
     public static void DragOut(DependencyObject source, string path)
     {
         var data = new DataObject(DataFormats.FileDrop, new[] { path });
+        Dragging = true;
         try
         {
             DragDrop.DoDragDrop(source, data, DragDropEffects.Move | DragDropEffects.Copy | DragDropEffects.Link);
         }
         catch { }
+        finally { Dragging = false; }
     }
 
     public static string Unique(string folder, string name)

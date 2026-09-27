@@ -20,6 +20,9 @@ internal sealed class FluentMenu : Window
 
     private static FluentMenu? _open;
 
+    /// <summary>떠 있는 메뉴가 있는지.</summary>
+    public static bool IsOpen => _open != null;
+
     private sealed class Row
     {
         public required Border Ui;

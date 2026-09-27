@@ -26,6 +26,8 @@ internal partial class ExpandedWindow : Window
     private readonly GroupManager _mgr;
     private readonly bool _editTitle;
     private readonly bool _hover;
+    private readonly Func<Size, Point>? _place;
+    private readonly Window? _anchor;
     private DispatcherTimer? _leaveTimer;
     private bool _entered;
     private Point _downPos;
@@ -38,8 +40,10 @@ internal partial class ExpandedWindow : Window
     private DateTime _animStart;
     private bool _animating;
 
-    private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover)
+    private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<Size, Point>? place, Window? anchor)
     {
+        _place = place;
+        _anchor = anchor;
         InitializeComponent();
         Focusable = true;
         _card = card;
@@ -91,15 +95,21 @@ internal partial class ExpandedWindow : Window
     private GroupModel Group => _card.Group;
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
-    public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false, bool hover = false)
+    /// <param name="place">창 크기(DIP)를 받아 띄울 자리(DIP)를 정한다. 없으면 카드 가운데에 펼친다.</param>
+    /// <param name="anchor">바탕화면 카드 대신 이 창(카드 바)에서 열었을 때. 그 창보다 위에 뜬다.</param>
+    public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false, bool hover = false,
+        Func<Size, Point>? place = null, Window? anchor = null)
     {
         _current?.SafeClose();
-        var w = new ExpandedWindow(card, mgr, editTitle, hover);
+        var w = new ExpandedWindow(card, mgr, editTitle, hover, place, anchor);
         _current = w;
-        w.Topmost = mgr.Editing; // 편집 막대의 이름 바꾸기: 어두운 막 위에 뜬다.
+        // 편집 막대의 이름 바꾸기는 어두운 막 위에, 카드 바에서 열면 바 위에 뜬다.
+        w.Topmost = mgr.Editing || anchor != null;
         w.Show();
         w.Activate();
     }
+
+    public static bool IsOpen => _current is { _closing: false };
 
     public static bool IsOpenFor(CardWindow card) => _current is { _closing: false } w && w._card == card;
 
@@ -254,6 +264,13 @@ internal partial class ExpandedWindow : Window
 
     private void PlaceNearCard()
     {
+        if (_place != null)
+        {
+            var p = _place(new Size(Width, Height));
+            Left = p.X;
+            Top = p.Y;
+            return;
+        }
         // 카드 가운데를 기준으로 펼치고, 모니터 작업 영역 안으로 맞춘다.
         var dpi = VisualTreeHelper.GetDpi(_card);
         var wa = System.Windows.Forms.Screen.FromHandle(Hwnd.Of(_card)).WorkingArea;
@@ -325,7 +342,7 @@ internal partial class ExpandedWindow : Window
         if (_closing || _busy || TitleBox.IsKeyboardFocusWithin) return;
         if (!Native.GetCursorPos(out var pt)) return;
         if (Inside(Hwnd.Of(this), pt)) { _entered = true; return; }
-        if (!_entered && Inside(Hwnd.Of(_card), pt)) return;
+        if (!_entered && Inside(Hwnd.Of(_anchor ?? _card), pt)) return;
         SafeClose();
     }
 

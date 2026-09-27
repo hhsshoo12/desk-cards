@@ -31,6 +31,20 @@ internal sealed class Config
 
     public const int HoverDelayMin = 0, HoverDelayMax = 1000, HoverDelayDefault = 400;
 
+    /// <summary>카드 바: 조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 나오는 카드 줄.</summary>
+    public bool BarEnabled { get; set; } = true;
+
+    /// <summary>가장자리에 대고 있어야 하는 시간(ms, 0~2000, 0.1초 단위). 이 동안 커서 옆 게이지가 한 바퀴 돈다.</summary>
+    public int BarDelay { get; set; } = 500;
+
+    public ScreenEdge BarEdge { get; set; } = ScreenEdge.Right;
+    public BarKey BarModifier { get; set; } = BarKey.Ctrl;
+
+    /// <summary>바 두께. 모니터 작업 영역의 %(10~33, 3분의 1까지).</summary>
+    public int BarSize { get; set; } = 20;
+
+    public const int BarDelayMax = 2000, BarSizeMin = 10, BarSizeMax = 33;
+
     /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
     public double CellSize { get; set; }
 
@@ -85,6 +99,10 @@ internal sealed class Config
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
                     else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
                     cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
+                    cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
+                    cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
+                    if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
+                    if (!Enum.IsDefined(cfg.BarModifier)) cfg.BarModifier = BarKey.Ctrl;
                     return cfg;
                 }
             }
@@ -121,6 +139,12 @@ internal sealed class Config
         }
     }
 }
+
+/// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>
+internal enum ScreenEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
+
+/// <summary>카드 바를 여는 조합키.</summary>
+internal enum BarKey { Ctrl = 0, Shift = 1, Alt = 2 }
 
 /// <summary>
 /// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.

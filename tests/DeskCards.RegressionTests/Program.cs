@@ -53,6 +53,14 @@ internal static class Program
             var high = Config.Load(path);
             Check(low.HoverExpandDelay == 0 && high.HoverExpandDelay == 1000 && low.HoverExpand && Config.NormalizeHoverDelay(449) == 400);
         });
+        Test("card bar settings are normalized", () =>
+        {
+            string path = Path.Combine(root, "bar.json");
+            File.WriteAllText(path, """{"BarEdge":9,"BarModifier":-1,"BarSize":80,"BarDelay":2345,"ShowGuides":false}""");
+            var cfg = Config.Load(path);
+            Check(cfg.BarEdge == ScreenEdge.Right && cfg.BarModifier == BarKey.Ctrl && cfg.BarSize == 33
+                && cfg.BarDelay == 2000 && !cfg.ShowGuides && cfg.BarEnabled);
+        });
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {
