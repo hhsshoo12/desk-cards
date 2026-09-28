@@ -140,6 +140,8 @@ internal static class EdgeBar
         {
             Reset();
             _armed = false;
+            // 보조키만 있는 조합은 WM_HOTKEY가 오지 않으니, 여기서 막아야 Alt·Win을 뗄 때 메뉴가 열리지 않는다.
+            KeyCombo.SuppressRelease(_mgr.BarKeys);
             _bar = new BarWindow(_mgr, screen, edge);
             _bar.Open();
             return;

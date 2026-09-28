@@ -156,6 +156,8 @@ internal partial class SettingsWindow
         Header("등록 상태");
         string state = !KeyCombo.NeedsHotkey(_mgr.BarKeys)
             ? "보조키만 있는 조합이라 Windows에 등록하지 않고, 누르고 있는지만 봐요. 보조키만 누르는 건 다른 앱에 아무 일도 일으키지 않아요."
+            : !_mgr.BarEnabled
+                ? "카드 바가 꺼져 있어서 등록하지 않았어요. 카드 바를 켜면 Windows 단축키로 등록해요."
             : EdgeBar.HotkeyRegistered == false
                 ? "Windows나 다른 앱이 이 조합을 쓰고 있어서 등록하지 못했어요. 다른 조합으로 바꿔 주세요."
                 : "Windows 단축키로 등록돼 있어요. 누르는 동안 다른 앱에는 전달되지 않고, 카드 바를 끄면 등록도 풀려요.";
