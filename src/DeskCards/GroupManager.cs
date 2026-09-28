@@ -28,7 +28,6 @@ internal sealed class GroupManager
     }
 
     public string Root { get; }
-    public IEnumerable<GroupModel> Groups => _cards.Values.Select(c => c.Group);
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>카드 목록, 이름 순.</summary>
