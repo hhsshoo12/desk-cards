@@ -49,7 +49,8 @@ internal sealed class DardView : Grid
         Viewport = viewport;
         _page = settings ? DardPackage.SettingsPage : DardPackage.CardPage;
 
-        _web = new WebView2CompositionControl { DefaultBackgroundColor = System.Drawing.Color.Transparent };
+        // 카드는 키보드 초점을 받지 않는다(바탕화면 층 창이라 초점이 브라우저로 넘어가면 마우스가 묶인다). 설정 화면은 입력을 받는다.
+        _web = new WebView2CompositionControl { DefaultBackgroundColor = System.Drawing.Color.Transparent, Focusable = settings };
         _error = new TextBlock
         {
             FontSize = 12,
@@ -64,7 +65,11 @@ internal sealed class DardView : Grid
         Children.Add(_error);
         runtime.Register(this);
 
-        PreviewMouseDown += (_, _) => _lastInput = Environment.TickCount64;
+        PreviewMouseDown += (_, _) =>
+        {
+            _lastInput = Environment.TickCount64;
+            if (!IsSettings) LockBrowserWindows(); // 브라우저 창은 늦게 생기기도 해서 누를 때마다 확인한다
+        };
         PreviewKeyDown += (_, _) => _lastInput = Environment.TickCount64;
         Theme.Changed += OnThemeChanged;
         Loaded += async (_, _) => await StartAsync();
@@ -140,6 +145,7 @@ internal sealed class DardView : Grid
         core.DownloadStarting += (_, e) => e.Cancel = true;
         core.ScriptDialogOpening += (_, _) => { }; // Accept를 부르지 않으면 닫힌다(바탕화면에 경고 창을 띄우지 않는다).
         core.WebMessageReceived += OnMessage;
+        core.NavigationCompleted += (_, _) => { if (!IsSettings) LockBrowserWindows(); };
         core.ProcessFailed += (_, e) =>
         {
             if (!_closed && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited) core.Reload();
@@ -341,7 +347,7 @@ internal sealed class DardView : Grid
     }
 
     [System.Diagnostics.Conditional("DEBUG")]
-    private static void Trace(string line)
+    public static void Trace(string line)
     {
         try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "DeskCards-dard.log"), $"{DateTime.Now:HH:mm:ss.fff} {line}" + Environment.NewLine); } catch { }
     }
@@ -361,6 +367,20 @@ internal sealed class DardView : Grid
     }
 
     private void OnThemeChanged() => Dispatcher.BeginInvoke(() => Emit("theme", ThemeJson()));
+
+    /// <summary>
+    /// 바탕화면 카드에서는 브라우저가 우리 창 밑에 만드는 창을 막아 둔다. 누를 때 그 창이 초점을 가져가면서
+    /// 카드 창을 활성으로 만들고 마우스를 붙잡아, 떼기·우클릭이 카드에 오지 않기 때문이다.
+    /// 입력은 합성 컨트롤이 WPF 이벤트로 받아 넘겨주므로 막아도 클릭은 그대로 된다.
+    /// </summary>
+    private void LockBrowserWindows()
+    {
+        if (Window.GetWindow(this) is not { } w) return;
+        var top = Hwnd.Of(w);
+        uint self = (uint)Environment.ProcessId;
+        foreach (var child in Native.ChildWindows(top))
+            if (Native.ProcessOf(child) != self) Native.EnableWindow(child, false);
+    }
 
     /// <summary>키보드 입력을 이 화면으로(설정 창).</summary>
     public void FocusPage() => _web.Focus();

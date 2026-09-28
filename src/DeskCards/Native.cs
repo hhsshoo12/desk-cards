@@ -144,6 +144,32 @@ internal static class Native
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
 
+    [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
+    private static extern uint GetWindowProcess(IntPtr hwnd, out uint pid);
+
+    /// <summary>창을 만든 프로세스 ID.</summary>
+    public static uint ProcessOf(IntPtr hwnd)
+    {
+        GetWindowProcess(hwnd, out uint pid);
+        return pid;
+    }
+
+    private delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr lParam);
+
+    /// <summary>하위 창 전체(손자 창 포함).</summary>
+    public static System.Collections.Generic.List<IntPtr> ChildWindows(IntPtr parent)
+    {
+        var list = new System.Collections.Generic.List<IntPtr>();
+        EnumChildWindows(parent, (h, _) => { list.Add(h); return true; }, IntPtr.Zero);
+        return list;
+    }
+
+    [DllImport("user32.dll")]
+    public static extern bool EnableWindow(IntPtr hwnd, bool enable);
+
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 

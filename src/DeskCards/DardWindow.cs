@@ -59,6 +59,30 @@ internal sealed class DardWindow : DeskCard
         content.Children.Add(_label);
         Layout.Children.Add(content);
 
+#if DEBUG
+        PreviewMouseDown += (_, e) => DardView.Trace($"wpf down {e.ChangedButton} src={e.OriginalSource.GetType().Name}");
+        PreviewMouseUp += (_, e) => DardView.Trace($"wpf up {e.ChangedButton} src={e.OriginalSource.GetType().Name}");
+        GotMouseCapture += (_, e) => DardView.Trace($"got capture {e.OriginalSource.GetType().Name}");
+        LostMouseCapture += (_, e) => DardView.Trace($"lost capture {e.OriginalSource.GetType().Name}");
+        Activated += (_, _) => DardView.Trace("activated");
+        Deactivated += (_, _) => DardView.Trace("deactivated");
+        SourceInitialized += (_, _) => System.Windows.Interop.HwndSource.FromHwnd(Handle)!.AddHook((IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled) =>
+        {
+            if (msg is 0x201 or 0x202 or 0x204 or 0x205 or 0x21 or 0x215 or 0x6 or 0x1F or 0x7 or 0x8)
+                DardView.Trace($"msg 0x{msg:X}");
+            return IntPtr.Zero;
+        });
+#endif
+        // 눌러도 활성 창이 되지 않게 한다. 활성이 되면 WebView2가 브라우저 쪽 창으로 초점을 옮기고,
+        // 그 창이 마우스를 붙잡아 이후 클릭·우클릭이 이 창에 오지 않는다.
+        SourceInitialized += (_, _) => System.Windows.Interop.HwndSource.FromHwnd(Handle)!.AddHook((IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled) =>
+        {
+            const int WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3;
+            if (msg != WM_MOUSEACTIVATE) return IntPtr.Zero;
+            handled = true;
+            return new IntPtr(MA_NOACTIVATE);
+        });
+
         // 카드 위 우클릭은 언제나 카드 메뉴(페이지의 우클릭은 받지 않는다).
         PreviewMouseRightButtonDown += (_, e) => e.Handled = true;
         PreviewMouseRightButtonUp += (_, e) =>
