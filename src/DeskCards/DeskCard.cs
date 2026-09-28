@@ -368,7 +368,7 @@ internal abstract class DeskCard : Window
             // 둥근 창은 눌리면 활성 창이 된다(웹 화면이 초점·키보드를 받으려면 필요). z 순서는 WndProc이 바탕화면 층에 붙잡아 둔다.
             Hwnd.RemoveSysMenu(hwnd);
             Hwnd.MakeTool(hwnd);
-            Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+            ApplyBackdrop();
             Theme.Changed += OnThemeChanged;
         }
         AttachToDesktop(hwnd);
@@ -537,9 +537,16 @@ internal abstract class DeskCard : Window
     private void OnThemeChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (_closed || Handle == IntPtr.Zero) return;
-        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+        ApplyBackdrop();
         UpdateBorder(false);
     });
+
+    /// <summary>둥근 창의 배경: 폴더 카드 판과 같은 색을 아크릴 흐림 위에 덧칠한다.</summary>
+    private void ApplyBackdrop()
+    {
+        var tint = TryFindResource("CardBg") is SolidColorBrush b ? b.Color : Color.FromArgb(0xCC, 0x20, 0x20, 0x20);
+        Hwnd.ApplyCardBackdrop(this, tint);
+    }
 
     protected override void OnClosed(EventArgs e)
     {

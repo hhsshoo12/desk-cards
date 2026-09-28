@@ -258,6 +258,37 @@ internal static class Native
     [DllImport("gdi32.dll")]
     public static extern int GetDIBits(IntPtr hdc, IntPtr hbm, uint start, uint lines, byte[] bits, ref BITMAPINFOHEADER bi, uint usage);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ACCENT_POLICY { public int AccentState, AccentFlags, GradientColor, AnimationId; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWCOMPOSITIONATTRIBDATA { public int Attrib; public IntPtr Data; public int SizeOfData; }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowCompositionAttribute(IntPtr hwnd, ref WINDOWCOMPOSITIONATTRIBDATA data);
+
+    /// <summary>
+    /// 창 뒤를 흐리게 비치는 아크릴(문서화되지 않은 창 합성 속성). 시스템 배경(DWMWA_SYSTEMBACKDROP_TYPE)과 달리
+    /// 창이 비활성이어도 꺼지지 않는다. abgr은 덧칠할 색(0xAABBGGRR).
+    /// </summary>
+    public static void SetAcrylicBlur(IntPtr hwnd, int abgr)
+    {
+        const int WCA_ACCENT_POLICY = 19, ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
+        var accent = new ACCENT_POLICY { AccentState = ACCENT_ENABLE_ACRYLICBLURBEHIND, GradientColor = abgr };
+        int size = Marshal.SizeOf<ACCENT_POLICY>();
+        IntPtr ptr = Marshal.AllocHGlobal(size);
+        try
+        {
+            Marshal.StructureToPtr(accent, ptr, false);
+            var data = new WINDOWCOMPOSITIONATTRIBDATA { Attrib = WCA_ACCENT_POLICY, Data = ptr, SizeOfData = size };
+            SetWindowCompositionAttribute(hwnd, ref data);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(ptr);
+        }
+    }
+
     public static void SetDwm(IntPtr hwnd, int attr, int value) =>
         DwmSetWindowAttribute(hwnd, attr, ref value, sizeof(int));
 }
