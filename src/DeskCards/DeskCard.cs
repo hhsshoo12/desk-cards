@@ -27,7 +27,7 @@ internal abstract class DeskCard : Window
 
     protected readonly GroupManager Mgr;
     private readonly Thumb _grip;
-    private bool _pending, _editing, _selected;
+    private bool _pending, _editing, _selected, _dropTarget;
     private double _appliedScale = 1;
     private bool _closed;
     private Native.POINT _moveCursorStart;
@@ -169,7 +169,7 @@ internal abstract class DeskCard : Window
         _editing = true;
         _grip.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
-        UpdateBorder(false);
+        UpdateBorder();
         OnEditChanged(true);
         RaiseForEdit();
     }
@@ -189,7 +189,7 @@ internal abstract class DeskCard : Window
         _editing = _selected = false;
         _grip.Visibility = Visibility.Collapsed;
         Cursor = null;
-        UpdateBorder(false);
+        UpdateBorder();
         OnEditChanged(false);
         // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
         Hwnd.SetZOrder(Handle, Native.HWND_BOTTOM);
@@ -200,7 +200,7 @@ internal abstract class DeskCard : Window
     public void SetSelected(bool on)
     {
         _selected = on && _editing;
-        UpdateBorder(false);
+        UpdateBorder();
     }
 
     /// <summary>화살표 키로 조금씩 옮긴다(물리 픽셀). 작업 영역 밖으로는 나가지 않는다.</summary>
@@ -297,10 +297,12 @@ internal abstract class DeskCard : Window
     }
 
     /// <summary>드롭 대상이거나 편집 중이면 강조 테두리. 편집 중에 고른 카드는 더 굵게.</summary>
-    protected void UpdateBorder(bool dropTarget)
+    protected void UpdateBorder(bool? dropTarget = null)
     {
+        // 테마·선택 변경은 현재 드롭 상태를 보존하고, DragLeave·Drop에서만 명시적으로 끈다.
+        if (dropTarget.HasValue) _dropTarget = dropTarget.Value;
         var card = Frame;
-        bool strong = dropTarget || _selected;
+        bool strong = _dropTarget || _selected;
         var accent = TryFindResource("Accent") as SolidColorBrush;
         // Windows가 그리는 1px 창 테두리를 강조색으로 바꾸고, 고른 카드는 안쪽 테두리를 더한다.
         var hwnd = Handle;
@@ -324,7 +326,7 @@ internal abstract class DeskCard : Window
         else Hwnd.MakeNoActivateTool(hwnd);
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         Theme.Changed += OnThemeChanged;
-        UpdateBorder(false);
+        UpdateBorder();
         AttachToDesktop(hwnd);
         ApplySize();
 
@@ -498,7 +500,7 @@ internal abstract class DeskCard : Window
     {
         if (_closed || Handle == IntPtr.Zero) return;
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
-        UpdateBorder(false);
+        UpdateBorder();
     });
 
     protected override void OnClosed(EventArgs e)

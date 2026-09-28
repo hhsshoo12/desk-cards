@@ -108,6 +108,27 @@ internal static partial class Program
                 Check(card.View.Card.BorderThickness == new Thickness(2));
                 card.EndEdit();
             });
+            Test("드롭 대상 강조는 테마·선택 변경에도 유지되고 드래그 종료 때 해제된다", () =>
+            {
+                var update = typeof(DeskCard).GetMethod("UpdateBorder", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                try
+                {
+                    update.Invoke(card, new object[] { true });
+                    CheckInnerBorder(card, strong: true);
+                    Theme.Apply();
+                    Pump(100);
+                    CheckInnerBorder(card, strong: true);
+                    card.BeginEdit();
+                    card.SetSelected(false);
+                    CheckInnerBorder(card, strong: true);
+                }
+                finally
+                {
+                    update.Invoke(card, new object[] { false });
+                    card.EndEdit();
+                }
+                CheckInnerBorder(card, strong: false);
+            });
             if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
             {
                 PrintCard(card, Path.Combine(dir, "dwm-folder.png"));
@@ -158,6 +179,7 @@ internal static partial class Program
     private static void PrintCard(DeskCard card, string path)
     {
         card.UpdateLayout();
+        Pump(200); // 편집 상태가 바뀐 뒤 합성된 새 프레임을 기다린다.
         var hwnd = Hwnd.Of(card);
         Native.GetWindowRect(hwnd, out var rect);
         using var bitmap = new System.Drawing.Bitmap(rect.Right - rect.Left, rect.Bottom - rect.Top);
