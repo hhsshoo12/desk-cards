@@ -517,7 +517,7 @@ internal sealed class BarWindow : Window
     private void OnFrame(object? sender, EventArgs e)
     {
         double t = Math.Min(1, _anim.ElapsedMilliseconds / _animMs);
-        double k = 1 - Math.Pow(1 - t, 4); // 처음엔 빠르고 끝으로 갈수록 느려진다
+        double k = Motion.EaseOut(t, 4);
         _offset = _from + (_to - _from) * k;
         PlaceAt(_offset);
         if (t < 1) return;

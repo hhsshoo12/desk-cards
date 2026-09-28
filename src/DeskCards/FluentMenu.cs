@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Shell;
 
 namespace DeskCards;
@@ -201,10 +200,8 @@ internal sealed class FluentMenu : Window
         if (_place != null && Native.GetWindowRect(Hwnd.Of(this), out var r))
             Move(_place(new Size(r.Right - r.Left, r.Bottom - r.Top)));
 
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var dur = TimeSpan.FromMilliseconds(160);
-        _body.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
-        _slide.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-8, 0, dur) { EasingFunction = ease });
+        _body.BeginAnimation(OpacityProperty, Motion.CubicOut(0, 1, 160));
+        _slide.BeginAnimation(TranslateTransform.YProperty, Motion.CubicOut(-8, 0, 160));
         Keyboard.Focus(this);
     }
 

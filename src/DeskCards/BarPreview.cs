@@ -187,10 +187,7 @@ internal sealed class ZoneBand : Window
         var property = Side ? WidthProperty : HeightProperty;
         double from = Side ? _band.ActualWidth : _band.ActualHeight;
         if (double.IsNaN(from)) from = 0;
-        var anim = new System.Windows.Media.Animation.DoubleAnimation(from, to, TimeSpan.FromMilliseconds(ms))
-        {
-            EasingFunction = new System.Windows.Media.Animation.QuarticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut },
-        };
+        var anim = Motion.QuarticOut(from, to, ms);
         if (hideAfter) anim.Completed += (_, _) => { if (!_hold.IsEnabled) Hide(); };
         _band.BeginAnimation(property, anim);
     }

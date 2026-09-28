@@ -382,10 +382,7 @@ internal partial class SettingsWindow : Window
         panel.Children.Add(canvas);
         panel.Children.Add(identify);
         panel.Children.Add(hint);
-        var box = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Padding = new Thickness(16, 12, 16, 12), Margin = new Thickness(0, 0, 0, 4), Child = panel };
-        box.SetResourceReference(Border.BackgroundProperty, "RowBg");
-        box.SetResourceReference(Border.BorderBrushProperty, "RowBorder");
-        return box;
+        return RowBox(panel, new Thickness(16, 12, 16, 12));
     }
 
     /// <summary>카드 바 › 조합키: 새 조합 누르기, 등록 상태와 알아 둘 점.</summary>
@@ -405,10 +402,7 @@ internal partial class SettingsWindow : Window
         AddRow(intro);
 
         _keyEditor = new KeyComboEditor(_mgr.BarKeys, keys => _mgr.BarKeys = keys, (text, act, accent) => Button(text, act, accent));
-        var box = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Padding = new Thickness(16), Margin = new Thickness(0, 0, 0, 4), Child = _keyEditor };
-        box.SetResourceReference(Border.BackgroundProperty, "RowBg");
-        box.SetResourceReference(Border.BorderBrushProperty, "RowBorder");
-        AddRow(box);
+        AddRow(RowBox(_keyEditor, new Thickness(16)));
 
         Header("등록 상태");
         string state = !KeyCombo.NeedsHotkey(_mgr.BarKeys)
@@ -787,16 +781,7 @@ internal partial class SettingsWindow : Window
             }
         }
 
-        var row = new Border
-        {
-            CornerRadius = new CornerRadius(6),
-            BorderThickness = new Thickness(1),
-            Padding = new Thickness(16, 11, 16, 11),
-            Margin = new Thickness(0, 0, 0, 4),
-            Child = grid,
-        };
-        row.SetResourceReference(Border.BackgroundProperty, "RowBg");
-        row.SetResourceReference(Border.BorderBrushProperty, "RowBorder");
+        var row = RowBox(grid, new Thickness(16, 11, 16, 11));
         if (click != null)
         {
             row.Cursor = Cursors.Hand;
@@ -805,6 +790,22 @@ internal partial class SettingsWindow : Window
             row.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
         }
         return row;
+    }
+
+    /// <summary>설정 행과 설명 칸에 쓰는 공통 테두리. 안쪽 여백은 내용마다 정한다.</summary>
+    private static Border RowBox(UIElement content, Thickness padding)
+    {
+        var box = new Border
+        {
+            CornerRadius = new CornerRadius(6),
+            BorderThickness = new Thickness(1),
+            Padding = padding,
+            Margin = new Thickness(0, 0, 0, 4),
+            Child = content,
+        };
+        box.SetResourceReference(Border.BackgroundProperty, "RowBg");
+        box.SetResourceReference(Border.BorderBrushProperty, "RowBorder");
+        return box;
     }
 
     private Button Button(string text, Action act, bool accent = false)

@@ -5,7 +5,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
 namespace DeskCards;
@@ -199,7 +198,7 @@ internal partial class ExpandedWindow : Window
     private void OnScrollFrame(object? sender, EventArgs e)
     {
         double t = Math.Min(1, (DateTime.Now - _animStart).TotalMilliseconds / 280);
-        double k = 1 - Math.Pow(1 - t, 3);
+        double k = Motion.EaseOut(t, 3);
         Scroller.ScrollToVerticalOffset(_animFrom + (_animTo - _animFrom) * k);
         if (t >= 1) StopScrollAnimation();
     }
@@ -306,11 +305,9 @@ internal partial class ExpandedWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-        var dur = TimeSpan.FromMilliseconds(180);
-        Body.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, dur) { EasingFunction = ease });
-        Scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.94, 1, dur) { EasingFunction = ease });
-        Scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.94, 1, dur) { EasingFunction = ease });
+        Body.BeginAnimation(OpacityProperty, Motion.CubicOut(0, 1, 180));
+        Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.CubicOut(0.94, 1, 180));
+        Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.CubicOut(0.94, 1, 180));
 
         if (_hover)
         {
