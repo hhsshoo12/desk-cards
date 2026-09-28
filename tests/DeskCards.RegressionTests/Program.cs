@@ -374,6 +374,7 @@ internal static partial class Program
                 var main = cards.Single(c => c.Info.Id == "main");
                 Check(Math.Abs(main.Width / main.Height - 2) < 0.1); // 둥근 창은 여백·이름 줄 없이 비율 그대로
                 Test(".dard 카드도 공통 아크릴 틀을 쓰고 활성화는 허용한다", () => CheckDwmCard(main, activatable: true));
+                Test(".dard 웹 화면은 편집 중 캡처로 바뀌고 끝나면 같은 확대 비율로 돌아온다", () => CheckDardEditing(main));
 
                 mgr.SetDardSettings(main.Key, System.Text.Json.Nodes.JsonNode.Parse("""{"hour24":false}"""));
                 Check((bool?)mgr.GetDardSettings(main.Key)?["hour24"] == false);

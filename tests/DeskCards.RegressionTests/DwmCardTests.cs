@@ -161,6 +161,48 @@ internal static partial class Program
         }
     }
 
+    private static void CheckDardEditing(DardWindow card)
+    {
+        var view = Visuals<DardView>(card).Single();
+        var web = view.Children.OfType<Microsoft.Web.WebView2.Wpf.WebView2>().Single();
+        var snapshot = view.Children.OfType<Image>().Single();
+        WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");
+        // 캡처는 문서가 실제로 표시된 뒤 가능하다.
+        var loaded = web.ExecuteScriptAsync("document.readyState");
+        WaitUntil(() => loaded.IsCompleted);
+        Check(loaded.GetAwaiter().GetResult() is "\"complete\"" or "\"interactive\"");
+        double zoom = web.ZoomFactor;
+        try
+        {
+            // 콘솔 본문에는 WPF 동기화 컨텍스트가 없다. 실제 메뉴처럼 Dispatcher에서 캡처를 시작한다.
+            var edit = card.Dispatcher.InvokeAsync(() =>
+            {
+                card.BeginEdit();
+                card.SetSelected(true);
+            });
+            WaitUntil(() => edit.Task.IsCompleted);
+            edit.Task.GetAwaiter().GetResult();
+            WaitUntil(() => snapshot.Source != null && web.Visibility == Visibility.Hidden);
+            Check(snapshot.Visibility == Visibility.Visible);
+            Check(Math.Abs(web.ZoomFactor - zoom) < 0.001);
+            if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                PrintCard(card, Path.Combine(dir, "dwm-dard-selected.png"));
+        }
+        finally { card.EndEdit(); }
+        Check(snapshot.Visibility == Visibility.Collapsed && snapshot.Source == null && web.Visibility == Visibility.Visible);
+        Check(Math.Abs(web.ZoomFactor - zoom) < 0.001);
+        Theme.Apply();
+        Pump(100);
+        CheckDwmCard(card, activatable: true);
+    }
+
+    private static void WaitUntil(Func<bool> condition)
+    {
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+        while (!condition() && elapsed.ElapsedMilliseconds < 10000) Pump(50);
+        Check(condition());
+    }
+
     private static void CheckInnerBorder(CardWindow card, bool strong)
     {
         // DWMWA_BORDER_COLOR는 설정용 속성이라 이 OS에서 조회하면 E_INVALIDARG다.
