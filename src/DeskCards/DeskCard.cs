@@ -368,7 +368,7 @@ internal abstract class DeskCard : Window
             // 둥근 창은 눌리면 활성 창이 된다(웹 화면이 초점·키보드를 받으려면 필요). z 순서는 WndProc이 바탕화면 층에 붙잡아 둔다.
             Hwnd.RemoveSysMenu(hwnd);
             Hwnd.MakeTool(hwnd);
-            ApplyBackdrop();
+            Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
             Theme.Changed += OnThemeChanged;
         }
         AttachToDesktop(hwnd);
@@ -388,6 +388,13 @@ internal abstract class DeskCard : Window
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (msg == Native.WM_NCACTIVATE && !Layered)
+        {
+            // Windows 11 아크릴 배경은 창이 비활성이면 단색으로 바뀐다. 바탕화면 카드는 거의 늘 비활성이라,
+            // 창 틀을 늘 활성 상태로 그리게 해서 아크릴을 유지한다(실제 활성·초점은 그대로).
+            handled = true;
+            return Native.DefWindowProc(hwnd, msg, new IntPtr(1), lParam);
+        }
         if (msg == Native.WM_WINDOWPOSCHANGING)
         {
             // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
@@ -537,16 +544,9 @@ internal abstract class DeskCard : Window
     private void OnThemeChanged() => Dispatcher.BeginInvoke(() =>
     {
         if (_closed || Handle == IntPtr.Zero) return;
-        ApplyBackdrop();
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         UpdateBorder(false);
     });
-
-    /// <summary>둥근 창의 배경: 폴더 카드 판과 같은 색을 아크릴 흐림 위에 덧칠한다.</summary>
-    private void ApplyBackdrop()
-    {
-        var tint = TryFindResource("CardBg") is SolidColorBrush b ? b.Color : Color.FromArgb(0xCC, 0x20, 0x20, 0x20);
-        Hwnd.ApplyCardBackdrop(this, tint);
-    }
 
     protected override void OnClosed(EventArgs e)
     {

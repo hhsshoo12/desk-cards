@@ -24,7 +24,8 @@ internal sealed class DardWindow : DeskCard
         {
             MenuRequested = () => Menus.ForDard(this, Mgr).ShowAtCursor(),
         };
-        _frame = new Border { Child = _view }; // 배경은 창의 아크릴(DeskCard)이 칠한다
+        _frame = new Border { Child = _view };
+        _frame.SetResourceReference(Border.BackgroundProperty, "PopupBg");
         Layout.Children.Add(_frame);
 
         // 편집 중(웹 화면이 그림으로 바뀐 동안)의 우클릭도 카드 메뉴.

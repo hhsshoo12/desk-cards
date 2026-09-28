@@ -49,18 +49,6 @@ internal static class Hwnd
     /// Windows 11 모양: 테마에 맞는 창 틀, 둥근 모서리, 시스템 배경(Mica·아크릴).
     /// 배경을 쓰면 WPF가 칠하는 바탕을 비워 시스템 배경이 비치게 한다.
     /// </summary>
-    /// <summary>
-    /// 바탕화면 카드용 Windows 11 모양: 둥근 모서리·그림자는 DWM, 배경은 비활성이어도 유지되는 아크릴 흐림에 카드 색을 덧칠한다.
-    /// </summary>
-    public static void ApplyCardBackdrop(Window w, Color tint)
-    {
-        var hwnd = Of(w);
-        if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
-        Native.SetDwm(hwnd, Native.DWMWA_USE_IMMERSIVE_DARK_MODE, Theme.IsLight ? 0 : 1);
-        Native.SetDwm(hwnd, Native.DWMWA_WINDOW_CORNER_PREFERENCE, 2);
-        Native.SetAcrylicBlur(hwnd, tint.A << 24 | tint.B << 16 | tint.G << 8 | tint.R);
-    }
-
     public static void ApplyFluent(Window w, Backdrop backdrop = Backdrop.None, bool roundCorners = true)
     {
         var hwnd = Of(w);
