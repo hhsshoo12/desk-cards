@@ -15,7 +15,7 @@ internal sealed class DardWindow : DeskCard
     private readonly Border _frame;
     private readonly DardView _view;
 
-    public DardWindow(DardRuntime runtime, DardCardInfo info, GroupManager mgr) : base(mgr, layered: false)
+    public DardWindow(DardRuntime runtime, DardCardInfo info, GroupManager mgr) : base(mgr)
     {
         Runtime = runtime;
         Info = info;
@@ -25,7 +25,6 @@ internal sealed class DardWindow : DeskCard
             MenuRequested = () => Menus.ForDard(this, Mgr).ShowAtCursor(),
         };
         _frame = new Border { Child = _view };
-        _frame.SetResourceReference(Border.BackgroundProperty, "PopupBg");
         Layout.Children.Add(_frame);
 
         // 편집 중(웹 화면이 그림으로 바뀐 동안)의 우클릭도 카드 메뉴.
@@ -41,6 +40,7 @@ internal sealed class DardWindow : DeskCard
     public override string Key => Runtime.KeyFor(Info.Id);
     public override string CardName => Info.Name;
     protected override Border Frame => _frame;
+    protected override bool Activatable => true;
 
     /// <summary>확대 1일 때 카드 크기(DIP): 넓이는 기본 폴더 카드(2×2 칸)와 같고 비율은 카드가 정한다.</summary>
     public static Size BaseSizeFor(DardCardInfo info, double cell) =>

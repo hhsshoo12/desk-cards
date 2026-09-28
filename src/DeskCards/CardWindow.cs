@@ -30,7 +30,7 @@ internal sealed class CardWindow : DeskCard
         DragOver += OnDragOver;
         DragLeave += (_, _) => UpdateBorder(false);
         Drop += OnDrop;
-        // 아이콘 칸 밖(가장자리 여백)을 우클릭해도 카드 메뉴.
+        // 아이콘 칸 밖(이름 줄·가장자리)을 우클릭해도 카드 메뉴.
         MouseRightButtonUp += (_, e) => { e.Handled = true; Menus.ForCard(this, Mgr).ShowAtCursor(); };
     }
 
@@ -48,12 +48,12 @@ internal sealed class CardWindow : DeskCard
     {
         double w = 152;
         if (DesktopGrid.TryGetIconSpacing(out int cx)) w = DesktopGrid.CardCols * cx / dpiScale;
-        return (w - 2 * Inset) / 2;
+        return w / 2;
     }
 
     /// <summary>확대 비율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
     public static Size BaseSize(CardLayout layout, double cell) =>
-        new(layout.Cols * cell + 2 * Inset, TopPad + layout.Rows * cell + LabelH);
+        new(layout.Cols * cell, layout.Rows * cell + LabelH);
 
     protected override Size BaseSize() => BaseSize(_layout, Mgr.CellSize);
 

@@ -29,7 +29,7 @@ internal sealed class CardView : Grid
     private object? _downTarget;
     private bool _pending;
 
-    /// <param name="onDesktop">바탕화면 위(이름을 흰 글씨 + 그림자로)인지, 카드 바 위(테마 글씨색)인지.</param>
+    /// <param name="onDesktop">바탕화면의 아크릴 창 안인지, 카드 바의 판·그림자 위인지.</param>
     public CardView(GroupModel group, GroupManager mgr, bool onDesktop)
     {
         Group = group;
@@ -40,11 +40,20 @@ internal sealed class CardView : Grid
         Card = new Border
         {
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 },
         };
-        Card.SetResourceReference(Border.BackgroundProperty, "CardBg");
-        Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+        if (onDesktop)
+        {
+            // 창 전체(이름 줄 포함)의 강조 테두리. 아이콘 칸의 크기·여백은 바꾸지 않는다.
+            SetRowSpan(Card, 2);
+            Card.IsHitTestVisible = false;
+        }
+        else
+        {
+            Card.BorderThickness = new Thickness(1);
+            Card.Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 };
+            Card.SetResourceReference(Border.BackgroundProperty, "CardBg");
+            Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+        }
         Children.Add(Card);
         Children.Add(_cells);
 
@@ -67,12 +76,7 @@ internal sealed class CardView : Grid
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
-        if (onDesktop)
-        {
-            _label.Foreground = Brushes.White;
-            _label.Effect = new DropShadowEffect { BlurRadius = 4, ShadowDepth = 1, Direction = 270, Opacity = 0.9, Color = Colors.Black };
-        }
-        else _label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        _label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         SetRow(_label, 1);
         Children.Add(_label);
 

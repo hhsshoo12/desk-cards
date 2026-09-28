@@ -11,7 +11,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DeskCards;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _failed;
     [STAThread]
@@ -302,6 +302,7 @@ internal static class Program
             }
             finally { mgr.Shutdown(); }
         });
+        DwmCardTests(root);
         DardTests(root, app);
         UpdateTests(root);
         Console.WriteLine($"Failures: {_failed}");
@@ -372,6 +373,7 @@ internal static class Program
                 Check(cfg.Positions.ContainsKey("dard:com.test.clock/main"));
                 var main = cards.Single(c => c.Info.Id == "main");
                 Check(Math.Abs(main.Width / main.Height - 2) < 0.1); // 둥근 창은 여백·이름 줄 없이 비율 그대로
+                Test(".dard 카드도 공통 아크릴 틀을 쓰고 활성화는 허용한다", () => CheckDwmCard(main, activatable: true));
 
                 mgr.SetDardSettings(main.Key, System.Text.Json.Nodes.JsonNode.Parse("""{"hour24":false}"""));
                 Check((bool?)mgr.GetDardSettings(main.Key)?["hour24"] == false);
