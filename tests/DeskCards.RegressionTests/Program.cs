@@ -302,11 +302,117 @@ internal static class Program
             }
             finally { mgr.Shutdown(); }
         });
+        DardTests(root, app);
         UpdateTests(root);
         Console.WriteLine($"Failures: {_failed}");
         app.Shutdown();
         return _failed == 0 ? 0 : 1;
     }
+    // ----- .dard 카드: 임시 루트와 임시 브라우저 데이터만 쓴다 -----
+
+    private const string ClockManifest = """
+        { "dard": 1, "id": "com.test.clock", "name": "시계", "version": "1.0.0",
+          "cards": [ { "id": "main", "ratio": [2, 1] }, { "id": "mini", "name": "작은 시계", "ratio": [1, 1] } ] }
+        """;
+
+    private static byte[] Dard(params (string Name, string Text)[] files)
+    {
+        using var ms = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            foreach (var (name, text) in files)
+                using (var w = new StreamWriter(zip.CreateEntry(name).Open())) w.Write(text);
+        return ms.ToArray();
+    }
+
+    private static void DardTests(string root, Application app)
+    {
+        AppPaths.WebDataDir = Path.Combine(root, "webview2");
+        Test(".dard manifest is read with cards, ratios and default settings ratio", () =>
+        {
+            var pkg = DardPackage.Parse(Dard(("manifest.json", ClockManifest), ("card.html", "<p>hi"), ("settings.html", "<p>s")), "x.dard");
+            Check(pkg.Id == "com.test.clock" && pkg.Cards.Count == 2 && pkg.Cards[1].Name == "작은 시계" && pkg.Cards[0].Name == "시계");
+            Check(pkg.Cards[0].RatioW == 2 && pkg.SettingsRatio == (3, 4) && pkg.Host == "com.test.clock.card.desk" && pkg.Permissions.Count == 0);
+            var size = DardPackage.SizeFor(2, 1, DardPackage.CardArea);
+            Check(Math.Abs(size.Width * size.Height - DardPackage.CardArea) < 0.01 && Math.Abs(size.Width / size.Height - 2) < 0.001);
+        });
+        Test(".dard rejects extra files, bad ratios, unknown permissions and zip bombs", () =>
+        {
+            bool Rejected(byte[] bytes)
+            {
+                try { DardPackage.Parse(bytes, "x.dard"); return false; }
+                catch (DardException) { return true; }
+            }
+            Check(Rejected(Dard(("manifest.json", ClockManifest), ("card.html", ""), ("run.exe", "MZ"))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest), ("card.html", ""), ("sub/card.html", ""))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("[2, 1]", "[9, 1]")), ("card.html", ""))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",", "\"version\": \"1.0.0\", \"permissions\": { \"shell\": true },")), ("card.html", ""))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("com.test.clock", "Com.Test")), ("card.html", ""))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest))));
+            Check(Rejected(Dard(("manifest.json", ClockManifest), ("card.html", new string('a', 33 * 1024 * 1024)))));
+            Check(Rejected(new byte[] { 1, 2, 3 }));
+            var perms = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
+                "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"cpu\"], \"internet\": [\"api.example.com\"] },")), ("card.html", "")), "x.dard");
+            Check(perms.Permissions.Count == 2);
+        });
+        Test("approved .dard cards load, follow file changes and unload when removed", () =>
+        {
+            string groups = Path.Combine(root, "dard-groups");
+            Directory.CreateDirectory(Path.Combine(groups, "그룹"));
+            string file = Path.Combine(groups, "시계.dard");
+            File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest), ("card.html", "<p>1"), ("settings.html", "<p>s")));
+            var cfg = Config.Load(Path.Combine(root, "dard.json"));
+            cfg.Dards["com.test.clock"] = new DardApproval { Hash = DardPackage.Load(file).Hash, Allowed = true };
+            var mgr = new GroupManager(groups, cfg);
+            try
+            {
+                mgr.Start();
+                var cards = mgr.AllCards.OfType<DardWindow>().ToList();
+                Check(mgr.Dards.Count == 1 && cards.Count == 2 && mgr.Cards.Count == 1);
+                Check(cards.Select(c => c.Key).OrderBy(k => k).SequenceEqual(new[] { "dard:com.test.clock/main", "dard:com.test.clock/mini" }));
+                Check(cfg.Positions.ContainsKey("dard:com.test.clock/main"));
+                var main = cards.Single(c => c.Info.Id == "main");
+                Check(Math.Abs(main.Width / (main.Height - DeskCard.TopPad - DeskCard.LabelH) - 2) < 0.1);
+
+                mgr.SetDardSettings(main.Key, System.Text.Json.Nodes.JsonNode.Parse("""{"hour24":false}"""));
+                Check((bool?)mgr.GetDardSettings(main.Key)?["hour24"] == false);
+                Check(Config.Load(Path.Combine(root, "dard.json")).DardSettings.ContainsKey(main.Key));
+
+                main.Runtime.OpenSettings("main");
+                Pump(100);
+                Check(app.Windows.OfType<DardSettingsWindow>().Count() == 1);
+
+                // 권한이 같은 새 버전은 다시 묻지 않고 바꿔 띄운다(설정 창은 닫힌다).
+                File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest), ("card.html", "<p>2"), ("settings.html", "<p>s")));
+                Pump(900);
+                var reloaded = mgr.AllCards.OfType<DardWindow>().ToList();
+                Check(reloaded.Count == 2 && !reloaded.Contains(main) && cfg.Dards["com.test.clock"].Hash == DardPackage.Load(file).Hash);
+                Check(!app.Windows.OfType<DardSettingsWindow>().Any());
+
+                File.Delete(file);
+                Pump(900);
+                Check(mgr.Dards.Count == 0 && !mgr.AllCards.OfType<DardWindow>().Any() && mgr.Cards.Count == 1);
+            }
+            finally { mgr.Shutdown(); }
+            Check(!app.Windows.OfType<DardWindow>().Any());
+        });
+        Test("declined .dard is not loaded", () =>
+        {
+            string groups = Path.Combine(root, "dard-declined");
+            Directory.CreateDirectory(Path.Combine(groups, "그룹"));
+            string file = Path.Combine(groups, "시계.dard");
+            File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest), ("card.html", "<p>1")));
+            var cfg = Config.Load(Path.Combine(root, "dard-declined.json"));
+            cfg.Dards["com.test.clock"] = new DardApproval { Hash = DardPackage.Load(file).Hash, Allowed = false };
+            var mgr = new GroupManager(groups, cfg);
+            try
+            {
+                mgr.Start();
+                Check(mgr.Dards.Count == 0 && !mgr.AllCards.OfType<DardWindow>().Any());
+            }
+            finally { mgr.Shutdown(); }
+        });
+    }
+
     // ----- 앱 자체 업데이트: 임시 설치 폴더와 가짜 네트워크만 쓴다 -----
 
     private const string ReleasesJson = """
@@ -427,7 +533,7 @@ internal static class Program
         });
     }
 
-    private static void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
+    private static void Check(bool condition, [System.Runtime.CompilerServices.CallerLineNumber] int line = 0) { if (!condition) throw new Exception($"Assertion failed (line {line})"); }
     private static void Snapshot(Window window, string path)
     {
         var root = (FrameworkElement)window.Content;

@@ -25,6 +25,17 @@ internal static class Menus
         .Separator()
         .Item("", "설정", () => SettingsWindow.Open(mgr, card));
 
+    /// <summary>.dard 카드 메뉴. 카드 위 어디를 우클릭해도 이 메뉴가 뜬다(페이지는 우클릭을 받지 않는다).</summary>
+    public static FluentMenu ForDard(DardWindow card, GroupManager mgr) => new FluentMenu()
+        .Item("", "카드 설정", () => card.Runtime.OpenSettings(card.Info.Id), enabled: card.Runtime.Package.SettingsRatio != null)
+        .Item("", "카드 편집 (이동 · 크기 · 삭제)", () => mgr.BeginEditMode(card))
+        .Item("", "다시 불러오기", card.Reload)
+        .Item("", "파일 위치 열기", () => FileOps.Reveal(card.Runtime.Package.Path))
+        .Separator()
+        .Item("", "카드 삭제 (.dard를 휴지통으로)", () => mgr.DeleteDard(card), danger: true)
+        .Separator()
+        .Item("", "Desk Cards 설정", () => SettingsWindow.Open(mgr));
+
     public static FluentMenu ForTray(GroupManager mgr, Action quit) => new FluentMenu()
         .Item("", "설정", () => SettingsWindow.Open(mgr))
         .Item("", "카드 편집 (이동 · 크기 · 삭제)", () => mgr.BeginEditMode())

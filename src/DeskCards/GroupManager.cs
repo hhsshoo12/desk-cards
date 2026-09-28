@@ -9,7 +9,7 @@ using Microsoft.Win32;
 namespace DeskCards;
 
 /// <summary>그룹 루트 폴더의 하위 폴더마다 카드 창을 하나씩 띄우고 동기화한다.</summary>
-internal sealed class GroupManager
+internal sealed partial class GroupManager
 {
     private readonly Config _cfg;
     private readonly Dictionary<string, CardWindow> _cards = new(StringComparer.OrdinalIgnoreCase);
@@ -31,7 +31,7 @@ internal sealed class GroupManager
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>바탕화면의 모든 카드(폴더 카드 + .dard 카드).</summary>
-    public IEnumerable<DeskCard> AllCards => _cards.Values.Cast<DeskCard>();
+    public IEnumerable<DeskCard> AllCards => _cards.Values.Cast<DeskCard>().Concat(_dards.Values.SelectMany(d => d.Windows));
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -304,7 +304,12 @@ internal sealed class GroupManager
         if (ListGroupFolders() is { Count: 0 }) Directory.CreateDirectory(FileOps.Unique(Root, "새 그룹"));
         Reconcile();
 
-        _rootWatcher = new FileSystemWatcher(Root) { NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.Attributes, IncludeSubdirectories = false };
+        // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
+        _rootWatcher = new FileSystemWatcher(Root)
+        {
+            NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = false,
+        };
         FileSystemEventHandler h = (_, _) => Bump();
         _rootWatcher.Created += h;
         _rootWatcher.Deleted += h;
@@ -317,7 +322,7 @@ internal sealed class GroupManager
         _dpiCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
         _dpiCheck.Tick += (_, _) =>
         {
-            foreach (var card in _cards.Values.Where(c => c.IsDpiStale).ToList())
+            foreach (var card in AllCards.Where(c => c.IsDpiStale).ToList())
                 RecreateCard(card);
         };
         _dpiCheck.Start();
@@ -370,18 +375,24 @@ internal sealed class GroupManager
         _cfg.Save();
     }
 
-    private void RecreateCard(CardWindow card)
+    private void RecreateCard(DeskCard card)
     {
         // 화면상 왼쪽 위(픽셀)는 그대로 두고 새 배율 기준 DIP로 저장한 뒤 다시 띄운다.
         var hwnd = Hwnd.Of(card);
         if (Native.GetWindowRect(hwnd, out var r))
         {
             double ns = Native.MonitorScaleOf(hwnd);
-            _cfg.Positions[card.Group.Name] = new[] { r.Left / ns, r.Top / ns };
+            _cfg.Positions[card.Key] = new[] { r.Left / ns, r.Top / ns };
             _cfg.Save();
         }
-        string folder = card.Group.Folder;
-        RemoveCard(card.Group.Name);
+        if (card is DardWindow dard)
+        {
+            RecreateDardWindow(dard);
+            return;
+        }
+        var folderCard = (CardWindow)card;
+        string folder = folderCard.Group.Folder;
+        RemoveCard(folderCard.Group.Name);
         CreateCard(folder);
     }
 
@@ -421,6 +432,7 @@ internal sealed class GroupManager
             string name = Path.GetFileName(folder);
             if (!_cards.ContainsKey(name)) CreateCard(folder);
         }
+        ReconcileDards();
         RaiseChanged();
     }
 
@@ -429,21 +441,29 @@ internal sealed class GroupManager
         var group = new GroupModel(folder, _cfg.Orders.GetValueOrDefault(Path.GetFileName(folder)));
         group.Changed += RaiseChanged;
         var card = new CardWindow(group, this);
-        if (_cfg.Positions.TryGetValue(group.Name, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
+        _cards[group.Name] = card;
+        PlaceAndShow(card, null);
+        return card;
+    }
+
+    /// <summary>저장된 자리(없으면 빈 자리)에 카드를 띄운다. 편집 중이면 바로 편집 상태로.</summary>
+    /// <param name="baseSize">빈 자리를 찾을 때 쓸 카드 기준 크기. 없으면 기본 폴더 카드.</param>
+    private void PlaceAndShow(DeskCard card, Size? baseSize)
+    {
+        if (_cfg.Positions.TryGetValue(card.Key, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
         {
             card.Left = pos[0];
             card.Top = pos[1];
         }
         else
         {
-            var p = NextFreeSlot();
+            var p = NextFreeSlot(baseSize);
             card.Left = p.X;
             card.Top = p.Y;
-            _cfg.Positions[group.Name] = new[] { p.X, p.Y };
+            _cfg.Positions[card.Key] = new[] { p.X, p.Y };
             _cfg.Save();
         }
         card.Closed += OnCardClosed;
-        _cards[group.Name] = card;
         card.Show();
         // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
         card.Refit();
@@ -452,15 +472,21 @@ internal sealed class GroupManager
             card.BeginEdit();
             RaiseEditLayer();
         }
-        return card;
     }
 
     private void OnCardClosed(object? sender, EventArgs e)
     {
-        if (sender is not CardWindow card || card.ClosingByManager || _shuttingDown) return;
+        if (sender is not DeskCard closed || closed.ClosingByManager || _shuttingDown) return;
         // 탐색기가 재시작되면 소유자(Progman)와 함께 카드가 파괴된다. 잠시 뒤 다시 띄운다.
-        _cards.Remove(card.Group.Name);
-        Detach(card);
+        if (closed is CardWindow card)
+        {
+            _cards.Remove(card.Group.Name);
+            Detach(card);
+        }
+        else if (closed is DardWindow dard)
+        {
+            UnloadDard(dard.Runtime.Package.Path);
+        }
         var retry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         retry.Tick += (_, _) =>
         {
@@ -562,6 +588,7 @@ internal sealed class GroupManager
     public bool DeleteCard(DeskCard card) => card switch
     {
         CardWindow folder => DeleteGroup(folder),
+        DardWindow dard => DeleteDard(dard),
         _ => false,
     };
 
@@ -614,6 +641,7 @@ internal sealed class GroupManager
         EndEditMode();
         _rootWatcher?.Dispose();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);
+        foreach (var path in _dards.Keys.ToList()) UnloadDard(path);
     }
 
     private static bool IsOnScreen(double x, double y)
@@ -627,15 +655,16 @@ internal sealed class GroupManager
     /// 새 카드 자리. 주 모니터 작업 영역을 반 카드 간격 격자로 나눠 오른쪽 위부터 아래로,
     /// 다음 열은 왼쪽으로 가며 비어 있는 첫 자리를 찾는다. 새 카드는 기본 크기다.
     /// </summary>
-    private Point NextFreeSlot()
+    /// <param name="baseSize">새 카드의 기준 크기(DIP). 없으면 기본 폴더 카드(2×2).</param>
+    private Point NextFreeSlot(Size? baseSize = null)
     {
         var wa = SystemParameters.WorkArea;
-        var taken = _cards.Values.Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
+        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
 
         double s = Native.PrimaryScale();
         double k = _cfg.DefaultZoom * ZoomFactor(s);
-        var baseSize = CardWindow.BaseSize(new CardLayout(), CellSize);
-        int wPx = (int)Math.Round(baseSize.Width * k * s), hPx = (int)Math.Round(baseSize.Height * k * s);
+        var size = baseSize ?? CardWindow.BaseSize(new CardLayout(), CellSize);
+        int wPx = (int)Math.Round(size.Width * k * s), hPx = (int)Math.Round(size.Height * k * s);
         var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
         var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
         for (int i = nx; i >= 0; i -= 2)

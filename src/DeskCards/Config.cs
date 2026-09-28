@@ -17,6 +17,12 @@ internal sealed class Config
     /// <summary>카드 안 항목 순서. 그룹 이름 → 파일 이름 목록. 없는 그룹은 이름 순.</summary>
     public Dictionary<string, List<string>> Orders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>.dard 카드 승인 기록. 매니페스트 id → 승인한(또는 거절한) 파일 해시. 카드 파일이 스스로 적을 수 없게 여기 둔다.</summary>
+    public Dictionary<string, DardApproval> Dards { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>.dard 카드별 설정(desk.card.settings). "id/카드id" → 카드가 저장한 JSON.</summary>
+    public Dictionary<string, JsonElement> DardSettings { get; set; } = new(StringComparer.Ordinal);
+
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
 
@@ -116,6 +122,14 @@ internal sealed class Config
                         if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
                     cfg.BarEdges = edges;
                     cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
+                    var dards = new Dictionary<string, DardApproval>(StringComparer.Ordinal);
+                    foreach (var (id, approval) in cfg.Dards ?? new())
+                        if (!string.IsNullOrEmpty(id) && approval is { Hash.Length: > 0 }) dards[id] = approval.Normalized();
+                    cfg.Dards = dards;
+                    var dardSettings = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                    foreach (var (key, value) in cfg.DardSettings ?? new())
+                        if (!string.IsNullOrEmpty(key) && value.ValueKind != JsonValueKind.Undefined) dardSettings[key] = value;
+                    cfg.DardSettings = dardSettings;
                     return cfg;
                 }
             }
@@ -151,6 +165,22 @@ internal sealed class Config
             try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
     }
+}
+
+/// <summary>.dard 한 종류(매니페스트 id)의 승인. 해시가 바뀌면 다시 묻는다(권한이 같거나 줄었으면 그대로 승인).</summary>
+internal sealed class DardApproval
+{
+    public string Hash { get; set; } = "";
+    public bool Allowed { get; set; }
+    /// <summary>승인할 때 보여 준 권한 목록.</summary>
+    public List<string> Permissions { get; set; } = new();
+
+    public DardApproval Normalized() => new()
+    {
+        Hash = Hash,
+        Allowed = Allowed,
+        Permissions = Permissions?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? new(),
+    };
 }
 
 /// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>

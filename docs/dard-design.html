@@ -186,10 +186,11 @@ details[open] summary { margin-bottom: 6px; }
 
 <section id="package">
   <h2>패키지 구조</h2>
-  <p><code>.dard</code>는 확장자만 바꾼 zip입니다. 파일은 딱 두 개입니다.</p>
+  <p><code>.dard</code>는 확장자만 바꾼 zip입니다. 파일은 두 개, 설정 화면이 있으면 세 개입니다.</p>
 <pre>날씨.dard  (zip)
 ├─ manifest.json   카드 정보와 권한
-└─ card.html       카드 전체 (CSS·JS·이미지 모두 인라인)</pre>
+├─ card.html       카드 전체 (CSS·JS·이미지 모두 인라인)
+└─ settings.html   (선택) 카드 설정 화면. 카드 우클릭 → 카드 설정</pre>
   <p class="muted">React로 빌드하든 인라인 합성기를 쓰든, 결과물은 HTML 한 장이어야 합니다. 외부 파일·CDN은 불러올 수 없습니다.</p>
   <h3>카드 파일 위치와 불러오기</h3>
 <pre>%USERPROFILE%\DeskCards\
@@ -202,7 +203,7 @@ details[open] summary { margin-bottom: 6px; }
     <li><b>매번 풀어서 열기</b>: 설치 단계가 따로 없습니다. 켤 때마다 zip을 메모리에서 열고, card.html은 <code>WebResourceRequested</code>로 메모리에서 바로 넘겨 줍니다. 디스크에 풀린 파일이 없어서 관리할 것도, 몰래 고칠 것도 없습니다.</li>
     <li><b>승인 기록은 바깥에</b>: 사용자가 승인한 권한과 .dard 해시는 <code>%APPDATA%\DeskCards\config.json</code>에 저장합니다. 카드 파일이 자기 승인을 스스로 적어 넣을 수 없습니다.</li>
     <li><b>처음 보는 .dard</b>나 <b>해시가 바뀐 .dard</b>가 루트에 생기면 설치 창을 띄웁니다. [취소]하면 그 해시는 다시 묻지 않고 꺼 둡니다.</li>
-    <li><b>크기 제한</b>: 풀었을 때 기준 <b>최대 32MB</b>. zip 헤더에 적힌 크기는 거짓일 수 있으므로(zip 폭탄), 헤더를 먼저 보고 거르되 실제로 압축을 풀면서 읽은 바이트도 세다가 32MB를 넘는 순간 멈추고 거부합니다. 파일은 manifest.json과 card.html 두 개만 허용하고, 그 밖의 항목이나 폴더 경로가 있으면 거부합니다.</li>
+    <li><b>크기 제한</b>: 풀었을 때 기준 <b>최대 32MB</b>. zip 헤더에 적힌 크기는 거짓일 수 있으므로(zip 폭탄), 헤더를 먼저 보고 거르되 실제로 압축을 풀면서 읽은 바이트도 세다가 32MB를 넘는 순간 멈추고 거부합니다. 파일은 manifest.json, card.html, settings.html(선택)만 허용하고, 그 밖의 항목이나 폴더 경로가 있으면 거부합니다.</li>
     <li><b>하위 호환 없음</b>: 사용자가 아직 한 명뿐이라 예전 구조를 옮기는 코드는 만들지 않습니다.</li>
   </ul>
   <h3>manifest.json 예시</h3>
@@ -215,6 +216,7 @@ details[open] summary { margin-bottom: 6px; }
     { "id": "now",  "name": "지금 날씨", "ratio": [1, 1] },  // 가로:세로 비율만. 크기는 앱이 정함
     { "id": "week", "name": "주간 예보", "ratio": [2, 1] }
   ],
+  "settings": { "ratio": [3, 4] },  // settings.html의 비율. 없으면 3:4
   "permissions": {
     "system": ["cpu", "memory", "battery", "network"],
     "notify": true,
@@ -259,7 +261,19 @@ details[open] summary { margin-bottom: 6px; }
   <ul>
     <li><b>카드는 가로:세로 비율만 정합니다</b> (<code>"ratio": [2, 1]</code>). 픽셀·칸 크기는 매니페스트에 적지 않습니다.</li>
     <li><b>실제 크기는 앱(런타임)이 관리합니다.</b> 처음에는 폴더 카드와 어울리는 크기로 놓고, 사용자가 모서리를 끌면 비율을 지킨 채 커지고 작아집니다. 카드 바에서는 바 두께에 맞춰 줄입니다. 작업 표시줄은 가리지 않습니다.</li>
-    <li>카드는 받은 크기에 맞춰 그리기만 합니다. <code>desk.card.size()</code>/<code>on("resize")</code>로 픽셀 크기를 받고, CSS는 <code>%</code>·<code>vw</code>·<code>vh</code>·<code>container</code> 단위로 짜는 걸 권장합니다.</li>
+    <li><b>페이지가 보는 화면(CSS 픽셀)은 비율로만 정해집니다.</b> 넓이는 늘 200×200과 같아서 1:1이면 200×200, 2:1이면 약 283×141입니다. 카드를 키우면 페이지를 그림처럼 늘리지 않고 확대 비율을 바꿔 다시 그리므로 선명하고, 페이지 입장에서는 화면 크기가 바뀌지 않습니다. <code>desk.card.size()</code>로 이 크기를 받을 수 있습니다.</li>
+    <li><b>설정 화면</b>(settings.html)도 같은 방식입니다. 넓이는 360×360과 같고(3:4면 약 312×416), 카드 옆에 아크릴 창으로 뜹니다. 밖을 누르거나 Esc를 누르면 닫힙니다.</li>
+  </ul>
+  <h3>테마</h3>
+  <ul>
+    <li>호스트가 CSS 변수 <code>--desk-fg</code>, <code>--desk-subfg</code>, <code>--desk-accent</code>, <code>--desk-accent-fg</code>, <code>--desk-card-bg</code>, <code>--desk-border</code>, <code>--desk-hover</code>, <code>--desk-control-bg</code>, <code>--desk-control-border</code>, <code>--desk-danger</code>를 넣어 주고, 기본 글꼴·글자색을 가장 약한 우선순위(<code>:where(:root)</code>)로 둡니다. 다크·라이트가 바뀌면 변수가 바뀌고 <code>theme</code> 이벤트가 옵니다.</li>
+    <li>페이지 배경은 기본이 투명이라 카드 판(아크릴 색)이 비칩니다.</li>
+  </ul>
+  <h3>입력</h3>
+  <ul>
+    <li>카드 위 오른쪽 클릭은 언제나 카드 메뉴(호스트)입니다. 페이지는 우클릭을 받지 않습니다.</li>
+    <li>투명한 카드 창 안에서 그리려고 WebView2 합성 컨트롤을 쓰는데, 이 컨트롤은 <code>dblclick</code>을 만들지 않습니다. 두 번 누르기 대신 버튼을 쓰세요.</li>
+    <li>카드 창은 바탕화면 층에 붙어 활성 창이 되지 않아서 <b>1차에는 카드 안에서 글자를 입력할 수 없습니다</b>. 설정 화면에서는 됩니다.</li>
   </ul>
   <h3>개수</h3>
   <p class="muted">1차에는 크기·개수 한도와 그 권한을 두지 않습니다. 정해 둔 한도안(면적 15%·4장, 넘으면 <code>card.large</code>·<code>card.many</code>)은 <a href="#later">나중에 할 것</a>에 있습니다.</p>
@@ -354,10 +368,14 @@ details[open] summary { margin-bottom: 6px; }
   <p>모든 함수는 Promise를 돌려줍니다. 권한이 없으면 <code>PermissionError</code>, 횟수 제한에 걸리면 <code>RateLimitError</code>로 거부됩니다.</p>
   <div class="table-wrap"><table>
     <tr><th>함수</th><th>권한</th><th>설명</th></tr>
-    <tr><td><code>desk.card.id()</code></td><td>⚪</td><td>이 카드가 <code>cards</code>의 어느 카드인지 (<code>id</code>)</td></tr>
-    <tr><td><code>desk.card.size()</code> / <code>on("resize")</code></td><td>⚪</td><td>앱이 정한 카드 크기(픽셀·배율)와 변경 알림</td></tr>
+    <tr><td><code>desk.view</code></td><td>⚪</td><td><code>"card"</code> 또는 <code>"settings"</code> (어느 화면인지)</td></tr>
+    <tr><td><code>desk.card.id()</code></td><td>⚪</td><td>이 카드가 <code>cards</code>의 어느 카드인지 (<code>id</code>). 설정 화면에서는 설정하는 카드</td></tr>
+    <tr><td><code>desk.card.openSettings()</code> / <code>closeSettings()</code></td><td>⚪</td><td>카드 옆에 설정 화면 열기(카드를 누른 직후에만) / 설정 화면 닫기</td></tr>
+    <tr><td><code>desk.cards.list()</code></td><td>⚪</td><td>같은 .dard의 카드 목록 (<code>id</code>, <code>name</code>)</td></tr>
+    <tr><td><code>desk.card.size()</code></td><td>⚪</td><td>페이지가 보는 화면 크기(CSS 픽셀, 비율로 정해짐)</td></tr>
     <tr><td><code>desk.cards.post(id, msg)</code> / <code>on("message")</code></td><td>⚪</td><td>같은 .dard의 다른 카드와 메시지 주고받기 (JSON)</td></tr>
-    <tr><td><code>desk.card.settings.get/set()</code></td><td>⚪</td><td>카드별 설정 (호스트 설정 창의 카드 상세에도 표시 가능)</td></tr>
+    <tr><td><code>desk.card.settings.get/set()</code></td><td>⚪</td><td>카드별 설정(JSON, 64KB까지). 호스트가 config.json에 저장하고, 바뀌면 같은 카드의 다른 화면(카드 ↔ 설정)에 <code>settings</code> 이벤트</td></tr>
+    <tr><td><code>desk.on(name, cb)</code> / <code>off</code></td><td>⚪</td><td>이벤트: <code>settings</code>, <code>message</code>(<code>{from, data}</code>), <code>theme</code></td></tr>
     <tr><td><code>desk.theme()</code> / <code>on("theme")</code></td><td>⚪</td><td>다크/라이트, 강조색, 배율</td></tr>
     <tr><td><code>desk.openUrl(url)</code></td><td>⚪</td><td>기본 브라우저로 열기. 사용자가 누른 직후에만, <code>http(s)</code>만</td></tr>
     <tr><td><code>desk.system.get(fields?)</code></td><td><span class="dot g"></span><code>system</code></td><td>현재 값 한 번 읽기</td></tr>

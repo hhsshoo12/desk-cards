@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; user-select: none; }
+  body { display: grid; place-content: center; text-align: center; }
+  #time { font-size: 64px; font-weight: 600; letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
+  #time .sec { font-size: 28px; font-weight: 400; color: var(--desk-subfg); margin-left: 4px; }
+  #date { margin-top: 10px; font-size: 16px; color: var(--desk-subfg); }
+  body.accent #time { color: var(--desk-accent); }
+  #gear { position: fixed; top: 6px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 6px; padding: 0;
+          background: transparent; color: var(--desk-subfg); font: 16px "Segoe Fluent Icons", "Segoe MDL2 Assets"; opacity: 0; transition: opacity .15s; }
+  body:hover #gear { opacity: 1; }
+  #gear:hover { background: var(--desk-hover); color: var(--desk-fg); }
+</style>
+</head>
+<body>
+  <div id="time"></div>
+  <div id="date"></div>
+  <button id="gear" title="설정">&#xE713;</button>
+<script>
+  let opts = { hour24: true, seconds: false, accent: false };
+  const time = document.getElementById('time'), date = document.getElementById('date');
+  const pad = n => String(n).padStart(2, '0');
+  function render() {
+    const d = new Date();
+    let h = d.getHours();
+    const suffix = opts.hour24 ? '' : (h < 12 ? '오전 ' : '오후 ');
+    if (!opts.hour24) h = h % 12 || 12;
+    time.innerHTML = `${suffix}${opts.hour24 ? pad(h) : h}:${pad(d.getMinutes())}` + (opts.seconds ? `<span class="sec">${pad(d.getSeconds())}</span>` : '');
+    date.textContent = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' });
+    document.body.classList.toggle('accent', opts.accent);
+  }
+  function apply(v) { opts = Object.assign({ hour24: true, seconds: false, accent: false }, v || {}); render(); }
+  desk.card.settings.get().then(apply);
+  desk.on('settings', apply);
+  // 마우스를 올리면 오른쪽 위에 설정 버튼이 보인다.
+  document.getElementById('gear').addEventListener('click', () => desk.card.openSettings().catch(() => {}));
+  setInterval(render, 1000);
+  render();
+</script>
+</body>
+</html>

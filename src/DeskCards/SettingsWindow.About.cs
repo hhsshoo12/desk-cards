@@ -18,7 +18,7 @@ internal partial class SettingsWindow
         AddRow(Row("", "개발자", "hhsshoo12", Button("프로필", () => OpenUrl(DeveloperUrl))));
         AddRow(Row("", "함께 만든 AI", "Claude (Anthropic) · Codex (OpenAI)", null));
         AddRow(Row("", "저작권", "Copyright © 2026 hhsshoo12. All rights reserved.", null));
-        AddRow(Row("", "사용한 라이브러리", ".NET 10 · WPF · Windows Forms", null, () => Go(PageKind.Libraries)));
+        AddRow(Row("", "사용한 라이브러리", ".NET 10 · WPF · Windows Forms · WebView2", null, () => Go(PageKind.Libraries)));
 
         Header("링크");
         AddRow(Row("", "GitHub", RepoUrl, Button("열기", () => OpenUrl(RepoUrl))));
@@ -38,11 +38,16 @@ internal partial class SettingsWindow
             Button("라이선스", () => OpenUrl("https://github.com/dotnet/wpf/blob/main/LICENSE.TXT"))));
         AddRow(Row("", "Windows Forms", "MIT 라이선스 · .NET Foundation, Microsoft (트레이 아이콘)",
             Button("라이선스", () => OpenUrl("https://github.com/dotnet/winforms/blob/main/LICENSE.TXT"))));
+        AddRow(Row("", "Microsoft Edge WebView2 SDK", "BSD 3조항 라이선스 · Microsoft (.dard 카드 화면)",
+            Button("라이선스", () => OpenUrl("https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3719.77/License"))));
+        AddRow(Row("", "C#/WinRT · Windows SDK 형식", "MIT 라이선스 · Microsoft (WebView2 합성 화면이 사용)",
+            Button("라이선스", () => OpenUrl("https://github.com/microsoft/CsWinRT/blob/master/LICENSE"))));
         AddRow(Row("", ".NET 런타임에 포함된 제3자 구성 요소", "런타임이 함께 싣고 있는 오픈 소스 목록이에요.",
             Button("목록", () => OpenUrl("https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT"))));
 
         Header("Windows 구성 요소 (앱에 포함하지 않음)");
         AddRow(Row("", "Segoe Fluent Icons", "아이콘 글꼴 · Windows 11 기본 글꼴", null));
+        AddRow(Row("", "Microsoft Edge WebView2 런타임", ".dard 카드 화면 · Windows 11 기본 구성 요소", null));
         AddRow(Row("", ".NET Framework 4.8", "설치기가 사용 · Windows 기본 구성 요소", null));
     }
 

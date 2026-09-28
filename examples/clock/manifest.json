@@ -1,0 +1,10 @@
+{
+  "dard": 1,
+  "id": "com.hhsshoo12.clock",
+  "name": "시계",
+  "version": "1.0.0",
+  "cards": [
+    { "id": "main", "name": "시계", "ratio": [2, 1] }
+  ],
+  "settings": { "ratio": [3, 4] }
+}
