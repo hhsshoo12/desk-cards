@@ -371,7 +371,7 @@ internal static class Program
                 Check(cards.Select(c => c.Key).OrderBy(k => k).SequenceEqual(new[] { "dard:com.test.clock/main", "dard:com.test.clock/mini" }));
                 Check(cfg.Positions.ContainsKey("dard:com.test.clock/main"));
                 var main = cards.Single(c => c.Info.Id == "main");
-                Check(Math.Abs(main.Width / (main.Height - DeskCard.TopPad - DeskCard.LabelH) - 2) < 0.1);
+                Check(Math.Abs(main.Width / main.Height - 2) < 0.1); // 둥근 창은 여백·이름 줄 없이 비율 그대로
 
                 mgr.SetDardSettings(main.Key, System.Text.Json.Nodes.JsonNode.Parse("""{"hour24":false}"""));
                 Check((bool?)mgr.GetDardSettings(main.Key)?["hour24"] == false);

@@ -1,90 +1,34 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 
 namespace DeskCards;
 
 /// <summary>
-/// .dard 카드 한 장. 폴더 카드와 같은 틀(카드 판, 이름 줄)에 HTML을 담는다.
+/// .dard 카드 한 장. 웹 화면(자식 창)을 담아야 해서 투명 창이 아닌 Windows 11 둥근 창을 쓴다.
+/// 모서리·그림자·아크릴 배경은 Windows가 그리고, 카드 이름 줄은 두지 않는다.
 /// 카드는 비율만 정하고 크기는 앱이 정한다. 크기를 바꾸면 페이지를 그림처럼 늘리지 않고 확대 비율로 다시 그려 선명하게 둔다.
 /// </summary>
 internal sealed class DardWindow : DeskCard
 {
-    private const double Corner = 8;
-
     private readonly Border _frame;
-    private readonly Grid _box;
     private readonly DardView _view;
-    private readonly TextBlock _label;
-    private readonly RowDefinition _labelRow;
 
-    public DardWindow(DardRuntime runtime, DardCardInfo info, GroupManager mgr) : base(mgr)
+    public DardWindow(DardRuntime runtime, DardCardInfo info, GroupManager mgr) : base(mgr, layered: false)
     {
         Runtime = runtime;
         Info = info;
 
-        _frame = new Border
-        {
-            CornerRadius = new CornerRadius(Corner),
-            BorderThickness = new Thickness(1),
-            Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 },
-        };
-        _frame.SetResourceReference(Border.BackgroundProperty, "CardBg");
-        _frame.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
         _view = new DardView(runtime, info.Id, settings: false, DardPackage.SizeFor(info.RatioW, info.RatioH, DardPackage.CardArea))
         {
-            Margin = new Thickness(1), // 카드 판 테두리가 보이게
+            MenuRequested = () => Menus.ForDard(this, Mgr).ShowAtCursor(),
         };
-        _box = new Grid { HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-        _box.Children.Add(_frame);
-        _box.Children.Add(_view);
+        _frame = new Border { Child = _view };
+        _frame.SetResourceReference(Border.BackgroundProperty, "PopupBg");
+        Layout.Children.Add(_frame);
 
-        _label = new TextBlock
-        {
-            Text = info.Name,
-            Foreground = Brushes.White,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Effect = new DropShadowEffect { BlurRadius = 4, ShadowDepth = 1, Direction = 270, Opacity = 0.9, Color = Colors.Black },
-        };
-        _labelRow = new RowDefinition { Height = new GridLength(LabelH) };
-        var content = new Grid();
-        content.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        content.RowDefinitions.Add(_labelRow);
-        Grid.SetRow(_label, 1);
-        content.Children.Add(_box);
-        content.Children.Add(_label);
-        Layout.Children.Add(content);
-
-#if DEBUG
-        PreviewMouseDown += (_, e) => DardView.Trace($"wpf down {e.ChangedButton} src={e.OriginalSource.GetType().Name}");
-        PreviewMouseUp += (_, e) => DardView.Trace($"wpf up {e.ChangedButton} src={e.OriginalSource.GetType().Name}");
-        GotMouseCapture += (_, e) => DardView.Trace($"got capture {e.OriginalSource.GetType().Name}");
-        LostMouseCapture += (_, e) => DardView.Trace($"lost capture {e.OriginalSource.GetType().Name}");
-        Activated += (_, _) => DardView.Trace("activated");
-        Deactivated += (_, _) => DardView.Trace("deactivated");
-        SourceInitialized += (_, _) => System.Windows.Interop.HwndSource.FromHwnd(Handle)!.AddHook((IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled) =>
-        {
-            if (msg is 0x201 or 0x202 or 0x204 or 0x205 or 0x21 or 0x215 or 0x6 or 0x1F or 0x7 or 0x8)
-                DardView.Trace($"msg 0x{msg:X}");
-            return IntPtr.Zero;
-        });
-#endif
-        // 눌러도 활성 창이 되지 않게 한다. 활성이 되면 WebView2가 브라우저 쪽 창으로 초점을 옮기고,
-        // 그 창이 마우스를 붙잡아 이후 클릭·우클릭이 이 창에 오지 않는다.
-        SourceInitialized += (_, _) => System.Windows.Interop.HwndSource.FromHwnd(Handle)!.AddHook((IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled) =>
-        {
-            const int WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3;
-            if (msg != WM_MOUSEACTIVATE) return IntPtr.Zero;
-            handled = true;
-            return new IntPtr(MA_NOACTIVATE);
-        });
-
-        // 카드 위 우클릭은 언제나 카드 메뉴(페이지의 우클릭은 받지 않는다).
-        PreviewMouseRightButtonDown += (_, e) => e.Handled = true;
+        // 편집 중(웹 화면이 그림으로 바뀐 동안)의 우클릭도 카드 메뉴.
         PreviewMouseRightButtonUp += (_, e) =>
         {
             e.Handled = true;
@@ -98,38 +42,21 @@ internal sealed class DardWindow : DeskCard
     public override string CardName => Info.Name;
     protected override Border Frame => _frame;
 
-    /// <summary>확대 1일 때 카드 판 크기(DIP): 넓이는 기본 폴더 카드(2×2 칸)와 같고 비율은 카드가 정한다.</summary>
-    private Size ContentBase()
-    {
-        double side = 2 * Mgr.CellSize;
-        return DardPackage.SizeFor(Info.RatioW, Info.RatioH, side * side);
-    }
-
-    /// <summary>새 카드를 놓을 자리를 찾을 때 쓰는 기준 크기.</summary>
-    public static Size BaseSizeFor(DardCardInfo info, double cell)
-    {
-        var c = DardPackage.SizeFor(info.RatioW, info.RatioH, 4 * cell * cell);
-        return new Size(c.Width + 2 * Inset, TopPad + c.Height + LabelH);
-    }
+    /// <summary>확대 1일 때 카드 크기(DIP): 넓이는 기본 폴더 카드(2×2 칸)와 같고 비율은 카드가 정한다.</summary>
+    public static Size BaseSizeFor(DardCardInfo info, double cell) =>
+        DardPackage.SizeFor(info.RatioW, info.RatioH, 4 * cell * cell);
 
     protected override Size BaseSize() => BaseSizeFor(Info, Mgr.CellSize);
 
     protected override void ApplyScale(double t)
     {
-        // 웹 화면은 변환으로 키우면 흐려지므로, 판 크기를 직접 정하고 페이지 확대 비율을 바꾼다.
+        // 웹 화면은 변환으로 키우면 흐려지므로, 창 크기를 따라가게 두고 페이지 확대 비율만 바꾼다.
         Layout.LayoutTransform = Transform.Identity;
-        var c = ContentBase();
-        double w = c.Width * t, h = c.Height * t;
-        _box.Width = w;
-        _box.Height = h;
-        double r = Corner * t;
-        _frame.CornerRadius = new CornerRadius(r);
-        _view.Clip = new RectangleGeometry(new Rect(0, 0, Math.Max(0, w - 2), Math.Max(0, h - 2)), Math.Max(0, r - 1), Math.Max(0, r - 1));
-        _view.SetZoom((w - 2) / _view.Viewport.Width);
-        _labelRow.Height = new GridLength(LabelH * t);
-        _label.FontSize = 13 * t;
-        _label.Margin = new Thickness(4 * t, 5 * t, 4 * t, 0);
+        _view.SetZoom(BaseSize().Width * t / _view.Viewport.Width);
     }
+
+    /// <summary>편집 중에는 창이 누르기·끌기를 받아야 하므로 웹 화면을 그림으로 바꿔 둔다.</summary>
+    protected override void OnEditChanged(bool editing) => _view.Freeze(editing);
 
     /// <summary>페이지를 다시 불러온다(우클릭 메뉴).</summary>
     public void Reload() => _view.Reload();

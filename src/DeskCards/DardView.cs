@@ -18,7 +18,8 @@ namespace DeskCards;
 
 /// <summary>
 /// .dard의 HTML 한 장(card.html 또는 settings.html)을 띄우는 WebView2.
-/// 투명한 카드 창 안에서도 그려지도록 합성 컨트롤을 쓰고, 배경은 투명이라 카드 판(아크릴 색)이 비친다.
+/// 보통(자식 창) WebView2라 클릭·더블클릭·키보드가 브라우저 그대로 동작한다. 배경은 투명이라 창의 아크릴 배경이 비친다.
+/// 자식 창 위에는 WPF가 그릴 수 없으므로, 편집 모드처럼 창이 누르기를 받아야 할 때는 화면을 그림으로 바꿔 둔다(Freeze).
 /// 페이지와는 JSON 메시지 한 가지 모양으로만 주고받고, 요청은 전부 여기서 검사한다(desk 라이브러리 안의 검사는 믿지 않는다).
 /// </summary>
 internal sealed class DardView : Grid
@@ -32,12 +33,13 @@ internal sealed class DardView : Grid
     private static Task<CoreWebView2Environment>? _environment;
 
     private readonly DardRuntime _runtime;
-    private readonly WebView2CompositionControl _web;
+    private readonly WebView2 _web;
+    private readonly Image _snapshot;
     private readonly TextBlock _error;
     private readonly string _page;
     private double _zoom = 1;
-    private long _lastInput = long.MinValue;
-    private bool _closed;
+    private int? _usedInput;
+    private bool _frozen, _closed;
 
     /// <param name="settings">settings.html(설정 화면)인지, card.html(카드)인지.</param>
     /// <param name="viewport">페이지가 보는 화면 크기(CSS 픽셀). 실제 크기와의 차이는 확대 비율로 맞춘다.</param>
@@ -49,8 +51,8 @@ internal sealed class DardView : Grid
         Viewport = viewport;
         _page = settings ? DardPackage.SettingsPage : DardPackage.CardPage;
 
-        // 카드는 키보드 초점을 받지 않는다(바탕화면 층 창이라 초점이 브라우저로 넘어가면 마우스가 묶인다). 설정 화면은 입력을 받는다.
-        _web = new WebView2CompositionControl { DefaultBackgroundColor = System.Drawing.Color.Transparent, Focusable = settings };
+        _web = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.Transparent };
+        _snapshot = new Image { Stretch = Stretch.Fill, Visibility = Visibility.Collapsed };
         _error = new TextBlock
         {
             FontSize = 12,
@@ -62,15 +64,10 @@ internal sealed class DardView : Grid
         };
         _error.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
         Children.Add(_web);
+        Children.Add(_snapshot);
         Children.Add(_error);
         runtime.Register(this);
 
-        PreviewMouseDown += (_, _) =>
-        {
-            _lastInput = Environment.TickCount64;
-            if (!IsSettings) LockBrowserWindows(); // 브라우저 창은 늦게 생기기도 해서 누를 때마다 확인한다
-        };
-        PreviewKeyDown += (_, _) => _lastInput = Environment.TickCount64;
         Theme.Changed += OnThemeChanged;
         Loaded += async (_, _) => await StartAsync();
     }
@@ -81,6 +78,9 @@ internal sealed class DardView : Grid
 
     /// <summary>설정 화면이 닫아 달라고 할 때.</summary>
     public Action? CloseRequested { get; set; }
+
+    /// <summary>카드 위에서 우클릭했을 때(카드 메뉴를 띄운다).</summary>
+    public Action? MenuRequested { get; set; }
 
     /// <summary>페이지 확대 비율(실제 DIP ÷ CSS 픽셀). 카드를 키우면 흐려지지 않게 페이지가 다시 그린다.</summary>
     public void SetZoom(double zoom)
@@ -145,7 +145,6 @@ internal sealed class DardView : Grid
         core.DownloadStarting += (_, e) => e.Cancel = true;
         core.ScriptDialogOpening += (_, _) => { }; // Accept를 부르지 않으면 닫힌다(바탕화면에 경고 창을 띄우지 않는다).
         core.WebMessageReceived += OnMessage;
-        core.NavigationCompleted += (_, _) => { if (!IsSettings) LockBrowserWindows(); };
         core.ProcessFailed += (_, e) =>
         {
             if (!_closed && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited) core.Reload();
@@ -264,6 +263,12 @@ internal sealed class DardView : Grid
             on: (name, cb) => { if (typeof cb === 'function') { if (!listeners.has(name)) listeners.set(name, []); listeners.get(name).push(cb); } },
             off: (name, cb) => { const l = listeners.get(name); if (l) listeners.set(name, l.filter(x => x !== cb)); },
           };
+          // 카드 위 우클릭은 언제나 카드 메뉴(페이지가 자기 메뉴를 만들지 않는다).
+          window.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (e.isTrusted && info.view === 'card') wv.postMessage({ t: 'menu' });
+          }, true);
           Object.defineProperty(window, 'desk', { value: Object.freeze(desk), writable: false, configurable: false });
           for (const k of ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebAssembly'])
             try { Object.defineProperty(window, k, { value: undefined, writable: false, configurable: false }); } catch { }
@@ -277,17 +282,20 @@ internal sealed class DardView : Grid
         JsonNode? msg;
         try { msg = JsonNode.Parse(e.WebMessageAsJson); }
         catch (JsonException) { return; }
+        if (msg is JsonObject { } m && (string?)m["t"] == "menu")
+        {
+            if (!IsSettings && IsGesture()) MenuRequested?.Invoke();
+            return;
+        }
         if (msg is not JsonObject o || (string?)o["t"] != "call" || o["id"] is not JsonValue idValue || !idValue.TryGetValue(out int id)) return;
         string fn = (string?)o["fn"] ?? "";
         JsonNode? args = o["args"];
-        Trace($"{CardId}{(IsSettings ? " settings" : "")}: {fn} {args?.ToJsonString()}");
         try
         {
             Reply(id, Handle(fn, args));
         }
         catch (DardCallException ex)
         {
-            Trace($"  -> {ex.Kind}: {ex.Message}");
             Post(new JsonObject { ["t"] = "reply", ["id"] = id, ["ok"] = false, ["name"] = ex.Kind, ["error"] = ex.Message });
         }
     }
@@ -338,18 +346,23 @@ internal sealed class DardView : Grid
         }
     }
 
-    /// <summary>사용자가 카드를 누른 직후인지. 아무 때나 브라우저·창을 띄우지 못하게 한다.</summary>
-    private void RequireGesture()
+    /// <summary>
+    /// 사용자가 이 화면을 방금 눌렀는지(또는 키를 쳤는지). 누르면 이 창이 활성 창이 되므로,
+    /// 활성 창이 이 창이고 마지막 입력이 방금이면 사용자가 한 일로 본다.
+    /// </summary>
+    private bool IsGesture()
     {
-        if (Environment.TickCount64 - _lastInput > GestureMs)
-            throw new DardCallException("NotAllowedError", "카드를 누른 직후에만 할 수 있어요.");
-        _lastInput = long.MinValue; // 한 번 누르기에 한 번만
+        if (Window.GetWindow(this) is not { } w || Native.GetForegroundWindow() != Hwnd.Of(w)) return false;
+        return Native.LastInputTick() is int t && unchecked(Environment.TickCount - t) <= GestureMs;
     }
 
-    [System.Diagnostics.Conditional("DEBUG")]
-    public static void Trace(string line)
+    /// <summary>아무 때나 브라우저·창을 띄우지 못하게 한다. 한 번 입력에 한 번만 된다.</summary>
+    private void RequireGesture()
     {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "DeskCards-dard.log"), $"{DateTime.Now:HH:mm:ss.fff} {line}" + Environment.NewLine); } catch { }
+        int? input = Native.LastInputTick();
+        if (!IsGesture() || input == _usedInput)
+            throw new DardCallException("NotAllowedError", "카드를 누른 직후에만 할 수 있어요.");
+        _usedInput = input;
     }
 
     private void Reply(int id, JsonNode? value) =>
@@ -369,21 +382,46 @@ internal sealed class DardView : Grid
     private void OnThemeChanged() => Dispatcher.BeginInvoke(() => Emit("theme", ThemeJson()));
 
     /// <summary>
-    /// 바탕화면 카드에서는 브라우저가 우리 창 밑에 만드는 창을 막아 둔다. 누를 때 그 창이 초점을 가져가면서
-    /// 카드 창을 활성으로 만들고 마우스를 붙잡아, 떼기·우클릭이 카드에 오지 않기 때문이다.
-    /// 입력은 합성 컨트롤이 WPF 이벤트로 받아 넘겨주므로 막아도 클릭은 그대로 된다.
+    /// 켜면 지금 화면을 그림으로 찍어 웹 화면 대신 보여 준다. 그동안은 누르기가 페이지 대신 WPF(창)로 온다.
     /// </summary>
-    private void LockBrowserWindows()
+    public async void Freeze(bool on)
     {
-        if (Window.GetWindow(this) is not { } w) return;
-        var top = Hwnd.Of(w);
-        uint self = (uint)Environment.ProcessId;
-        foreach (var child in Native.ChildWindows(top))
-            if (Native.ProcessOf(child) != self) Native.EnableWindow(child, false);
+        _frozen = on;
+        if (!on)
+        {
+            _snapshot.Visibility = Visibility.Collapsed;
+            _snapshot.Source = null;
+            if (_error.Visibility != Visibility.Visible) _web.Visibility = Visibility.Visible;
+            return;
+        }
+        var core = _web.CoreWebView2;
+        if (core != null && _web.Visibility == Visibility.Visible)
+        {
+            try
+            {
+                var png = new MemoryStream();
+                await core.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, png);
+                png.Position = 0;
+                var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bmp.StreamSource = png;
+                bmp.EndInit();
+                bmp.Freeze();
+                if (_frozen && !_closed) _snapshot.Source = bmp;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException or NotSupportedException) { }
+        }
+        if (!_frozen || _closed) return;
+        _snapshot.Visibility = Visibility.Visible;
+        if (_web.Visibility == Visibility.Visible) _web.Visibility = Visibility.Hidden;
     }
 
     /// <summary>키보드 입력을 이 화면으로(설정 창).</summary>
-    public void FocusPage() => _web.Focus();
+    public void FocusPage()
+    {
+        _web.Focus();
+    }
 
     public void Reload() => _web.CoreWebView2?.Reload();
 

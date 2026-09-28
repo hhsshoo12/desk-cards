@@ -16,6 +16,8 @@ namespace DeskCards;
 /// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)와 .dard 카드(DardWindow)가 같이 쓴다.
 /// 평소에는 고정이고, 편집 모드(편집 막대)에서만 옮기고 비율을 유지한 채 크기를 바꿀 수 있다.
 /// 모양(기준 크기)과 안의 내용은 쓰는 쪽이 정한다.
+/// 창은 두 가지다. 투명 창(layered)은 카드 판 바깥에 이름·그림자를 그릴 수 있지만 다른 프로세스의 자식 창(웹 화면 등)을 못 담는다.
+/// 둥근 창은 Windows 11이 모서리·그림자·아크릴 배경을 그려 주는 보통 창이라, 자식 창을 담고 클릭·키보드를 그대로 받는다.
 /// </summary>
 internal abstract class DeskCard : Window
 {
@@ -33,11 +35,28 @@ internal abstract class DeskCard : Window
     private Native.RECT _moveWindowStart;
     private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
 
-    protected DeskCard(GroupManager mgr)
+    /// <param name="layered">투명 창이면 true, Windows 11 둥근 창이면 false.</param>
+    protected DeskCard(GroupManager mgr, bool layered = true)
     {
         Mgr = mgr;
-        WindowStyle = WindowStyle.None;
-        AllowsTransparency = true;
+        Layered = layered;
+        if (layered)
+        {
+            WindowStyle = WindowStyle.None;
+            AllowsTransparency = true;
+        }
+        else
+        {
+            WindowStyle = WindowStyle.SingleBorderWindow;
+            System.Windows.Shell.WindowChrome.SetWindowChrome(this, new System.Windows.Shell.WindowChrome
+            {
+                CaptionHeight = 0,
+                GlassFrameThickness = new Thickness(-1),
+                ResizeBorderThickness = new Thickness(0),
+                CornerRadius = new CornerRadius(0),
+                UseAeroCaptionButtons = false,
+            });
+        }
         Background = Brushes.Transparent;
         ShowInTaskbar = false;
         ShowActivated = false;
@@ -49,7 +68,7 @@ internal abstract class DeskCard : Window
         Title = "Desk Cards Card";
 
         // 여백·크기·배율은 LayoutFor가 정한다. 편집 모드 크기 조절은 비율을 유지한 채 통째로 키우고 줄이므로 모서리 하나만 둔다.
-        Layout = new Grid { Margin = new Thickness(Inset, TopPad, Inset, 0) };
+        Layout = new Grid { Margin = Pad(1) };
         _grip = new Thumb
         {
             Template = GripTemplate,
@@ -87,6 +106,12 @@ internal abstract class DeskCard : Window
         </ControlTemplate>
         """);
 
+    /// <summary>투명 창인지(false면 Windows 11 둥근 창).</summary>
+    protected bool Layered { get; }
+
+    /// <summary>창 가장자리와 카드 판 사이 여백. 투명 창만 그림자·이름 줄 자리로 둔다.</summary>
+    private Thickness Pad(double t) => Layered ? new Thickness(Inset * t, TopPad * t, Inset * t, 0) : new Thickness(0);
+
     /// <summary>카드 내용이 들어가는 칸. 크기·배율은 LayoutFor가 정한다.</summary>
     protected Grid Layout { get; }
 
@@ -96,7 +121,7 @@ internal abstract class DeskCard : Window
     /// <summary>편집 막대 등에 보여 주는 카드 이름.</summary>
     public abstract string CardName { get; }
 
-    /// <summary>카드 배경 판. 편집 중·드롭 대상 강조 테두리를 여기에 칠한다.</summary>
+    /// <summary>카드 배경 판. 편집 중·드롭 대상 강조 테두리를 여기에 칠한다(투명 창은 그림자도 이 판의 효과).</summary>
     protected abstract Border Frame { get; }
 
     /// <summary>확대 비율을 적용하기 전의 카드 창 크기(DIP).</summary>
@@ -158,8 +183,12 @@ internal abstract class DeskCard : Window
         _grip.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
         UpdateBorder(false);
+        OnEditChanged(true);
         RaiseForEdit();
     }
+
+    /// <summary>편집 모드가 켜지고 꺼질 때. 누르기를 창이 직접 받지 못하는 내용(웹 화면)은 여기서 멈춰 둔다.</summary>
+    protected virtual void OnEditChanged(bool editing) { }
 
     /// <summary>편집 중에는 어두운 막(EditDim) 위로 올라온다. 편집이 끝나면 다시 바탕화면 층으로 내려간다.</summary>
     public void RaiseForEdit()
@@ -174,6 +203,7 @@ internal abstract class DeskCard : Window
         _grip.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder(false);
+        OnEditChanged(false);
         // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
         Hwnd.SetZOrder(Handle, Native.HWND_BOTTOM);
         Mgr.SavePosition(this);
@@ -284,9 +314,25 @@ internal abstract class DeskCard : Window
     {
         // 고른 카드는 배경화면 색에 묻히지 않도록 강조색으로 은은하게 빛나게 한다.
         var card = Frame;
-        var glow = (DropShadowEffect)card.Effect;
         bool strong = dropTarget || _selected;
-        glow.Color = strong && TryFindResource("Accent") is SolidColorBrush accent ? accent.Color : Colors.Black;
+        var accent = TryFindResource("Accent") as SolidColorBrush;
+        if (!Layered)
+        {
+            // 둥근 창은 Windows가 그리는 1px 창 테두리를 강조색으로 바꾸고, 고른 카드는 안쪽 테두리를 더한다.
+            var hwnd = Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                var c = accent?.Color ?? Colors.DodgerBlue;
+                Native.SetDwm(hwnd, Native.DWMWA_BORDER_COLOR,
+                    strong || _editing ? c.R | c.G << 8 | c.B << 16 : Native.DWMWA_COLOR_DEFAULT);
+            }
+            card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            card.BorderThickness = new Thickness(strong ? 2 : 0);
+            return;
+        }
+
+        var glow = (DropShadowEffect)card.Effect;
+        glow.Color = strong && accent != null ? accent.Color : Colors.Black;
         glow.ShadowDepth = strong ? 0 : 2;
         glow.BlurRadius = strong ? 18 : 10;
         glow.Opacity = strong ? 0.9 : 0.22;
@@ -313,7 +359,18 @@ internal abstract class DeskCard : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         var hwnd = Handle;
-        Hwnd.MakeNoActivateTool(hwnd);
+        if (Layered)
+        {
+            Hwnd.MakeNoActivateTool(hwnd);
+        }
+        else
+        {
+            // 둥근 창은 눌리면 활성 창이 된다(웹 화면이 초점·키보드를 받으려면 필요). z 순서는 WndProc이 바탕화면 층에 붙잡아 둔다.
+            Hwnd.RemoveSysMenu(hwnd);
+            Hwnd.MakeTool(hwnd);
+            Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+            Theme.Changed += OnThemeChanged;
+        }
         AttachToDesktop(hwnd);
         ApplySize();
 
@@ -428,7 +485,7 @@ internal abstract class DeskCard : Window
         _appliedScale = t;
         Width = size.Width * t;
         Height = size.Height * t;
-        Layout.Margin = new Thickness(Inset * t, TopPad * t, Inset * t, 0); // 여백은 변환 밖이라 직접 곱한다
+        Layout.Margin = Pad(t); // 여백은 변환 밖이라 직접 곱한다
         ApplyScale(t);
     }
 
@@ -477,9 +534,17 @@ internal abstract class DeskCard : Window
         }
     }
 
+    private void OnThemeChanged() => Dispatcher.BeginInvoke(() =>
+    {
+        if (_closed || Handle == IntPtr.Zero) return;
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+        UpdateBorder(false);
+    });
+
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
+        Theme.Changed -= OnThemeChanged;
         base.OnClosed(e);
     }
 }

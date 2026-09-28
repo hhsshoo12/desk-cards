@@ -40,6 +40,8 @@ internal static class Native
     public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     public const int DWMWA_SYSTEMBACKDROP_TYPE = 38;
+    public const int DWMWA_BORDER_COLOR = 34;
+    public const int DWMWA_COLOR_DEFAULT = unchecked((int)0xFFFFFFFF);
 
     [StructLayout(LayoutKind.Sequential)]
     public struct WINDOWPOS
@@ -135,6 +137,19 @@ internal static class Native
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LASTINPUTINFO { public uint cbSize; public uint dwTime; }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetLastInputInfo(ref LASTINPUTINFO info);
+
+    /// <summary>마지막 키보드·마우스 입력 시각(Environment.TickCount 기준). 모르면 null.</summary>
+    public static int? LastInputTick()
+    {
+        var info = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
+        return GetLastInputInfo(ref info) ? (int)info.dwTime : null;
+    }
+
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hwnd);
 
@@ -143,32 +158,6 @@ internal static class Native
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowThreadProcessId")]
-    private static extern uint GetWindowProcess(IntPtr hwnd, out uint pid);
-
-    /// <summary>창을 만든 프로세스 ID.</summary>
-    public static uint ProcessOf(IntPtr hwnd)
-    {
-        GetWindowProcess(hwnd, out uint pid);
-        return pid;
-    }
-
-    private delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
-
-    [DllImport("user32.dll")]
-    private static extern bool EnumChildWindows(IntPtr parent, EnumProc proc, IntPtr lParam);
-
-    /// <summary>하위 창 전체(손자 창 포함).</summary>
-    public static System.Collections.Generic.List<IntPtr> ChildWindows(IntPtr parent)
-    {
-        var list = new System.Collections.Generic.List<IntPtr>();
-        EnumChildWindows(parent, (h, _) => { list.Add(h); return true; }, IntPtr.Zero);
-        return list;
-    }
-
-    [DllImport("user32.dll")]
-    public static extern bool EnableWindow(IntPtr hwnd, bool enable);
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
