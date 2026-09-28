@@ -15,6 +15,8 @@ internal static class Native
     public const long WS_SYSMENU = 0x00080000;
     public const long WS_EX_TOOLWINDOW = 0x00000080;
     public const long WS_EX_NOACTIVATE = 0x08000000;
+    public const long WS_EX_TRANSPARENT = 0x20;
+    public const long WS_EX_LAYERED = 0x80000;
 
     public const int WM_WINDOWPOSCHANGING = 0x0046;
     public const int WM_MOVING = 0x0216;
@@ -71,8 +73,7 @@ internal static class Native
     {
         const uint MONITOR_DEFAULTTONEAREST = 2;
         var mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, 0, out uint x, out _) == 0 && x > 0) return x / 96.0;
-        return PrimaryScale();
+        return ReadMonitorScale(mon) ?? PrimaryScale();
     }
 
     /// <summary>화면 좌표(물리 픽셀)가 있는 모니터의 지금 배율.</summary>
@@ -80,8 +81,7 @@ internal static class Native
     {
         const uint MONITOR_DEFAULTTONEAREST = 2;
         var mon = MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST);
-        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, 0, out uint dx, out _) == 0 && dx > 0) return dx / 96.0;
-        return PrimaryScale();
+        return ReadMonitorScale(mon) ?? PrimaryScale();
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -174,11 +174,16 @@ internal static class Native
     public static double PrimaryScale()
     {
         const uint MONITOR_DEFAULTTOPRIMARY = 1;
-        const int MDT_EFFECTIVE_DPI = 0;
         var mon = MonitorFromPoint(new POINT(), MONITOR_DEFAULTTOPRIMARY);
-        if (mon != IntPtr.Zero && GetDpiForMonitor(mon, MDT_EFFECTIVE_DPI, out uint x, out _) == 0 && x > 0)
-            return x / 96.0;
-        return GetDpiForSystem() / 96.0;
+        return ReadMonitorScale(mon) ?? GetDpiForSystem() / 96.0;
+    }
+
+    /// <summary>모니터의 유효 DPI를 배율로 읽는다. 실패하면 호출한 쪽에서 대체 값을 정한다.</summary>
+    private static double? ReadMonitorScale(IntPtr monitor)
+    {
+        const int MDT_EFFECTIVE_DPI = 0;
+        return monitor != IntPtr.Zero && GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint x, out _) == 0 && x > 0
+            ? x / 96.0 : null;
     }
 
     public const int VK_MENU = 0x12; // Alt

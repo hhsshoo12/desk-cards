@@ -163,8 +163,6 @@ internal static class SmartGuides
 /// <summary>안내선을 그리는 투명 창. 클릭은 그대로 아래로 통과한다.</summary>
 internal sealed class GuideOverlay : Window
 {
-    private const long WS_EX_TRANSPARENT = 0x20, WS_EX_LAYERED = 0x80000;
-
     private readonly Canvas _canvas = new();
     private System.Drawing.Rectangle _area;
 
@@ -182,7 +180,7 @@ internal sealed class GuideOverlay : Window
         Content = _canvas;
         SourceInitialized += (_, _) =>
         {
-            Hwnd.MakeNoActivateTool(Hwnd.Of(this), WS_EX_TRANSPARENT | WS_EX_LAYERED);
+            Hwnd.MakeClickThrough(Hwnd.Of(this));
         };
     }
 

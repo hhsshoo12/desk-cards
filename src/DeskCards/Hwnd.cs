@@ -22,13 +22,21 @@ internal static class Hwnd
         Native.SetWindowPos(hwnd, insertAfter, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
-    /// <summary>눌러도 활성 창이 되지 않고 Alt+Tab·작업 표시줄에도 안 나오는 창으로.</summary>
-    public static void MakeNoActivateTool(IntPtr hwnd, long extraExStyle = 0)
+    /// <summary>Alt+Tab·작업 표시줄에 나오지 않는 도구 창으로.</summary>
+    public static void MakeTool(IntPtr hwnd, long extraExStyle = 0)
     {
         long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
         Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE,
-            new IntPtr(ex | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | extraExStyle));
+            new IntPtr(ex | Native.WS_EX_TOOLWINDOW | extraExStyle));
     }
+
+    /// <summary>눌러도 활성 창이 되지 않는 도구 창으로.</summary>
+    public static void MakeNoActivateTool(IntPtr hwnd, long extraExStyle = 0) =>
+        MakeTool(hwnd, Native.WS_EX_NOACTIVATE | extraExStyle);
+
+    /// <summary>마우스 입력이 통과하는 비활성 도구 창으로.</summary>
+    public static void MakeClickThrough(IntPtr hwnd) =>
+        MakeNoActivateTool(hwnd, Native.WS_EX_TRANSPARENT | Native.WS_EX_LAYERED);
 
     /// <summary>시스템 메뉴를 빼서 캡션의 × 버튼이 그려지지 않게 한다.</summary>
     public static void RemoveSysMenu(IntPtr hwnd)

@@ -104,7 +104,7 @@ internal static class BarPreview
             w.SourceInitialized += (_, _) =>
             {
                 var hwnd = Hwnd.Of(w);
-                Hwnd.MakeNoActivateTool(hwnd, 0x20 | 0x80000); // 클릭 통과 + 레이어드
+                Hwnd.MakeClickThrough(hwnd);
                 Native.SetWindowPos(hwnd, Hwnd.Topmost, r.Left, r.Top, r.Width, r.Height, Native.SWP_NOACTIVATE);
             };
             w.Show();
@@ -154,7 +154,7 @@ internal sealed class ZoneBand : Window
         Content = new Grid { Children = { _band } };
         SourceInitialized += (_, _) =>
         {
-            Hwnd.MakeNoActivateTool(Hwnd.Of(this), 0x20 | 0x80000); // 클릭 통과 + 레이어드
+            Hwnd.MakeClickThrough(Hwnd.Of(this));
             Place();
         };
         _hold.Tick += (_, _) => { _hold.Stop(); Animate(0, 220, hideAfter: true); };

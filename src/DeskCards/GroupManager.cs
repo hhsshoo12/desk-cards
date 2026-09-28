@@ -370,7 +370,7 @@ internal sealed class GroupManager
     private void RecreateCard(CardWindow card)
     {
         // 화면상 왼쪽 위(픽셀)는 그대로 두고 새 배율 기준 DIP로 저장한 뒤 다시 띄운다.
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(card).Handle;
+        var hwnd = Hwnd.Of(card);
         if (Native.GetWindowRect(hwnd, out var r))
         {
             double ns = Native.MonitorScaleOf(hwnd);

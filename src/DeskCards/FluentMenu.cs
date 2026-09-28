@@ -184,8 +184,7 @@ internal sealed class FluentMenu : Window
     {
         var hwnd = Hwnd.Of(this);
         Hwnd.RemoveSysMenu(hwnd);
-        long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
-        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_TOOLWINDOW));
+        Hwnd.MakeTool(hwnd);
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         // 처음부터 띄울 자리의 모니터에 제 크기로 둔다(그 모니터 배율로 크기가 정해진다).
         if (_place != null)

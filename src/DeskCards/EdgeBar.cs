@@ -230,7 +230,7 @@ internal sealed class GaugeOverlay : Window
         canvas.Children.Add(_arc);
         Content = canvas;
 
-        SourceInitialized += (_, _) => Hwnd.MakeNoActivateTool(Hwnd.Of(this), 0x20 | 0x80000); // 클릭 통과 + 레이어드
+        SourceInitialized += (_, _) => Hwnd.MakeClickThrough(Hwnd.Of(this));
     }
 
     /// <summary>커서(물리 픽셀) 둘레에 progress(0~1)만큼 찬 게이지를 그린다. 화면 밖으로 잘리지 않게 안쪽으로 당긴다.</summary>
@@ -470,8 +470,7 @@ internal sealed class BarWindow : Window
     {
         var hwnd = Hwnd.Of(this);
         Hwnd.RemoveSysMenu(hwnd);
-        long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
-        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_TOOLWINDOW));
+        Hwnd.MakeTool(hwnd);
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         PlaceAt(_offset);
     }
