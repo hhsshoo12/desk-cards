@@ -1,77 +1,118 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
 namespace DeskCards;
 
 /// <summary>
-/// 바탕화면에 붙어 있는 그룹 카드 하나(2×2 미리보기).
-/// 평소에는 고정이고, 설정이나 우클릭 메뉴에서 편집을 시작하면(편집 막대) 옮기고 크기를 바꿀 수 있다.
+/// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)와 .dard 카드(DardWindow)가 같이 쓴다.
+/// 평소에는 고정이고, 편집 모드(편집 막대)에서만 옮기고 비율을 유지한 채 크기를 바꿀 수 있다.
+/// 모양(기준 크기)과 안의 내용은 쓰는 쪽이 정한다.
 /// </summary>
-internal partial class CardWindow : Window
+internal abstract class DeskCard : Window
 {
     // 배율 적용 전 기준 단위(DIP)의 배치 값
     public const double Inset = 4, TopPad = 4, LabelH = CardView.LabelH;
 
     private static uint _taskbarCreatedMsg;
 
-    private readonly GroupManager _mgr;
+    protected readonly GroupManager Mgr;
+    private readonly Thumb _grip;
     private bool _pending, _editing, _selected;
-    private CardLayout _layout = new();
     private double _appliedScale = 1;
     private bool _closed;
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
     private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
 
-    public CardWindow(GroupModel group, GroupManager mgr)
+    protected DeskCard(GroupManager mgr)
     {
-        InitializeComponent();
-        Group = group;
-        _mgr = mgr;
-        View = new CardView(group, mgr, onDesktop: true)
+        Mgr = mgr;
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = Brushes.Transparent;
+        ShowInTaskbar = false;
+        ShowActivated = false;
+        ResizeMode = ResizeMode.NoResize;
+        Width = 152;
+        Height = 176;
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic");
+        UseLayoutRounding = true;
+        Title = "Desk Cards Card";
+
+        // 여백·크기·배율은 LayoutFor가 정한다. 편집 모드 크기 조절은 비율을 유지한 채 통째로 키우고 줄이므로 모서리 하나만 둔다.
+        Layout = new Grid { Margin = new Thickness(Inset, TopPad, Inset, 0) };
+        _grip = new Thumb
         {
-            Expand = hover =>
-            {
-                if (hover && ExpandedWindow.IsOpenFor(this)) return;
-                ExpandedWindow.Open(this, _mgr, hover: hover);
-            },
-            CardMenu = () => Menus.ForCard(this, _mgr),
-            Editing = () => _editing,
+            Template = GripTemplate,
+            Width = 22,
+            Height = 22,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Cursor = Cursors.SizeNWSE,
+            Visibility = Visibility.Collapsed,
         };
-        Layout.Children.Add(View);
+        var root = new Grid();
+        root.Children.Add(Layout);
+        root.Children.Add(_grip);
+        Content = root;
 
         SourceInitialized += OnSourceInitialized;
         PreviewMouseLeftButtonDown += OnDown;
         PreviewMouseMove += OnMove;
         PreviewMouseLeftButtonUp += OnUp;
-        DragEnter += OnDragOver;
-        DragOver += OnDragOver;
-        DragLeave += (_, _) => UpdateBorder(false);
-        Drop += OnDrop;
-        // 아이콘 칸 밖(가장자리 여백)을 우클릭해도 카드 메뉴.
-        MouseRightButtonUp += (_, e) => { e.Handled = true; Menus.ForCard(this, _mgr).ShowAtCursor(); };
 
-        GripCorner.DragStarted += (_, _) => OnGripStart();
-        GripCorner.DragDelta += (_, _) => OnGripDelta();
-        GripCorner.DragCompleted += (_, _) => OnGripDone();
+        _grip.DragStarted += (_, _) => OnGripStart();
+        _grip.DragDelta += (_, _) => OnGripDelta();
+        _grip.DragCompleted += (_, _) => OnGripDone();
     }
 
-    public GroupModel Group { get; }
-    public CardView View { get; }
-    private IntPtr Handle => Hwnd.Of(this);
+    /// <summary>편집 모드의 크기 조절 손잡이. 완전 투명이면 레이어드 창에서 클릭이 통과하므로 알파 1을 준다.</summary>
+    private static readonly ControlTemplate GripTemplate = (ControlTemplate)XamlReader.Parse("""
+        <ControlTemplate TargetType="Thumb"
+                         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
+            <Border Background="#01000000">
+                <Path Data="M 15,5 L 5,15 M 15,10 L 10,15" Stroke="{DynamicResource Accent}"
+                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,2,2" />
+            </Border>
+        </ControlTemplate>
+        """);
+
+    /// <summary>카드 내용이 들어가는 칸. 크기·배율은 LayoutFor가 정한다.</summary>
+    protected Grid Layout { get; }
+
+    /// <summary>위치·모양을 저장하는 이름(config.json의 Positions·Layouts 키).</summary>
+    public abstract string Key { get; }
+
+    /// <summary>편집 막대 등에 보여 주는 카드 이름.</summary>
+    public abstract string CardName { get; }
+
+    /// <summary>카드 배경 판. 편집 중·드롭 대상 강조 테두리를 여기에 칠한다.</summary>
+    protected abstract Border Frame { get; }
+
+    /// <summary>확대 비율을 적용하기 전의 카드 창 크기(DIP).</summary>
+    protected abstract Size BaseSize();
+
+    /// <summary>편집 중에는 클릭·끌기를 카드 내용 대신 이 창이 받는다.</summary>
+    protected bool Editing => _editing;
+
+    protected IntPtr Handle => Hwnd.Of(this);
     public bool ClosingByManager { get; set; }
     public bool IsEditing => _editing;
     public CardLayout CurrentLayout => _layout;
+    protected CardLayout _layout = new();
 
     // ----- 입력 -----
-    // 평소 클릭·끌기·우클릭은 CardView가 한다. 카드 자체는 움직이지 않는다.
+    // 평소 클릭·끌기·우클릭은 카드 내용이 한다. 카드 자체는 움직이지 않는다.
     // 편집 모드: 누르기 = 고르기, 아무 데나 끌기 = 자유 이동(안내선), 오른쪽 아래 모서리 끌기 = 크기 조절.
 
     private Point _downPos;
@@ -79,9 +120,10 @@ internal partial class CardWindow : Window
     private void OnDown(object sender, MouseButtonEventArgs e)
     {
         if (!_editing) return;
-        _mgr.Select(this);
+        Mgr.Select(this);
         _pending = !IsWithin<Thumb>(e.OriginalSource as DependencyObject);
         _downPos = e.GetPosition(this);
+        if (_pending) e.Handled = true; // 편집 중에는 카드 내용(아이콘·HTML)이 누르기를 받지 않는다.
     }
 
     private void OnMove(object sender, MouseEventArgs e)
@@ -92,7 +134,7 @@ internal partial class CardWindow : Window
             Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         _pending = false;
         try { DragMove(); } catch (InvalidOperationException) { }
-        _mgr.SavePosition(this);
+        Mgr.SavePosition(this);
     }
 
     private void OnUp(object sender, MouseButtonEventArgs e) => _pending = false;
@@ -113,7 +155,7 @@ internal partial class CardWindow : Window
     public void BeginEdit()
     {
         _editing = true;
-        GripCorner.Visibility = Visibility.Visible;
+        _grip.Visibility = Visibility.Visible;
         Cursor = Cursors.SizeAll;
         UpdateBorder(false);
         RaiseForEdit();
@@ -129,12 +171,12 @@ internal partial class CardWindow : Window
     {
         if (!_editing) return;
         _editing = _selected = false;
-        GripCorner.Visibility = Visibility.Collapsed;
+        _grip.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder(false);
         // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
         Hwnd.SetZOrder(Handle, Native.HWND_BOTTOM);
-        _mgr.SavePosition(this);
+        Mgr.SavePosition(this);
     }
 
     /// <summary>편집 막대의 작업 대상으로 골랐는지. 고른 카드는 테두리가 굵어진다.</summary>
@@ -154,7 +196,7 @@ internal partial class CardWindow : Window
         int x = Math.Max(wa.Left, Math.Min(r.Left + dx, wa.Right - w));
         int y = Math.Max(wa.Top, Math.Min(r.Top + dy, wa.Bottom - h));
         Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
-        _mgr.SavePosition(this);
+        Mgr.SavePosition(this);
     }
 
     private double _gripZoom;
@@ -170,7 +212,7 @@ internal partial class CardWindow : Window
     {
         Native.GetCursorPos(out _moveCursorStart);
         Native.GetWindowRect(hwnd, out _moveWindowStart);
-        _moveOthers = _mgr.CardRects(except: this);
+        _moveOthers = Mgr.CardRects(except: this);
     }
 
     private void OnGripDelta()
@@ -196,11 +238,11 @@ internal partial class CardWindow : Window
     }
 
     /// <summary>바뀐 모양을 적용·저장하고, 화면 밖으로 나갔으면 당겨서 위치도 저장한다.</summary>
-    private void CommitLayout()
+    protected void CommitLayout()
     {
         FitToScreen();
-        _mgr.SaveLayout(this, _layout);
-        _mgr.SavePosition(this);
+        Mgr.SaveLayout(this, _layout);
+        Mgr.SavePosition(this);
     }
 
     /// <summary>확대 비율을 바꾸되, 최소·최대와 작업 영역(오른쪽·아래 끝) 안으로 제한한다.</summary>
@@ -208,7 +250,7 @@ internal partial class CardWindow : Window
     {
         var wa = WorkAreaDip();
         var p = ActualPosition;
-        var size = BaseSize(_layout, _mgr.CellSize);
+        var size = BaseSize();
         double k = ScaleFactor;
         double maxZoom = Math.Min((wa.Right - p.X) / (size.Width * k), (wa.Bottom - p.Y) / (size.Height * k));
         _layout.Zoom = Math.Clamp(zoom, CardLayout.MinZoom, Math.Max(CardLayout.MinZoom, Math.Min(CardLayout.MaxZoom, maxZoom)));
@@ -229,14 +271,6 @@ internal partial class CardWindow : Window
         return SizePercent;
     }
 
-    /// <summary>미리보기 칸 수를 바꾼다(카드 비율이 따라 바뀐다).</summary>
-    public void SetGrid(int cols, int rows)
-    {
-        _layout.Cols = Math.Clamp(cols, CardLayout.MinCells, CardLayout.MaxCells);
-        _layout.Rows = Math.Clamp(rows, CardLayout.MinCells, CardLayout.MaxCells);
-        CommitLayout();
-    }
-
     private Rect WorkAreaDip()
     {
         var dpi = VisualTreeHelper.GetDpi(this);
@@ -245,32 +279,12 @@ internal partial class CardWindow : Window
         return new Rect(wa.Left / dpi.DpiScaleX, wa.Top / dpi.DpiScaleY, wa.Width / dpi.DpiScaleX, wa.Height / dpi.DpiScaleY);
     }
 
-    // ----- 드롭 -----
-
-    private void OnDragOver(object sender, DragEventArgs e)
-    {
-        bool ok = FileOps.CanAccept(e.Data, Group.Folder);
-        e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
-        UpdateBorder(ok);
-        e.Handled = true;
-    }
-
-    private void OnDrop(object sender, DragEventArgs e)
-    {
-        UpdateBorder(false);
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
-            FileOps.AddToGroup(paths, Group.Folder, _mgr.Root);
-        // 이동은 우리가 직접 했으므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
-        e.Effects = DragDropEffects.None;
-        e.Handled = true;
-    }
-
     /// <summary>드롭 대상이거나 편집 중이면 강조 테두리. 편집 중에 고른 카드는 더 굵게.</summary>
-    private void UpdateBorder(bool dropTarget)
+    protected void UpdateBorder(bool dropTarget)
     {
         // 고른 카드는 배경화면 색에 묻히지 않도록 강조색으로 은은하게 빛나게 한다.
-        var card = View.Card;
-        var glow = (System.Windows.Media.Effects.DropShadowEffect)card.Effect;
+        var card = Frame;
+        var glow = (DropShadowEffect)card.Effect;
         bool strong = dropTarget || _selected;
         glow.Color = strong && TryFindResource("Accent") is SolidColorBrush accent ? accent.Color : Colors.Black;
         glow.ShadowDepth = strong ? 0 : 2;
@@ -365,29 +379,14 @@ internal partial class CardWindow : Window
     public double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
     /// <summary>확대 비율에 곱할 값. 따라가기를 끈 동안 Windows 배율이 바뀌어도 실제 크기를 유지한다.</summary>
-    private double ScaleFactor => _mgr.ZoomFactor(DpiScale);
-
-    /// <summary>
-    /// 미리보기 칸 하나의 기준 크기(DIP)를 바탕화면 아이콘 간격으로 잰다. 기본 2×2 카드의 가로가 아이콘 2칸이 된다.
-    /// 처음 한 번만 재서 설정에 고정한다(배율을 바꾼 직후에는 아이콘 간격이 늦게 바뀌어 값이 흔들린다).
-    /// </summary>
-    public static double MeasureCellSize(double dpiScale)
-    {
-        double w = 152;
-        if (DesktopGrid.TryGetIconSpacing(out int cx)) w = DesktopGrid.CardCols * cx / dpiScale;
-        return (w - 2 * Inset) / 2;
-    }
-
-    /// <summary>확대 비율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
-    public static Size BaseSize(CardLayout layout, double cell) =>
-        new(layout.Cols * cell + 2 * Inset, TopPad + layout.Rows * cell + LabelH);
+    private double ScaleFactor => Mgr.ZoomFactor(DpiScale);
 
     /// <summary>따라가기를 켜고 끌 때 보이는 크기가 그대로 남도록 확대 비율을 옮겨 담는다.</summary>
     public void RebaseZoom(double factor)
     {
         _layout.Zoom *= factor;
         _layout = _layout.Normalized();
-        _mgr.SaveLayout(this, _layout);
+        Mgr.SaveLayout(this, _layout);
     }
 
     /// <summary>
@@ -414,13 +413,13 @@ internal partial class CardWindow : Window
     /// <summary>저장된 모양(칸 수·확대 비율)을 불러와 적용한다.</summary>
     public void ApplySize()
     {
-        _layout = _mgr.GetLayout(Group.Name);
+        _layout = Mgr.GetLayout(Key);
         LayoutFor();
     }
 
-    private void LayoutFor()
+    protected void LayoutFor()
     {
-        var size = BaseSize(_layout, _mgr.CellSize);
+        var size = BaseSize();
         // 비율 고정 확대: 카드 확대 비율(배율 보정 포함)을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
         double t = ScaleFactor * _layout.Zoom;
         var wa = System.Windows.Forms.Screen.FromHandle(Handle).WorkingArea;
@@ -429,12 +428,16 @@ internal partial class CardWindow : Window
         _appliedScale = t;
         Width = size.Width * t;
         Height = size.Height * t;
-        Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
         Layout.Margin = new Thickness(Inset * t, TopPad * t, Inset * t, 0); // 여백은 변환 밖이라 직접 곱한다
-
-        // 기준 단위에서 칸 크기는 항상 같으므로 아이콘도 같다(기본 72 → 40).
-        View.Apply(_layout, _mgr.CellSize);
+        ApplyScale(t);
     }
+
+    /// <summary>
+    /// 확대 비율 t를 내용에 건다. 기본은 내용 전체를 그림처럼 키운다.
+    /// 흐려지면 안 되는 내용(웹 화면)은 쓰는 쪽이 크기를 직접 정한다.
+    /// </summary>
+    protected virtual void ApplyScale(double t) =>
+        Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
 
     /// <summary>크기를 다시 적용하고, 작업 영역 밖으로 나갔으면 안쪽으로 당긴다.</summary>
     public void FitToScreen()
@@ -456,7 +459,7 @@ internal partial class CardWindow : Window
     public void Refit()
     {
         FitToScreen();
-        _mgr.SavePosition(this);
+        Mgr.SavePosition(this);
     }
 
     /// <summary>
@@ -477,7 +480,6 @@ internal partial class CardWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closed = true;
-        View.Detach();
         base.OnClosed(e);
     }
 }

@@ -26,7 +26,7 @@ internal partial class EditBar : Window
     private readonly GroupManager _mgr;
     private readonly TextBlock _name;
     private readonly ToggleButton _guides;
-    private readonly Button[] _cardButtons;
+    private readonly Button[] _cardButtons, _folderButtons;
     private readonly Button _gridButton;
     private Popup? _gridPopup;
 
@@ -60,15 +60,17 @@ internal partial class EditBar : Window
         Items.Children.Add(_name);
 
         _gridButton = GridButton();
-        _cardButtons = new[]
+        // 이름 바꾸기·칸 수는 폴더 카드에만 있다. .dard 카드는 비율을 카드가 정한다.
+        _folderButtons = new[]
         {
-            Btn("", "이름 바꾸기", () => { if (_mgr.Selected is { } c) ExpandedWindow.Open(c, _mgr, editTitle: true); }),
+            Btn("", "이름 바꾸기", () => { if (_mgr.Selected is CardWindow c) ExpandedWindow.Open(c, _mgr, editTitle: true); }),
             _gridButton,
-            Btn("", "삭제 (Delete, 항목은 바탕화면으로)", DeleteSelected),
         };
+        _cardButtons = new[] { Btn("", "삭제 (Delete, 폴더 카드의 항목은 바탕화면으로)", DeleteSelected) };
+        foreach (var b in _folderButtons) Items.Children.Add(b);
         foreach (var b in _cardButtons) Items.Children.Add(b);
         Items.Children.Add(Sep());
-        Items.Children.Add(Btn("", "설정", () => SettingsWindow.Open(_mgr, _mgr.Selected)));
+        Items.Children.Add(Btn("", "설정", () => SettingsWindow.Open(_mgr, _mgr.Selected as CardWindow)));
         Items.Children.Add(DoneButton());
 
         _mgr.EditChanged += Refresh;
@@ -111,17 +113,18 @@ internal partial class EditBar : Window
     private void Refresh()
     {
         var sel = _mgr.Selected;
-        _name.Text = sel?.Group.Name ?? "카드를 누르세요";
+        _name.Text = sel?.CardName ?? "카드를 누르세요";
         _name.SetResourceReference(TextBlock.ForegroundProperty, sel != null ? "Fg" : "SubFg");
-        _name.ToolTip = sel?.Group.Name;
+        _name.ToolTip = sel?.CardName;
         foreach (var b in _cardButtons) b.IsEnabled = sel != null;
+        foreach (var b in _folderButtons) b.IsEnabled = sel is CardWindow;
         _guides.IsChecked = _mgr.ShowGuides;
     }
 
     private void DeleteSelected()
     {
         if (_mgr.Selected is not { } card) return;
-        _mgr.DeleteGroup(card); // 확인 창은 Dialogs가 이 막대를 소유자로 삼아 막대 위에 띄운다.
+        _mgr.DeleteCard(card); // 확인 창은 Dialogs가 이 막대를 소유자로 삼아 막대 위에 띄운다.
     }
 
     private void OnKey(object sender, KeyEventArgs e)
@@ -162,7 +165,7 @@ internal partial class EditBar : Window
 
     private void ShowGridPopup(Button target)
     {
-        if (_mgr.Selected is not { } card) return;
+        if (_mgr.Selected is not CardWindow card) return;
         var grid = new UniformGrid { Columns = 4 };
         foreach (var (cols, rows) in GridPresets)
         {

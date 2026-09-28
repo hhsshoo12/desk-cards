@@ -37,7 +37,7 @@ internal static class Dialogs
     private static Window? Owner()
     {
         var windows = Application.Current?.Windows.OfType<Window>()
-            .Where(w => w.IsVisible && w is not EditDim && w is not DialogWindow && w is not CardWindow).ToList();
+            .Where(w => w.IsVisible && w is not EditDim && w is not DialogWindow && w is not DeskCard).ToList();
         if (windows == null) return null;
         return windows.FirstOrDefault(w => w.IsActive) ?? windows.OfType<EditBar>().FirstOrDefault();
     }

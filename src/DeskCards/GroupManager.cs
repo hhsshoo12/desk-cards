@@ -30,7 +30,10 @@ internal sealed class GroupManager
     public string Root { get; }
     public bool IsShuttingDown => _shuttingDown;
 
-    /// <summary>카드 목록, 이름 순.</summary>
+    /// <summary>바탕화면의 모든 카드(폴더 카드 + .dard 카드).</summary>
+    public IEnumerable<DeskCard> AllCards => _cards.Values.Cast<DeskCard>();
+
+    /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
         _cards.Values.OrderBy(c => c.Group.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
@@ -161,14 +164,14 @@ internal sealed class GroupManager
             if (value)
             {
                 // 고정해 두었던 크기를 지금 배율 기준 확대 비율로 옮겨 담는다.
-                foreach (var card in _cards.Values)
+                foreach (var card in AllCards)
                     card.RebaseZoom(_cfg.FixedScale / card.DpiScale);
                 _cfg.DefaultZoom *= _cfg.FixedScale / Native.PrimaryScale();
             }
             else
             {
                 _cfg.FixedScale = Native.PrimaryScale();
-                foreach (var card in _cards.Values)
+                foreach (var card in AllCards)
                     card.RebaseZoom(card.DpiScale / _cfg.FixedScale);
             }
             _cfg.FollowWindowsScale = value;
@@ -215,18 +218,18 @@ internal sealed class GroupManager
     public CardLayout GetLayout(string name) =>
         _cfg.Layouts.TryGetValue(name, out var l) ? l.Normalized() : new CardLayout { Zoom = _cfg.DefaultZoom }.Normalized();
 
-    public void SaveLayout(CardWindow card, CardLayout layout)
+    public void SaveLayout(DeskCard card, CardLayout layout)
     {
         var l = layout.Normalized();
         l.Zoom = Math.Round(l.Zoom, 3);
-        _cfg.Layouts[card.Group.Name] = l;
+        _cfg.Layouts[card.Key] = l;
         _cfg.Save();
         RaiseChanged();
     }
 
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
-    public IReadOnlyList<Native.RECT> CardRects(CardWindow except) =>
-        _cards.Values.Where(c => c != except)
+    public IReadOnlyList<Native.RECT> CardRects(DeskCard except) =>
+        AllCards.Where(c => c != except)
             .Select(c => Native.GetWindowRect(Hwnd.Of(c), out var r) ? r : default)
             .Where(r => r.Right > r.Left)
             .ToList();
@@ -236,9 +239,9 @@ internal sealed class GroupManager
     // 막대의 이름 바꾸기·칸 수·삭제 등은 '고른 카드'(마지막으로 누른 카드)에 적용된다.
 
     public bool Editing { get; private set; }
-    public CardWindow? Selected { get; private set; }
+    public DeskCard? Selected { get; private set; }
 
-    public void BeginEditMode(CardWindow? select = null)
+    public void BeginEditMode(DeskCard? select = null)
     {
         if (!Editing)
         {
@@ -247,7 +250,7 @@ internal sealed class GroupManager
             SettingsWindow.HideForEdit();
             ExpandedWindow.CloseCurrent();
             bool toggled = DesktopShell.ShowDesktop();
-            foreach (var c in _cards.Values) c.BeginEdit();
+            foreach (var c in AllCards) c.BeginEdit();
             // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).
             var delay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(toggled ? 350 : 1) };
             delay.Tick += (_, _) =>
@@ -269,15 +272,15 @@ internal sealed class GroupManager
         Editing = false;
         Selected = null;
         EditDim.CloseAll();
-        foreach (var c in _cards.Values) c.EndEdit();
+        foreach (var c in AllCards) c.EndEdit();
         EditBar.CloseBar();
         EditChanged?.Invoke();
     }
 
-    public void Select(CardWindow? card)
+    public void Select(DeskCard? card)
     {
         Selected = card;
-        foreach (var c in _cards.Values) c.SetSelected(c == card);
+        foreach (var c in AllCards) c.SetSelected(c == card);
         RaiseEditLayer();
         EditChanged?.Invoke();
     }
@@ -289,7 +292,7 @@ internal sealed class GroupManager
     private void RaiseEditLayer()
     {
         if (!Editing) return;
-        foreach (var c in _cards.Values) c.RaiseForEdit();
+        foreach (var c in AllCards) c.RaiseForEdit();
         EditBar.BringToTop();
     }
 
@@ -329,7 +332,7 @@ internal sealed class GroupManager
     /// <summary>모든 카드를 화면 안으로 다시 맞추고 위치를 저장한다.</summary>
     private void RefitAll()
     {
-        foreach (var card in _cards.Values) card.Refit();
+        foreach (var card in AllCards) card.Refit();
         RaiseChanged();
     }
 
@@ -489,10 +492,10 @@ internal sealed class GroupManager
         card.Group.Dispose();
     }
 
-    public void SavePosition(CardWindow card)
+    public void SavePosition(DeskCard card)
     {
         var p = card.ActualPosition;
-        _cfg.Positions[card.Group.Name] = new[] { p.X, p.Y };
+        _cfg.Positions[card.Key] = new[] { p.X, p.Y };
         _cfg.Save();
     }
 
@@ -554,6 +557,13 @@ internal sealed class GroupManager
         EditChanged?.Invoke();
         return true;
     }
+
+    /// <summary>편집 막대의 삭제: 폴더 카드는 그룹을, .dard 카드는 카드 파일을 지운다.</summary>
+    public bool DeleteCard(DeskCard card) => card switch
+    {
+        CardWindow folder => DeleteGroup(folder),
+        _ => false,
+    };
 
     /// <summary>그룹을 지운다. 항목이 있으면 확인하고 바탕화면으로 옮긴다. 지웠으면 true.</summary>
     public bool DeleteGroup(CardWindow card)
