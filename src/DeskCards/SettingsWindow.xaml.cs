@@ -325,7 +325,7 @@ internal partial class SettingsWindow : Window
 
     /// <summary>들어오는 페이지가 출발하는 거리: 메뉴를 바꾸면 아래에서, 하위·상위로 가면 옆에서. 둘 다 250ms 감속.</summary>
     private const double PageRise = 32, PageSlide = 48;
-    /// <summary>나가는 페이지가 밀려나는 거리. 167ms 가속하며 흐려진다.</summary>
+    /// <summary>나가는 페이지가 밀려나는 거리. 167ms 동안 바로 움직이기 시작하며 흐려진다.</summary>
     private const double PageExit = 24;
 
     /// <summary>
@@ -347,7 +347,7 @@ internal partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// 새 페이지(제목 포함)를 들여보낸다(Fluent: 들어오는 것은 감속 250ms, 나가는 것은 가속 167ms).
+    /// 새 페이지(제목 포함)를 들여보낸다(들어오는 것은 250ms, 나가는 것은 167ms, 둘 다 감속 곡선).
     /// 메뉴를 바꿀 때(아래에서): 옛 페이지는 바로 사라지고 새 페이지가 살짝 올라오며 나타난다.
     /// 하위로(오른쪽에서)·상위로(왼쪽에서): 옛 페이지가 반대쪽으로 조금 밀리며 흐려지고, 새 페이지가 옆에서 들어온다.
     /// </summary>
@@ -376,14 +376,15 @@ internal partial class SettingsWindow : Window
         if (old == null) return;
         OldPage.Source = old;
         OldPage.Visibility = Visibility.Visible;
-        var fade = Motion.Out(1, 0, Motion.Fast);
+        // 흐려지는 건 감속 곡선으로: 가속 곡선(1,0,1,1)은 끝 무렵까지 거의 그대로라 "있다가 툭 사라지는" 것처럼 보인다.
+        var fade = Motion.In(1, 0, Motion.Fast);
         fade.Completed += (_, _) =>
         {
             if (OldPage.Source != old) return;
             OldPage.Source = null;
             OldPage.Visibility = Visibility.Collapsed;
         };
-        OldShift.BeginAnimation(TranslateTransform.XProperty, Motion.Out(0, -dir * PageExit, Motion.Fast));
+        OldShift.BeginAnimation(TranslateTransform.XProperty, Motion.In(0, -dir * PageExit, Motion.Fast));
         OldPage.BeginAnimation(OpacityProperty, fade);
     }
 

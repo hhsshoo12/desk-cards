@@ -205,6 +205,13 @@
                 밀려나가는 페이지가 왼쪽 메뉴 위로 넘어가지 않도록 이 칸 안에서 자른다.
             -->
             <Grid x:Name="PageHost" Grid.Column="1" ClipToBounds="True">
+                <!-- 나가는 옛 페이지(그림). 새 페이지 아래에 깔려서, 새 페이지가 나타나는 동안 뒤에서 흐려진다. -->
+                <Image x:Name="OldPage" IsHitTestVisible="False" Visibility="Collapsed" Stretch="None"
+                       HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <Image.RenderTransform>
+                        <TranslateTransform x:Name="OldShift" />
+                    </Image.RenderTransform>
+                </Image>
                 <ScrollViewer x:Name="PageScroller" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <ScrollViewer.RenderTransform>
@@ -215,12 +222,6 @@
                         <StackPanel x:Name="Page" />
                     </StackPanel>
                 </ScrollViewer>
-                <Image x:Name="OldPage" IsHitTestVisible="False" Visibility="Collapsed" Stretch="None"
-                       HorizontalAlignment="Left" VerticalAlignment="Top">
-                    <Image.RenderTransform>
-                        <TranslateTransform x:Name="OldShift" />
-                    </Image.RenderTransform>
-                </Image>
             </Grid>
         </Grid>
 
