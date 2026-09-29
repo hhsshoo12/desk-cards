@@ -276,15 +276,15 @@ internal static partial class Program
                     // 바 옆에 떠 있는 설정 버튼: 바가 다 나오면 보이고, 바의 시작 모서리 옆(화면 안쪽)에 있고, 편집 중엔 숨는다.
                     var gear = app.Windows.OfType<BarFloatButton>().Single();
                     Native.GetWindowRect(Hwnd.Of(bar), out var barRect);
-                    Check(gear.IsVisible && gear.Opacity > 0.5 && gear.BodyRect.Right < barRect.Left && gear.BodyRect.Top == barRect.Top);
+                    Check(gear.IsShown && gear.BodyRect.Right < barRect.Left && gear.BodyRect.Top == barRect.Top);
                     if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
                         Snapshot(bar, Path.Combine(dir, "card-bar.png"));
                     bar.BeginEdit();
                     Pump(100);
-                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1 && gear.Opacity < 0.5);
+                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1 && !gear.IsShown);
                     bar.EndEdit();
                     Pump(100);
-                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any() && gear.Opacity > 0.5);
+                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any() && gear.IsShown);
                 }
                 finally { bar.Close(); }
 

@@ -215,6 +215,8 @@ internal sealed partial class BarWindow : Window
     /// 마우스가 바(와 가장자리 사이 틈) 밖으로 나가면 들어간다.
     /// 펼친 창·우클릭 메뉴가 떠 있거나 항목을 끌어내는 중에는 기다린다.
     /// </summary>
+    private readonly Stopwatch _grace = new();
+
     public void CheckLeave()
     {
         if (_closing || _editing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
@@ -229,8 +231,14 @@ internal sealed partial class BarWindow : Window
             case ScreenEdge.Top: t = b.Top; break;
             default: bb = b.Bottom; break;
         }
-        if (pt.X >= l && pt.X < rr && pt.Y >= t && pt.Y < bb) return;
-        if (_float != null && _float.Contains(pt.X, pt.Y)) return; // 옆에 떠 있는 설정 버튼 위도 바 안으로 친다
+        if (pt.X >= l && pt.X < rr && pt.Y >= t && pt.Y < bb) { _grace.Reset(); return; }
+        // 옆에 떠 있는 설정 버튼 위는 바 안으로 친다. 버튼 둘레(여유 40)에서는 0.75초 기다려 준다(버튼으로 가는 길).
+        if (_float != null && _float.Near(pt.X, pt.Y, 0)) { _grace.Reset(); return; }
+        if (_float != null && _float.Near(pt.X, pt.Y, (int)Math.Round(40 * _scale)))
+        {
+            if (!_grace.IsRunning) _grace.Restart();
+            if (_grace.ElapsedMilliseconds < 750) return;
+        }
         BeginClose();
     }
 

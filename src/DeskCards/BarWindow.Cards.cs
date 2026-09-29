@@ -99,11 +99,10 @@ internal sealed partial class BarWindow
             ScreenEdge.Top => (f.Left, f.Bottom + gap),
             _ => (f.Left, f.Top - gap - size),
         };
-        _float.PlaceBody(x, y, _scale);
-        _float.FadeIn();
+        _float.Enter(x, y, _scale, _screen.Bounds);
     }
 
-    private void HideFloat() => _float?.FadeOut();
+    private void HideFloat() => _float?.Leave();
 
     private void OnGroupsChanged()
     {
