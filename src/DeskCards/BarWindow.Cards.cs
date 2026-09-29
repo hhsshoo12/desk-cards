@@ -76,7 +76,46 @@ internal sealed partial class BarWindow
         var grid = new Grid { Margin = new Thickness(Pad) };
         grid.Children.Add(_canvas);
         grid.Children.Add(_empty);
-        return grid;
+        var root = new Grid();
+        root.Children.Add(grid);
+        root.Children.Add(_editButton = EditButton());
+        return root;
+    }
+
+    private Border? _editButton;
+
+    /// <summary>바 오른쪽 위의 작은 흰 [편집] 버튼(Windows 기본 버튼 모양). 누르면 바로 카드 바 편집.</summary>
+    private Border EditButton()
+    {
+        var label = new TextBlock { Text = "편집", FontSize = 12, Margin = new Thickness(10, 0, 10, 1), VerticalAlignment = VerticalAlignment.Center };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        var hover = new Border { CornerRadius = new CornerRadius(4), Opacity = 0 };
+        hover.SetResourceReference(Border.BackgroundProperty, "HoverBg");
+        var b = new Border
+        {
+            Height = 24,
+            MinWidth = 48,
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 6, 6, 0),
+            Child = new Grid { Children = { hover, label } },
+            ToolTip = "카드 바 편집",
+        };
+        b.SetResourceReference(Border.BackgroundProperty, "ControlBg");
+        b.SetResourceReference(Border.BorderBrushProperty, "ControlBorder");
+        Panel.SetZIndex(b, 2);
+        b.MouseEnter += (_, _) => hover.BeginAnimation(OpacityProperty, Motion.In(null, 1, Motion.Faster));
+        b.MouseLeave += (_, _) => { hover.BeginAnimation(OpacityProperty, Motion.In(null, 0, Motion.Faster)); label.Opacity = 1; };
+        b.MouseLeftButtonDown += (_, e) => { e.Handled = true; label.Opacity = 0.7; };
+        b.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            label.Opacity = 1;
+            BeginEdit();
+        };
+        return b;
     }
 
     private void OnGroupsChanged()
@@ -241,6 +280,7 @@ internal sealed partial class BarWindow
         _editing = true;
         ExpandedWindow.CloseCurrent();
         foreach (var e in _entries) e.Shield.Visibility = Visibility.Visible;
+        if (_editButton != null) _editButton.Visibility = Visibility.Collapsed;
         UpdateEmpty();
         EditBar.OpenForCardBar(_mgr, this);
         EditStateChanged?.Invoke();
@@ -253,6 +293,7 @@ internal sealed partial class BarWindow
         if (_dragging != null) EndDrag();
         Select(null);
         foreach (var e in _entries) e.Shield.Visibility = Visibility.Collapsed;
+        if (_editButton != null) _editButton.Visibility = Visibility.Visible;
         UpdateEmpty();
         SmartGuides.Hide();
         EditBar.CloseBar();

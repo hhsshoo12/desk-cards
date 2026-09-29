@@ -273,12 +273,17 @@ internal static partial class Program
                     bar.Open();
                     Pump(500);
                     Check(!bar.IsEditing);
+                    // 오른쪽 위 작은 [편집] 버튼: 평소엔 보이고 편집 중엔 숨는다.
+                    Border EditButton() => Visuals<Border>(bar).Single(b => b.ToolTip as string == "카드 바 편집");
+                    Check(EditButton().IsVisible);
+                    if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                        Snapshot(bar, Path.Combine(dir, "card-bar.png"));
                     bar.BeginEdit();
                     Pump(100);
-                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1);
+                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1 && !EditButton().IsVisible);
                     bar.EndEdit();
                     Pump(100);
-                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any());
+                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any() && EditButton().IsVisible);
                 }
                 finally { bar.Close(); }
 
