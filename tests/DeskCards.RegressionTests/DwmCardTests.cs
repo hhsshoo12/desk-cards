@@ -14,13 +14,13 @@ internal static partial class Program
 {
     private static void DwmCardTests(string root)
     {
-        Test("폴더 카드 기준 크기는 여백 없이 아이콘 칸과 안쪽 이름 줄을 합한다", () =>
+        Test("폴더 카드 기준 크기는 여백 없이 아이콘 칸만이다(이름은 창 밖 아래)", () =>
         {
             foreach (int cols in new[] { 1, 2, 4, 8 })
                 foreach (int rows in new[] { 1, 2, 4, 8 })
                 {
                     var size = CardWindow.BaseSize(new CardLayout { Cols = cols, Rows = rows }, 72);
-                    Check(size == new Size(cols * 72, rows * 72 + CardView.LabelH));
+                    Check(size == new Size(cols * 72, rows * 72));
                 }
             double dpi = Native.GetDpiForSystem() / 96.0;
             double expected = DesktopGrid.TryGetIconSpacing(out int spacing) ? DesktopGrid.CardCols * spacing / dpi / 2 : 76;
@@ -42,7 +42,7 @@ internal static partial class Program
             {
                 CheckDwmCard(card, activatable: false);
                 Check(cfg.CellSize == 72 && Config.Load(Path.Combine(root, "dwm.json")).CellSize == 72);
-                Check(Math.Abs(card.Width - 144) < 0.01 && Math.Abs(card.Height - 172) < 0.01);
+                Check(Math.Abs(card.Width - 144) < 0.01 && Math.Abs(card.Height - 144) < 0.01);
                 // 유리 틀로 바뀌어도 비클라이언트 여백이 아이콘·이름을 밀어내면 안 된다.
                 var content = (FrameworkElement)card.Content;
                 Check(Math.Abs(content.ActualWidth - card.Width) < 1 && Math.Abs(content.ActualHeight - card.Height) < 1);
@@ -50,11 +50,16 @@ internal static partial class Program
                 var label = card.View.Children.OfType<TextBlock>().Single(t => Grid.GetRow(t) == 1);
                 var cells = card.View.Children.OfType<UniformGrid>().Single();
                 Check(frame.Background == null && frame.Effect == null && frame.BorderThickness == new Thickness(0));
-                Check(Grid.GetRowSpan(frame) == 2 && Math.Abs(frame.ActualHeight - card.View.ActualHeight) < 1);
-                Check(label.Effect == null && label.Foreground == Application.Current.Resources["Fg"]);
-                double labelTop = label.TranslatePoint(new Point(), card.View).Y;
-                double cellsBottom = cells.TranslatePoint(new Point(0, cells.ActualHeight), card.View).Y;
-                Check(labelTop >= 144 && labelTop >= cellsBottom && labelTop + label.ActualHeight <= card.View.ActualHeight);
+                Check(Math.Abs(frame.ActualHeight - card.View.ActualHeight) < 1);
+                // 이름은 카드 창 안에 두지 않고, 카드 바로 아래 따로 띄운 투명 창에 그림자 없는 흰 글자로 둔다.
+                Check(label.Visibility == Visibility.Collapsed);
+                var name = Application.Current.Windows.OfType<CardLabel>().Single(w => w.Owner == null && w.IsVisible && w.Text == card.Group.Name);
+                var text = (TextBlock)name.Content;
+                Check(text.Effect == null && text.Foreground == Brushes.White);
+                Native.GetWindowRect(Hwnd.Of(card), out var cr);
+                Native.GetWindowRect(Hwnd.Of(name), out var lr);
+                Check(lr.Left == cr.Left && lr.Right == cr.Right && lr.Top == cr.Bottom && lr.Bottom > lr.Top);
+                Check(card.Footprint.Bottom == lr.Bottom);
             });
             Test("카드 바는 판·그림자와 판 아래 이름 모양을 유지한다", () =>
             {
@@ -85,6 +90,10 @@ internal static partial class Program
                 card.Nudge(-1, 1);
                 Native.GetWindowRect(Hwnd.Of(card), out var after);
                 Check(after.Left == before.Left - 1 && after.Top == before.Top + 1);
+                // 이름 창도 카드를 따라온다.
+                var moved = Application.Current.Windows.OfType<CardLabel>().Single(w => w.IsVisible && w.Text == card.Group.Name);
+                Native.GetWindowRect(Hwnd.Of(moved), out var lr2);
+                Check(lr2.Left == after.Left && lr2.Top == after.Bottom);
                 double ratio = card.Width / card.Height;
                 card.SetSizePercent(125);
                 Check(Math.Abs(card.Width / card.Height - ratio) < 0.001);

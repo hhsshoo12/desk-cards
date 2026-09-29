@@ -19,6 +19,7 @@ internal static class Native
     public const long WS_EX_LAYERED = 0x80000;
 
     public const int WM_WINDOWPOSCHANGING = 0x0046;
+    public const int WM_WINDOWPOSCHANGED = 0x0047;
     public const int WM_NCACTIVATE = 0x0086;
     public const int WM_MOVING = 0x0216;
     public const int WM_ENTERSIZEMOVE = 0x0231;

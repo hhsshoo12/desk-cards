@@ -33,6 +33,7 @@ internal abstract class DeskCard : Window
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
     private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
+    private CardLabel? _label;
 
     protected DeskCard(GroupManager mgr)
     {
@@ -75,6 +76,7 @@ internal abstract class DeskCard : Window
         Content = root;
 
         SourceInitialized += OnSourceInitialized;
+        IsVisibleChanged += (_, _) => SyncLabel();
         PreviewMouseLeftButtonDown += OnDown;
         PreviewMouseMove += OnMove;
         PreviewMouseLeftButtonUp += OnUp;
@@ -113,6 +115,55 @@ internal abstract class DeskCard : Window
 
     /// <summary>확대 비율을 적용하기 전의 카드 창 크기(DIP).</summary>
     protected abstract Size BaseSize();
+
+    /// <summary>카드 아래에 따로 띄우는 이름. null이면 이름 줄이 없다.</summary>
+    protected virtual string? LabelText => null;
+
+    /// <summary>카드 아래 이름 줄 높이(기준 DIP). 이름이 없는 카드는 0.</summary>
+    private double LabelBelow => LabelText != null ? LabelH : 0;
+
+    /// <summary>지금 크기의 이름 줄 높이(물리 픽셀).</summary>
+    private int LabelPx => (int)Math.Round(LabelBelow * _appliedScale * DpiScale);
+
+    /// <summary>
+    /// 카드와 그 아래 이름 줄을 합친 자리(물리 픽셀). 안내선·화면 맞춤·빈 자리 찾기는 이 자리로 한다.
+    /// 그래야 붙여 놓은 카드가 위 카드의 이름을 덮지 않는다.
+    /// </summary>
+    public Native.RECT Footprint
+    {
+        get
+        {
+            if (!Native.GetWindowRect(Handle, out var r)) return default;
+            r.Bottom += LabelPx;
+            return r;
+        }
+    }
+
+    /// <summary>이름 줄까지 합친 높이(DIP).</summary>
+    public double FootprintHeight => Height + LabelBelow * _appliedScale;
+
+    /// <summary>이름이 바뀌었을 때 쓰는 쪽이 부른다.</summary>
+    protected void RefreshLabel()
+    {
+        if (_label != null) _label.Text = LabelText ?? "";
+    }
+
+    /// <summary>카드가 보이면 이름 창을 카드 바로 아래에 맞춰 보이고, 숨으면 같이 숨긴다.</summary>
+    private void SyncLabel()
+    {
+        if (_closed || LabelText == null || Handle == IntPtr.Zero) return;
+        if (!IsVisible) { _label?.Hide(); return; }
+        _label ??= new CardLabel(Handle);
+        _label.Text = LabelText;
+        if (!_label.IsVisible) _label.Show();
+        FollowLabel();
+    }
+
+    private void FollowLabel()
+    {
+        if (_label == null || !Native.GetWindowRect(Handle, out var r)) return;
+        _label.Place(r.Left, r.Bottom, r.Right - r.Left, LabelPx, _appliedScale);
+    }
 
     /// <summary>편집 중에는 클릭·끌기를 카드 내용 대신 이 창이 받는다.</summary>
     protected bool Editing => _editing;
@@ -208,7 +259,7 @@ internal abstract class DeskCard : Window
     {
         var hwnd = Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
-        int w = r.Right - r.Left, h = r.Bottom - r.Top;
+        int w = r.Right - r.Left, h = r.Bottom - r.Top + LabelPx;
         var wa = DesktopGrid.WorkAreaAt(r.Left + w / 2, r.Top + h / 2);
         int x = Math.Max(wa.Left, Math.Min(r.Left + dx, wa.Right - w));
         int y = Math.Max(wa.Top, Math.Min(r.Top + dy, wa.Bottom - h));
@@ -228,7 +279,7 @@ internal abstract class DeskCard : Window
     private void BeginMoveTracking(IntPtr hwnd)
     {
         Native.GetCursorPos(out _moveCursorStart);
-        Native.GetWindowRect(hwnd, out _moveWindowStart);
+        _moveWindowStart = Footprint;
         _moveOthers = Mgr.CardRects(except: this);
     }
 
@@ -269,7 +320,7 @@ internal abstract class DeskCard : Window
         var p = ActualPosition;
         var size = BaseSize();
         double k = ScaleFactor;
-        double maxZoom = Math.Min((wa.Right - p.X) / (size.Width * k), (wa.Bottom - p.Y) / (size.Height * k));
+        double maxZoom = Math.Min((wa.Right - p.X) / (size.Width * k), (wa.Bottom - p.Y) / ((size.Height + LabelBelow) * k));
         _layout.Zoom = Math.Clamp(zoom, CardLayout.MinZoom, Math.Max(CardLayout.MinZoom, Math.Min(CardLayout.MaxZoom, maxZoom)));
         LayoutFor();
     }
@@ -351,7 +402,11 @@ internal abstract class DeskCard : Window
             handled = true;
             return Native.DefWindowProc(hwnd, msg, new IntPtr(1), lParam);
         }
-        if (msg == Native.WM_WINDOWPOSCHANGING)
+        if (msg == Native.WM_WINDOWPOSCHANGED)
+        {
+            FollowLabel();
+        }
+        else if (msg == Native.WM_WINDOWPOSCHANGING)
         {
             // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
             var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
@@ -372,11 +427,11 @@ internal abstract class DeskCard : Window
             // 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
             var r = Marshal.PtrToStructure<Native.RECT>(lParam);
             Native.GetCursorPos(out var cur);
-            int w = r.Right - r.Left, h = r.Bottom - r.Top;
+            int w = r.Right - r.Left, h = r.Bottom - r.Top, lh = LabelPx;
             int fx = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
             int fy = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
             var wa = DesktopGrid.WorkAreaAt(fx + w / 2, fy + h / 2);
-            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h, _moveOthers, wa, Native.MonitorScaleOf(hwnd));
+            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, Native.MonitorScaleOf(hwnd));
             SmartGuides.Show(wa, lines);
             Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
             handled = true;
@@ -444,11 +499,12 @@ internal abstract class DeskCard : Window
         double t = ScaleFactor * _layout.Zoom;
         var wa = System.Windows.Forms.Screen.FromHandle(Handle).WorkingArea;
         var dpi = VisualTreeHelper.GetDpi(this);
-        t = Math.Min(t, Math.Min(wa.Width / (size.Width * dpi.DpiScaleX), wa.Height / (size.Height * dpi.DpiScaleY)));
+        t = Math.Min(t, Math.Min(wa.Width / (size.Width * dpi.DpiScaleX), wa.Height / ((size.Height + LabelBelow) * dpi.DpiScaleY)));
         _appliedScale = t;
         Width = size.Width * t;
         Height = size.Height * t;
         ApplyScale(t);
+        FollowLabel();
     }
 
     /// <summary>
@@ -465,7 +521,7 @@ internal abstract class DeskCard : Window
         var hwnd = Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
         var dpi = VisualTreeHelper.GetDpi(this);
-        int w = (int)Math.Round(Width * dpi.DpiScaleX), h = (int)Math.Round(Height * dpi.DpiScaleY);
+        int w = (int)Math.Round(Width * dpi.DpiScaleX), h = (int)Math.Round(FootprintHeight * dpi.DpiScaleY);
         var wa = DesktopGrid.WorkAreaAt(r.Left + w / 2, r.Top + h / 2);
         int x = Math.Max(wa.Left, Math.Min(r.Left, wa.Right - w));
         int y = Math.Max(wa.Top, Math.Min(r.Top, wa.Bottom - h));
@@ -507,6 +563,7 @@ internal abstract class DeskCard : Window
     {
         _closed = true;
         Theme.Changed -= OnThemeChanged;
+        _label?.Close();
         base.OnClosed(e);
     }
 }

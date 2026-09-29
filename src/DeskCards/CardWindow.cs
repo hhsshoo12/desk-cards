@@ -25,6 +25,7 @@ internal sealed class CardWindow : DeskCard
             Editing = () => Editing,
         };
         Layout.Children.Add(View);
+        Group.Changed += RefreshLabel;
 
         DragEnter += OnDragOver;
         DragOver += OnDragOver;
@@ -38,6 +39,7 @@ internal sealed class CardWindow : DeskCard
     public CardView View { get; }
     public override string Key => Group.Name;
     public override string CardName => Group.Name;
+    protected override string? LabelText => Group.Name;
     protected override Border Frame => View.Card;
 
     /// <summary>
@@ -51,9 +53,9 @@ internal sealed class CardWindow : DeskCard
         return w / 2;
     }
 
-    /// <summary>확대 비율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다.</summary>
+    /// <summary>확대 비율을 적용하기 전의 카드 창 크기. 칸 수가 비율을 정한다. 이름은 창 밖 아래에 따로 띄운다.</summary>
     public static Size BaseSize(CardLayout layout, double cell) =>
-        new(layout.Cols * cell, layout.Rows * cell + LabelH);
+        new(layout.Cols * cell, layout.Rows * cell);
 
     protected override Size BaseSize() => BaseSize(_layout, Mgr.CellSize);
 
@@ -94,6 +96,7 @@ internal sealed class CardWindow : DeskCard
 
     protected override void OnClosed(EventArgs e)
     {
+        Group.Changed -= RefreshLabel;
         View.Detach();
         base.OnClosed(e);
     }

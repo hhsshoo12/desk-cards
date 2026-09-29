@@ -23,19 +23,23 @@ internal sealed class CardView : Grid
     private readonly UniformGrid _cells = new() { Rows = 2, Columns = 2 };
     private readonly TextBlock _placeholder, _label;
     private readonly DispatcherTimer _hoverTimer = new();
+    private readonly double _labelH;
     private CardLayout _layout = new();
     private double _iconSize = 40;
     private Point _downPos;
     private object? _downTarget;
     private bool _pending;
 
-    /// <param name="onDesktop">바탕화면의 아크릴 창 안인지, 카드 바의 판·그림자 위인지.</param>
+    /// <param name="onDesktop">
+    /// 바탕화면의 아크릴 창 안인지(이름은 창 밖에 CardLabel로 따로 띄운다), 카드 바의 판·그림자 위인지.
+    /// </param>
     public CardView(GroupModel group, GroupManager mgr, bool onDesktop)
     {
         Group = group;
         _mgr = mgr;
+        _labelH = onDesktop ? 0 : LabelH;
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        RowDefinitions.Add(new RowDefinition { Height = new GridLength(LabelH) });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(_labelH) });
 
         Card = new Border
         {
@@ -43,8 +47,7 @@ internal sealed class CardView : Grid
         };
         if (onDesktop)
         {
-            // 창 전체(이름 줄 포함)의 강조 테두리. 아이콘 칸의 크기·여백은 바꾸지 않는다.
-            SetRowSpan(Card, 2);
+            // 창 전체의 강조 테두리. 아이콘 칸의 크기·여백은 바꾸지 않는다.
             Card.IsHitTestVisible = false;
         }
         else
@@ -78,6 +81,7 @@ internal sealed class CardView : Grid
         };
         _label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         SetRow(_label, 1);
+        if (onDesktop) _label.Visibility = Visibility.Collapsed;
         Children.Add(_label);
 
         _hoverTimer.Tick += (_, _) =>
@@ -115,13 +119,13 @@ internal sealed class CardView : Grid
     }
 
     /// <summary>
-    /// 칸 수와 칸 하나의 기준 크기로 모양을 정한다. 이 뷰의 크기는 (칸 수 × cell) + 이름 줄이다.
+    /// 칸 수와 칸 하나의 기준 크기로 모양을 정한다. 이 뷰의 크기는 (칸 수 × cell) + 이름 줄(카드 바만)이다.
     /// 아이콘 크기가 바뀌었을 때만 다시 그린다.
     /// </summary>
     public void Apply(CardLayout layout, double cell)
     {
         Width = layout.Cols * cell;
-        Height = layout.Rows * cell + LabelH;
+        Height = layout.Rows * cell + _labelH;
         double pad = cell * 0.17;
         _cells.Margin = new Thickness(pad);
         double inner = (cell * layout.Cols - 2 * pad) / layout.Cols - 6;

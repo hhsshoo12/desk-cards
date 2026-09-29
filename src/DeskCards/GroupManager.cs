@@ -230,7 +230,7 @@ internal sealed partial class GroupManager
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
     public IReadOnlyList<Native.RECT> CardRects(DeskCard except) =>
         AllCards.Where(c => c != except)
-            .Select(c => Native.GetWindowRect(Hwnd.Of(c), out var r) ? r : default)
+            .Select(c => c.Footprint)
             .Where(r => r.Right > r.Left)
             .ToList();
 
@@ -659,11 +659,12 @@ internal sealed partial class GroupManager
     private Point NextFreeSlot(Size? baseSize = null)
     {
         var wa = SystemParameters.WorkArea;
-        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.Height))).ToList();
+        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.FootprintHeight))).ToList();
 
         double s = Native.PrimaryScale();
         double k = _cfg.DefaultZoom * ZoomFactor(s);
         var size = baseSize ?? CardWindow.BaseSize(new CardLayout(), CellSize);
+        if (baseSize == null) size.Height += DeskCard.LabelH; // 카드 아래 이름 줄
         int wPx = (int)Math.Round(size.Width * k * s), hPx = (int)Math.Round(size.Height * k * s);
         var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
         var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
