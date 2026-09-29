@@ -37,11 +37,18 @@ internal partial class SettingsWindow
             "카드를 다른 카드 위에 겹쳐 둘 수 있어요. 그림자가 꼬이거나 카드 앞뒤가 바뀌는 등 여러 오류가 생길 수 있어요. 켜면 완전히 붙이기도 함께 켜져요.",
             Switch(_mgr.AllowOverlap, v => _mgr.AllowOverlap = v)));
         var flush = Switch(_mgr.FlushSnap, v => _mgr.FlushSnap = v);
-        flush.IsEnabled = !_mgr.AllowOverlap;
-        AddRow(Row("", "완전히 붙이기",
-            _mgr.AllowOverlap
+        var flushDesc = Desc("");
+        void RefreshFlush()
+        {
+            // 겹치기를 켜면 완전히 붙이기도 켜진 채로 잠긴다. 스위치를 새로 만들지 않고 값만 바꿔 미끄러지는 게 보이게 한다.
+            flush.IsChecked = _mgr.FlushSnap;
+            flush.IsEnabled = !_mgr.AllowOverlap;
+            flushDesc.Text = _mgr.AllowOverlap
                 ? "겹치기 · 레이어를 켜 두는 동안은 늘 켜져 있어요."
-                : "카드끼리 간격 없이 딱 붙여 둘 수 있어요. 그림자가 옆 카드에 겹쳐 보이거나, 카드를 누를 때마다 그림자 방향이 바뀌는 등 모양이 어색해질 수 있어요.",
-            flush));
+                : "카드끼리 간격 없이 딱 붙여 둘 수 있어요. 그림자가 옆 카드에 겹쳐 보이거나, 카드를 누를 때마다 그림자 방향이 바뀌는 등 모양이 어색해질 수 있어요.";
+        }
+        RefreshFlush();
+        _refreshControls.Add(RefreshFlush);
+        AddRow(Row("", "완전히 붙이기", null, flush, detail: flushDesc));
     }
 }

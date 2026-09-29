@@ -18,7 +18,7 @@ namespace DeskCards;
 internal sealed class BarWindow : Window
 {
     private const double Gap = 8, Pad = 12, Spacing = 12, MaxCardScale = 2.5;
-    private const double OpenMs = 280, CloseMs = 220;
+    private const double OpenMs = Motion.Slow, CloseMs = Motion.Normal;
 
     private readonly GroupManager _mgr;
     private readonly ScreenEdge _edge;
@@ -258,7 +258,7 @@ internal sealed class BarWindow : Window
     {
         _from = _offset;
         _to = to;
-        _animMs = ms;
+        _animMs = Motion.Ms(ms);
         _anim.Restart();
         if (_animating) return;
         _animating = true;
@@ -267,8 +267,8 @@ internal sealed class BarWindow : Window
 
     private void OnFrame(object? sender, EventArgs e)
     {
-        double t = Math.Min(1, _anim.ElapsedMilliseconds / _animMs);
-        double k = Motion.EaseOut(t, 4);
+        double t = _animMs <= 0 ? 1 : Math.Min(1, _anim.ElapsedMilliseconds / _animMs);
+        double k = Motion.Decel(t);
         _offset = _from + (_to - _from) * k;
         PlaceAt(_offset);
         if (t < 1) return;

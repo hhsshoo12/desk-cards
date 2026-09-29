@@ -149,8 +149,7 @@ internal partial class SettingsWindow
         if (click != null)
         {
             row.Cursor = Cursors.Hand;
-            row.MouseEnter += (_, _) => row.SetResourceReference(Border.BackgroundProperty, "HoverBg");
-            row.MouseLeave += (_, _) => row.SetResourceReference(Border.BackgroundProperty, "RowBg");
+            HoverFade(row, () => "RowBg");
             row.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
         }
         return row;
@@ -179,11 +178,65 @@ internal partial class SettingsWindow
         return b;
     }
 
-    private CheckBox Switch(bool value, Action<bool> set)
+    /// <summary>
+    /// 켬/끔 스위치. 동그라미는 끔 ↔ 켬 사이를 167ms 동안 미끄러진다.
+    /// quiet면 누른 뒤 페이지를 다시 그리지 않아서 미끄러지는 게 보인다. 값에 따라 페이지 모양이 바뀌면 false로 둔다.
+    /// </summary>
+    private CheckBox Switch(bool value, Action<bool> set, bool quiet = true)
     {
+        const double Travel = 20; // 트랙 40 - 여백 4×2 - 동그라미 12 (마우스를 올려 14로 커져도 여백이 3이라 같다)
         var s = new CheckBox { IsChecked = value, Style = (Style)FindResource("Switch") };
-        s.Click += (_, _) => set(s.IsChecked == true);
+        var shift = new TranslateTransform(value ? Travel : 0, 0);
+        s.Loaded += (_, _) =>
+        {
+            if (s.Template.FindName("Knob", s) is FrameworkElement knob) knob.RenderTransform = shift;
+        };
+        void Slide() => shift.BeginAnimation(TranslateTransform.XProperty, Motion.In(null, s.IsChecked == true ? Travel : 0, Motion.Fast));
+        s.Checked += (_, _) => Slide();
+        s.Unchecked += (_, _) => Slide();
+        s.Click += (_, _) =>
+        {
+            _quiet = quiet;
+            try { set(s.IsChecked == true); }
+            finally { _quiet = false; }
+        };
         return s;
+    }
+
+    /// <summary>
+    /// 배경을 key 색으로 83ms 동안 바꾼다(null = 투명). 테마 색은 직접 움직일 수 없어 잠깐 새 붓으로 칠하고,
+    /// 다 바뀌면 다시 테마 리소스를 따르게 한다.
+    /// </summary>
+    private static void FadeBackground(Border b, string? key, double ms = Motion.Faster)
+    {
+        var from = (b.Background as SolidColorBrush)?.Color ?? Colors.Transparent;
+        var to = key != null && b.TryFindResource(key) is SolidColorBrush target ? target.Color : Color.FromArgb(0, from.R, from.G, from.B);
+        if (from.A == 0) from = Color.FromArgb(0, to.R, to.G, to.B); // 투명에서 시작할 때 엉뚱한 색을 거치지 않게
+        var brush = new SolidColorBrush(from);
+        b.Background = brush;
+        var anim = new System.Windows.Media.Animation.ColorAnimation(to, TimeSpan.FromMilliseconds(Motion.Ms(ms)));
+        anim.Completed += (_, _) =>
+        {
+            if (b.Background != brush) return;
+            if (key != null) b.SetResourceReference(Border.BackgroundProperty, key);
+            else b.Background = Brushes.Transparent;
+        };
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+    }
+
+    /// <summary>마우스를 올리면 hover 색으로, 떼면 rest()가 돌려주는 색으로 부드럽게 바꾼다.</summary>
+    private static void HoverFade(Border b, Func<string?> rest, string hover = "HoverBg")
+    {
+        b.MouseEnter += (_, _) => FadeBackground(b, hover);
+        b.MouseLeave += (_, _) => FadeBackground(b, rest());
+    }
+
+    /// <summary>설명 글씨(흐린 12pt). 나중에 글을 바꿔야 하는 줄에서 Row의 detail로 넘긴다.</summary>
+    private static TextBlock Desc(string text)
+    {
+        var d = new TextBlock { Text = text, FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
+        d.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
+        return d;
     }
 
     private static TextBlock Glyph(string glyph, double size)

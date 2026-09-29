@@ -16,6 +16,7 @@ internal sealed partial class GroupManager
     private readonly Dictionary<string, string> _dardIds = new(StringComparer.OrdinalIgnoreCase); // 파일 경로 → 매니페스트 id
     private readonly Queue<DardPackage> _dardPrompts = new();
     private bool _dardPrompting;
+    private string? _dardAsking; // 지금 확인 창을 띄운 파일
 
     /// <summary>불러온 .dard 목록.</summary>
     public IReadOnlyCollection<DardRuntime> Dards => _dards.Values;
@@ -147,6 +148,7 @@ internal sealed partial class GroupManager
         if (_dardPrompting || _shuttingDown || _dardPrompts.Count == 0) return;
         var pkg = _dardPrompts.Dequeue();
         _dardPrompting = true;
+        _dardAsking = pkg.Path;
         MessageBoxResult answer;
         try
         {
@@ -155,6 +157,7 @@ internal sealed partial class GroupManager
         finally
         {
             _dardPrompting = false;
+            _dardAsking = null;
         }
         if (_shuttingDown) return;
         _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = answer == MessageBoxResult.OK, Permissions = pkg.Permissions.ToList() };
@@ -209,10 +212,88 @@ internal sealed partial class GroupManager
         }
     }
 
-    /// <summary>카드 파일(.dard)을 휴지통으로 옮기고 그 카드들을 치운다. 지웠으면 true.</summary>
-    public bool DeleteDard(DardWindow card)
+    /// <summary>그룹 폴더의 .dard 파일과 그 상태(설정의 위젯 카드 목록).</summary>
+    public IReadOnlyList<DardEntry> DardEntries()
     {
-        var pkg = card.Runtime.Package;
+        var files = ListDardFiles() ?? new List<string>();
+        return files.OrderBy(f => Path.GetFileName(f), StringComparer.CurrentCultureIgnoreCase).Select(path =>
+        {
+            if (_dards.TryGetValue(path, out var runtime)) return new DardEntry(path, DardState.On, runtime);
+            if (_dardIds.TryGetValue(path, out var id) && _cfg.Dards.TryGetValue(id, out var a) && !a.Allowed)
+                return new DardEntry(path, DardState.Off, null);
+            bool asking = string.Equals(_dardAsking, path, StringComparison.OrdinalIgnoreCase) ||
+                          _dardPrompts.Any(q => string.Equals(q.Path, path, StringComparison.OrdinalIgnoreCase));
+            return new DardEntry(path, asking ? DardState.Asking : DardState.Blocked, null);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// 위젯을 끄거나 켠다. 끄면 거절한 것과 같이 기록하고 카드를 닫는다.
+    /// 켜면 기록을 지우고 다시 맞춘다(처음 넣은 것처럼 추가할지 묻는다).
+    /// </summary>
+    public void SetDardEnabled(string path, bool on)
+    {
+        if (!on)
+        {
+            if (!_dards.TryGetValue(path, out var runtime)) return;
+            var pkg = runtime.Package;
+            _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = false, Permissions = pkg.Permissions.ToList() };
+            _cfg.Save();
+            UnloadDard(path);
+            if (StampOf(path) is { } stamp) _dardSkipped[path] = stamp;
+            RaiseChanged();
+            return;
+        }
+        if (_dardIds.TryGetValue(path, out var id) && _cfg.Dards.Remove(id)) _cfg.Save();
+        _dardSkipped.Remove(path);
+        Reconcile();
+    }
+
+    /// <summary>열지 못했던 .dard를 다시 읽어 본다.</summary>
+    public void RetryDard(string path)
+    {
+        _dardSkipped.Remove(path);
+        Reconcile();
+    }
+
+    /// <summary>.dard 파일을 그룹 폴더로 복사한다. 감시가 알아채고 추가할지 묻는다. 실패하면 이유를 돌려준다.</summary>
+    public string? ImportDard(string file)
+    {
+        string dest = Path.Combine(Root, Path.GetFileName(file));
+        if (string.Equals(Path.GetFullPath(file), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase)) return null;
+        if (File.Exists(dest)) return $"그룹 폴더에 같은 이름의 파일({Path.GetFileName(file)})이 이미 있어요.";
+        try
+        {
+            File.Copy(file, dest);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>불러오지 않은(꺼 두었거나 열 수 없는) .dard 파일을 휴지통으로 옮긴다. 지웠으면 true.</summary>
+    public bool DeleteDardFile(string path)
+    {
+        if (_dards.TryGetValue(path, out var runtime)) return DeleteDard(runtime);
+        string file = Path.GetFileName(path);
+        var r = Dialogs.Show($"{file}을 휴지통으로 옮겨요.", MessageBoxButton.OKCancel, heading: $"'{file}'을 지울까요?", primary: "삭제");
+        if (r != MessageBoxResult.OK) return false;
+        FileOps.Recycle(path);
+        if (File.Exists(path)) return false;
+        if (_dardIds.Remove(path, out var id) && _cfg.Dards.Remove(id)) _cfg.Save();
+        _dardSkipped.Remove(path);
+        RaiseChanged();
+        return true;
+    }
+
+    /// <summary>카드 파일(.dard)을 휴지통으로 옮기고 그 카드들을 치운다. 지웠으면 true.</summary>
+    public bool DeleteDard(DardWindow card) => DeleteDard(card.Runtime);
+
+    public bool DeleteDard(DardRuntime runtime)
+    {
+        var pkg = runtime.Package;
         string file = Path.GetFileName(pkg.Path);
         var r = Dialogs.Show($"{file}을 휴지통으로 옮겨요. 이 파일로 띄운 카드 {pkg.Cards.Count}장이 모두 사라져요.",
             MessageBoxButton.OKCancel, heading: $"'{pkg.Name}' 카드를 지울까요?", primary: "삭제");
@@ -222,7 +303,7 @@ internal sealed partial class GroupManager
         UnloadDard(pkg.Path);
         foreach (var info in pkg.Cards)
         {
-            string key = card.Runtime.KeyFor(info.Id);
+            string key = runtime.KeyFor(info.Id);
             _cfg.Positions.Remove(key);
             _cfg.Layouts.Remove(key);
             _cfg.DardSettings.Remove(key);
@@ -244,4 +325,12 @@ internal sealed partial class GroupManager
         else _cfg.DardSettings[key] = JsonSerializer.SerializeToElement(value);
         _cfg.Save();
     }
+}
+
+internal enum DardState { On, Off, Asking, Blocked }
+
+/// <summary>그룹 폴더의 .dard 한 개. 불러왔으면 Runtime이 있다.</summary>
+internal sealed record DardEntry(string Path, DardState State, DardRuntime? Runtime)
+{
+    public string Name => Runtime?.Package.Name ?? System.IO.Path.GetFileNameWithoutExtension(Path);
 }

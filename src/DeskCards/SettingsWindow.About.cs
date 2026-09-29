@@ -8,27 +8,33 @@ namespace DeskCards;
 
 internal partial class SettingsWindow
 {
+    /// <summary>정보: 맨 위에 앱 카드(큰 아이콘 · 이름 · 버전 · 업데이트), 그 아래 개발 정보 › 와 링크.</summary>
     private void BuildAbout()
     {
         Crumb("정보");
-        var icon = new Image { Source = LoadIcon(32), Width = 24, Height = 24 };
-        AddRow(UpdateRow(icon));
-
-        Header("개발 정보");
-        AddRow(Row("", "개발자", "hhsshoo12", Button("프로필", () => OpenUrl(DeveloperUrl))));
-        AddRow(Row("", "함께 만든 AI", "Claude (Anthropic) · Codex (OpenAI)", null));
-        AddRow(Row("", "저작권", "Copyright © 2026 hhsshoo12. All rights reserved.", null));
-        AddRow(Row("", "사용한 라이브러리", ".NET 10 · WPF · Windows Forms · WebView2", null, () => Go(PageKind.Libraries)));
+        AddRow(AppCard());
+        AddRow(Row("", "개발 정보", "개발자 · 함께 만든 AI · 저작권 · 사용한 라이브러리", null, () => Go(PageKind.DevInfo)));
 
         Header("링크");
         AddRow(Row("", "GitHub", RepoUrl, Button("열기", () => OpenUrl(RepoUrl))));
         AddRow(Row("", "설정 폴더", AppPaths.ConfigDir, Button("열기", () => FileOps.OpenFolder(AppPaths.ConfigDir))));
     }
 
+    private void BuildDevInfo()
+    {
+        Crumb("정보", () => Go(PageKind.About));
+        Crumb("개발 정보");
+        AddRow(Row("", "개발자", "hhsshoo12", Button("프로필", () => OpenUrl(DeveloperUrl))));
+        AddRow(Row("", "함께 만든 AI", "Claude (Anthropic) · Codex (OpenAI)", null));
+        AddRow(Row("", "저작권", "Copyright © 2026 hhsshoo12. All rights reserved.", null));
+        AddRow(Row("", "사용한 라이브러리", ".NET 10 · WPF · Windows Forms · WebView2", null, () => Go(PageKind.Libraries)));
+    }
+
     /// <summary>앱과 설치기가 쓰는 라이브러리·구성 요소와 그 라이선스.</summary>
     private void BuildLibraries()
     {
         Crumb("정보", () => Go(PageKind.About));
+        Crumb("개발 정보", () => Go(PageKind.DevInfo));
         Crumb("사용한 라이브러리");
 
         Header("앱에 포함");
@@ -50,10 +56,10 @@ internal partial class SettingsWindow
     }
 
     /// <summary>
-    /// 앱 이름 줄: 버전(새 버전이 있으면 "현재 → 최신")과 오른쪽 버튼.
+    /// 정보 맨 위의 앱 카드(Windows 설정 › 시스템 › 정보의 기기 카드처럼 큰 아이콘과 이름): 버전(새 버전이 있으면 "현재 → 최신")과 오른쪽 버튼.
     /// 버튼은 최신(흰색, 누를 수 없음) → 업데이트(파란색) → 받는 동안 글씨 자리에 게이지 → 준비 완료 → 앱 재시작(파란색).
     /// </summary>
-    private Border UpdateRow(UIElement icon)
+    private Border AppCard()
     {
         var u = Updater.Instance;
         var text = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
@@ -161,7 +167,34 @@ internal partial class SettingsWindow
 
         _updateRefresh = Refresh;
         Refresh();
-        return Row("", "Desk Cards", null, button, null, icon, detail);
+        var icon = new Image { Source = LoadIcon(256), Width = 64, Height = 64, Margin = new Thickness(0, 0, 20, 0) };
+        RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
+        var name = new TextBlock
+        {
+            Text = "Desk Cards",
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            FontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI, Malgun Gothic"),
+        };
+        name.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) };
+        texts.Children.Add(name);
+        detail.Margin = new Thickness(0, 2, 0, 0);
+        texts.Children.Add(detail);
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(texts, 1);
+        Grid.SetColumn(button, 2);
+        button.VerticalAlignment = VerticalAlignment.Center;
+        grid.Children.Add(icon);
+        grid.Children.Add(texts);
+        grid.Children.Add(button);
+        var card = RowBox(grid, new Thickness(20));
+        card.Margin = new Thickness(0, 0, 0, 16);
+        return card;
     }
 
     /// <summary>Windows 11의 로딩 동그라미(ProgressRing)처럼 도는 호.</summary>

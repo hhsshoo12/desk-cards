@@ -47,7 +47,7 @@ internal sealed class ZoneBand : Window
             Hwnd.MakeClickThrough(Hwnd.Of(this));
             Place();
         };
-        _hold.Tick += (_, _) => { _hold.Stop(); Animate(0, 220, hideAfter: true); };
+        _hold.Tick += (_, _) => { _hold.Stop(); Animate(0, Motion.Normal, hideAfter: true); };
     }
 
     public bool Matches(Forms.Screen screen, ScreenEdge edge) => screen.DeviceName == _screen.DeviceName && edge == _edge;
@@ -61,9 +61,9 @@ internal sealed class ZoneBand : Window
         {
             Show();
             Place(); // 다른 배율의 모니터로 옮겨지면서 크기가 다시 잡힐 수 있어 한 번 더 맞춘다
-            Animate(target, 280, hideAfter: false);
+            Animate(target, Motion.Slow, hideAfter: false);
         }
-        else Animate(target, 180, hideAfter: false);
+        else Animate(target, Motion.Normal, hideAfter: false);
         _hold.Stop();
         _hold.Start();
     }
@@ -77,7 +77,7 @@ internal sealed class ZoneBand : Window
         var property = Side ? WidthProperty : HeightProperty;
         double from = Side ? _band.ActualWidth : _band.ActualHeight;
         if (double.IsNaN(from)) from = 0;
-        var anim = Motion.QuarticOut(from, to, ms);
+        var anim = hideAfter ? Motion.Out(from, to, ms) : Motion.In(from, to, ms);
         if (hideAfter) anim.Completed += (_, _) => { if (!_hold.IsEnabled) Hide(); };
         _band.BeginAnimation(property, anim);
     }

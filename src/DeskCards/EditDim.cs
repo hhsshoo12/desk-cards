@@ -49,7 +49,7 @@ internal sealed class EditDim : Window
             _all.Add(dim);
             dim.Show();
             dim._locked = true;
-            dim.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150)));
+            dim.BeginAnimation(OpacityProperty, Motion.In(0, 1, Motion.Fast));
         }
     }
 

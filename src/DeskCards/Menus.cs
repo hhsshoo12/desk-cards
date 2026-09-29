@@ -34,7 +34,7 @@ internal static class Menus
         .Separator()
         .Item("", "카드 삭제 (.dard를 휴지통으로)", () => mgr.DeleteDard(card), danger: true)
         .Separator()
-        .Item("", "Desk Cards 설정", () => SettingsWindow.Open(mgr));
+        .Item("", "위젯 설정", () => SettingsWindow.OpenWidget(mgr, card.Runtime.Package.Path));
 
     public static FluentMenu ForTray(GroupManager mgr, Action quit) => new FluentMenu()
         .Item("", "설정", () => SettingsWindow.Open(mgr))

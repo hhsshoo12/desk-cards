@@ -200,8 +200,8 @@ internal sealed class FluentMenu : Window
         if (_place != null && Native.GetWindowRect(Hwnd.Of(this), out var r))
             Move(_place(new Size(r.Right - r.Left, r.Bottom - r.Top)));
 
-        _body.BeginAnimation(OpacityProperty, Motion.CubicOut(0, 1, 160));
-        _slide.BeginAnimation(TranslateTransform.YProperty, Motion.CubicOut(-8, 0, 160));
+        _body.BeginAnimation(OpacityProperty, Motion.In(0, 1, Motion.Fast));
+        _slide.BeginAnimation(TranslateTransform.YProperty, Motion.In(-8, 0, Motion.Normal));
         Keyboard.Focus(this);
     }
 

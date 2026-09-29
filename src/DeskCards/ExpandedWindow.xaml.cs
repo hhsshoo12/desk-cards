@@ -197,8 +197,9 @@ internal partial class ExpandedWindow : Window
 
     private void OnScrollFrame(object? sender, EventArgs e)
     {
-        double t = Math.Min(1, (DateTime.Now - _animStart).TotalMilliseconds / 280);
-        double k = Motion.EaseOut(t, 3);
+        double ms = Motion.Ms(Motion.Slow);
+        double t = ms <= 0 ? 1 : Math.Min(1, (DateTime.Now - _animStart).TotalMilliseconds / ms);
+        double k = Motion.Decel(t);
         Scroller.ScrollToVerticalOffset(_animFrom + (_animTo - _animFrom) * k);
         if (t >= 1) StopScrollAnimation();
     }
@@ -305,9 +306,9 @@ internal partial class ExpandedWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        Body.BeginAnimation(OpacityProperty, Motion.CubicOut(0, 1, 180));
-        Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.CubicOut(0.94, 1, 180));
-        Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.CubicOut(0.94, 1, 180));
+        Body.BeginAnimation(OpacityProperty, Motion.In(0, 1, Motion.Fast));
+        Scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.In(0.94, 1, Motion.Normal));
+        Scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.In(0.94, 1, Motion.Normal));
 
         if (_hover)
         {
