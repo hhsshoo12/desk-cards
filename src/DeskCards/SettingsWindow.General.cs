@@ -33,8 +33,15 @@ internal partial class SettingsWindow
         AddRow(Row("", "그룹 폴더", _mgr.Root, Button("열기", () => FileOps.OpenFolder(_mgr.Root))));
 
         Header("실험");
+        AddRow(Row("", "겹치기 · 레이어",
+            "카드를 다른 카드 위에 겹쳐 둘 수 있어요. 그림자가 꼬이거나 카드 앞뒤가 바뀌는 등 여러 오류가 생길 수 있어요. 켜면 완전히 붙이기도 함께 켜져요.",
+            Switch(_mgr.AllowOverlap, v => _mgr.AllowOverlap = v)));
+        var flush = Switch(_mgr.FlushSnap, v => _mgr.FlushSnap = v);
+        flush.IsEnabled = !_mgr.AllowOverlap;
         AddRow(Row("", "완전히 붙이기",
-            "카드끼리 간격 없이 딱 붙여 둘 수 있어요. 그림자가 옆 카드에 겹쳐 보이거나, 카드를 누를 때마다 그림자 방향이 바뀌는 등 모양이 어색해질 수 있어요.",
-            Switch(_mgr.FlushSnap, v => _mgr.FlushSnap = v)));
+            _mgr.AllowOverlap
+                ? "겹치기 · 레이어를 켜 두는 동안은 늘 켜져 있어요."
+                : "카드끼리 간격 없이 딱 붙여 둘 수 있어요. 그림자가 옆 카드에 겹쳐 보이거나, 카드를 누를 때마다 그림자 방향이 바뀌는 등 모양이 어색해질 수 있어요.",
+            flush));
     }
 }

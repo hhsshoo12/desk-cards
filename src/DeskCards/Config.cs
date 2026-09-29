@@ -32,6 +32,9 @@ internal sealed class Config
     /// <summary>실험: 카드끼리 간격 없이 딱 붙여 둘 수 있게 할지. 기본 꺼짐(나란히 놓으면 그림자 폭만큼 띄운다).</summary>
     public bool FlushSnap { get; set; }
 
+    /// <summary>실험: 카드끼리 겹친 자리도 저장할지. 기본 꺼짐(겹친 채 놓으면 원래 자리로 돌아간다). 켜면 완전히 붙이기도 켜진다.</summary>
+    public bool AllowOverlap { get; set; }
+
     /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지. 기본 켜짐.</summary>
     public bool HoverExpand { get; set; } = true;
 

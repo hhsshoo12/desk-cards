@@ -61,8 +61,36 @@ internal sealed partial class GroupManager
     /// <summary>실험: 카드끼리 간격 없이 딱 붙여 둘 수 있게 할지.</summary>
     public bool FlushSnap
     {
-        get => _cfg.FlushSnap;
-        set => Store(_cfg.FlushSnap != value, () => _cfg.FlushSnap = SmartGuides.Flush = value);
+        get => _cfg.FlushSnap || _cfg.AllowOverlap;
+        set
+        {
+            if (_cfg.AllowOverlap) return; // 겹치기를 허용하는 동안은 늘 켜짐
+            Store(_cfg.FlushSnap != value, () => _cfg.FlushSnap = SmartGuides.Flush = value);
+            RefreshPlacement();
+        }
+    }
+
+    /// <summary>실험: 카드끼리 겹친 자리도 저장할지. 켜면 완전히 붙이기도 함께 켜진다.</summary>
+    public bool AllowOverlap
+    {
+        get => _cfg.AllowOverlap;
+        set
+        {
+            Store(_cfg.AllowOverlap != value, () =>
+            {
+                _cfg.AllowOverlap = SmartGuides.AllowOverlap = value;
+                if (value) _cfg.FlushSnap = true;
+                SmartGuides.AllowOverlap = _cfg.AllowOverlap;
+        SmartGuides.Flush = _cfg.FlushSnap || _cfg.AllowOverlap;
+            });
+            RefreshPlacement();
+        }
+    }
+
+    /// <summary>편집 중이면 모든 카드의 자리를 지금 설정으로 다시 검사해 안 되는 자리를 빨간 테두리로 표시한다.</summary>
+    public void RefreshPlacement()
+    {
+        foreach (var c in AllCards) c.CheckPlacement();
     }
 
     // ----- 카드 바 -----
@@ -258,6 +286,7 @@ internal sealed partial class GroupManager
             ExpandedWindow.CloseCurrent();
             bool toggled = DesktopShell.ShowDesktop();
             foreach (var c in AllCards) c.BeginEdit();
+            RefreshPlacement();
             // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).
             var delay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(toggled ? 350 : 1) };
             delay.Tick += (_, _) =>

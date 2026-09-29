@@ -42,6 +42,30 @@ internal static partial class Program
                 Check(SmartGuides.PushApart(new Native.RECT { Left = 600, Top = 300, Right = 800, Bottom = 500 }, others, gap) == (0, 0));
                 Check(SmartGuides.Separation(new Native.RECT { Left = 705, Top = 350, Right = 905, Bottom = 550 }, others) == (5, null));
 
+                // 옆에 딱 대거나 살짝 겹쳐도(간격 줄에서 붙는 거리보다 멀어도) 간격 자리로 끌려온다.
+                (x, _, _) = SmartGuides.Snap(700, 300, 200, 200, others, wa, 1);
+                Check(x == 700 + gap);
+                (x, _, _) = SmartGuides.Snap(696, 300, 200, 200, others, wa, 1);
+                Check(x == 700 + gap);
+                // 반대쪽(멀어지는 쪽)은 보통 거리(8)까지만.
+                (x, _, _) = SmartGuides.Snap(700 + gap + 10, 300, 200, 200, others, wa, 1);
+                Check(x == 700 + gap + 10);
+
+                // 자리 검사: 겹침 / 간격보다 가까움 / 괜찮음.
+                bool overlap = SmartGuides.AllowOverlap;
+                try
+                {
+                    SmartGuides.AllowOverlap = false;
+                    Check(SmartGuides.Check(new Native.RECT { Left = 650, Top = 300, Right = 850, Bottom = 500 }, others, gap) == SmartGuides.Placement.Overlap);
+                    Check(SmartGuides.Check(new Native.RECT { Left = 705, Top = 300, Right = 905, Bottom = 500 }, others, gap) == SmartGuides.Placement.TooClose);
+                    Check(SmartGuides.Check(new Native.RECT { Left = 712, Top = 300, Right = 912, Bottom = 500 }, others, gap) == SmartGuides.Placement.Ok);
+                    // 대각선으로 떨어진 카드는 나란한 게 아니라 괜찮다.
+                    Check(SmartGuides.Check(new Native.RECT { Left = 702, Top = 502, Right = 902, Bottom = 702 }, others, gap) == SmartGuides.Placement.Ok);
+                    SmartGuides.AllowOverlap = true;
+                    Check(SmartGuides.Check(new Native.RECT { Left = 650, Top = 300, Right = 850, Bottom = 500 }, others, 0) == SmartGuides.Placement.Ok);
+                }
+                finally { SmartGuides.AllowOverlap = overlap; }
+
                 SmartGuides.Flush = true;
                 Check(SmartGuides.GapPx(1) == 0);
                 (x, _, _) = SmartGuides.Snap(703, 300, 200, 200, others, wa, 1);

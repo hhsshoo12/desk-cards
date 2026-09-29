@@ -27,7 +27,7 @@ internal abstract class DeskCard : Window
 
     protected readonly GroupManager Mgr;
     private readonly Thumb _grip;
-    private bool _pending, _editing, _selected, _dropTarget;
+    private bool _pending, _editing, _selected, _dropTarget, _invalid, _ownZ;
     private double _appliedScale = 1;
     private bool _closed;
     private Native.POINT _moveCursorStart;
@@ -238,13 +238,13 @@ internal abstract class DeskCard : Window
     public void EndEdit()
     {
         if (!_editing) return;
-        _editing = _selected = false;
+        _editing = _selected = _invalid = false;
         _grip.Visibility = Visibility.Collapsed;
         Cursor = null;
         UpdateBorder();
         OnEditChanged(false);
         // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
-        Hwnd.SetZOrder(Handle, Native.HWND_BOTTOM);
+        SendToBottom();
         Mgr.SavePosition(this);
     }
 
@@ -266,6 +266,7 @@ internal abstract class DeskCard : Window
         int y = Math.Max(wa.Top, Math.Min(r.Top + dy, wa.Bottom - h));
         Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
         Mgr.SavePosition(this);
+        Mgr.RefreshPlacement();
     }
 
     private double _gripZoom;
@@ -299,13 +300,58 @@ internal abstract class DeskCard : Window
         var (sg, lines) = SmartGuides.SnapScale(r0, g, _moveOthers, wa, Native.MonitorScaleOf(Handle));
         SmartGuides.Show(wa, lines);
         SetZoomClamped(_gripZoom * sg);
+        SetInvalid(Placement() != SmartGuides.Placement.Ok);
     }
 
     private void OnGripDone()
     {
         SmartGuides.Hide();
+        // 겹치거나 간격보다 가까워지는 크기는 저장하지 않고 잡기 전 크기로 되돌린다.
+        var p = Placement();
+        if (p != SmartGuides.Placement.Ok)
+        {
+            _layout.Zoom = _gripZoom;
+            LayoutFor();
+        }
         CommitLayout();
+        Mgr.RefreshPlacement();
+        if (p != SmartGuides.Placement.Ok) Warn(p);
     }
+
+    /// <summary>지금 자리를 지금 설정으로 검사한다.</summary>
+    private SmartGuides.Placement Placement()
+    {
+        var hwnd = Handle;
+        if (hwnd == IntPtr.Zero) return SmartGuides.Placement.Ok;
+        return SmartGuides.Check(Footprint, Mgr.CardRects(except: this), SmartGuides.GapPx(Native.MonitorScaleOf(hwnd)));
+    }
+
+    /// <summary>편집 중이면 지금 자리가 안 되는 자리인지 검사해 빨간 테두리로 표시한다.</summary>
+    public void CheckPlacement() => SetInvalid(_editing && Placement() != SmartGuides.Placement.Ok);
+
+    private void SetInvalid(bool on)
+    {
+        on &= _editing;
+        if (_invalid == on) return;
+        _invalid = on;
+        UpdateBorder();
+    }
+
+    /// <summary>안 되는 자리에 놓았을 때 이유와 실험 설정을 알려 준다.</summary>
+    private void Warn(SmartGuides.Placement p) => Dispatcher.BeginInvoke(() =>
+    {
+        bool overlap = p == SmartGuides.Placement.Overlap;
+        var r = Dialogs.Show(
+            overlap
+                ? "겹친 자리는 저장되지 않아서 원래 자리로 돌려놨어요. 빈자리에 배치해 주세요. " +
+                  "겹쳐 두려면 설정 › 일반 › 실험에서 '겹치기 · 레이어'를 켜 주세요."
+                : "카드 그림자가 옆 카드에 드리우지 않도록 나란히 놓으면 조금 띄워 둬요. " +
+                  "딱 붙이려면 설정 › 일반 › 실험에서 '완전히 붙이기'를 켜 주세요.",
+            MessageBoxButton.OKCancel,
+            heading: overlap ? "카드는 겹칠 수 없어요" : "카드끼리는 붙일 수 없어요",
+            primary: "설정 열기");
+        if (r == MessageBoxResult.OK) SettingsWindow.OpenGeneral(Mgr);
+    }, DispatcherPriority.Background);
 
     /// <summary>바뀐 모양을 적용·저장하고, 화면 밖으로 나갔으면 당겨서 위치도 저장한다.</summary>
     protected void CommitLayout()
@@ -355,18 +401,30 @@ internal abstract class DeskCard : Window
         // 테마·선택 변경은 현재 드롭 상태를 보존하고, DragLeave·Drop에서만 명시적으로 끈다.
         if (dropTarget.HasValue) _dropTarget = dropTarget.Value;
         var card = Frame;
-        bool strong = _dropTarget || _selected;
+        bool strong = _dropTarget || _selected || _invalid;
         var accent = TryFindResource("Accent") as SolidColorBrush;
         // Windows가 그리는 1px 창 테두리를 강조색으로 바꾸고, 고른 카드는 안쪽 테두리를 더한다.
+        // 지금 설정에서 안 되는 자리(겹침·간격보다 가까움)는 빨간색으로.
         var hwnd = Handle;
         if (hwnd != IntPtr.Zero)
         {
-            var c = accent?.Color ?? Colors.DodgerBlue;
+            var c = _invalid ? InvalidColor : accent?.Color ?? Colors.DodgerBlue;
             Native.SetDwm(hwnd, Native.DWMWA_BORDER_COLOR,
                 strong || _editing ? c.R | c.G << 8 | c.B << 16 : Native.DWMWA_COLOR_DEFAULT);
         }
-        card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+        if (_invalid) card.BorderBrush = InvalidBrush;
+        else card.SetResourceReference(Border.BorderBrushProperty, "Accent");
         card.BorderThickness = new Thickness(strong ? 2 : 0);
+    }
+
+    private static readonly Color InvalidColor = Color.FromRgb(0xE8, 0x11, 0x23);
+    private static readonly Brush InvalidBrush = MakeInvalidBrush();
+
+    private static Brush MakeInvalidBrush()
+    {
+        var b = new SolidColorBrush(InvalidColor);
+        b.Freeze();
+        return b;
     }
 
     // ----- 바탕화면 층에 붙이기 -----
@@ -387,12 +445,20 @@ internal abstract class DeskCard : Window
         HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
     }
 
-    private static void AttachToDesktop(IntPtr hwnd)
+    private void AttachToDesktop(IntPtr hwnd)
     {
         // Progman을 소유자로 두면 Win+D(바탕화면 보기) 때도 숨겨지지 않는다.
         var progman = Native.FindWindow("Progman", null);
         if (progman != IntPtr.Zero) Native.SetWindowLongPtr(hwnd, Native.GWLP_HWNDPARENT, progman);
-        Hwnd.SetZOrder(hwnd, Native.HWND_BOTTOM);
+        SendToBottom();
+    }
+
+    /// <summary>바탕화면 바로 위(맨 아래)로 보낸다. 카드 앞뒤 순서는 앱이 이렇게 직접 정할 때만 바뀐다.</summary>
+    private void SendToBottom()
+    {
+        _ownZ = true;
+        try { Hwnd.SetZOrder(Handle, Native.HWND_BOTTOM); }
+        finally { _ownZ = false; }
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -411,10 +477,13 @@ internal abstract class DeskCard : Window
         else if (msg == Native.WM_WINDOWPOSCHANGING)
         {
             // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
+            // 누르기(활성화)로 순서가 바뀌면 카드끼리 앞뒤가 뒤바뀌며 그림자가 이쪽저쪽 드리우므로,
+            // 앱이 직접 맨 아래로 보낼 때 말고는 순서를 바꾸지 않는다.
             var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
             if ((wp.flags & Native.SWP_NOZORDER) == 0 && !_editing)
             {
-                wp.hwndInsertAfter = Native.HWND_BOTTOM;
+                if (_ownZ) wp.hwndInsertAfter = Native.HWND_BOTTOM;
+                else wp.flags |= Native.SWP_NOZORDER;
                 Marshal.StructureToPtr(wp, lParam, false);
             }
         }
@@ -436,14 +505,18 @@ internal abstract class DeskCard : Window
             double scale = Native.MonitorScaleOf(hwnd);
             var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, scale);
             // 간격을 두는 중인데 옆 카드에 딱 붙이려고(간격 절반보다 가까이, 살짝 겹치는 데까지) 끌었는지.
-            if (!SmartGuides.Flush)
+            int gap = SmartGuides.GapPx(scale);
+            if (gap > 0)
             {
                 var raw = new Native.RECT { Left = fx, Top = fy, Right = fx + w, Bottom = fy + h + lh };
-                int gap = SmartGuides.GapPx(scale), slack = (int)Math.Round(8 * scale);
+                int slack = (int)Math.Round(8 * scale);
                 var (sx, sy) = SmartGuides.Separation(raw, _moveOthers);
                 bool Near(int? d) => d is { } v && v > -slack && v < gap / 2;
                 _triedFlush |= Near(sx) || Near(sy);
             }
+            // 지금 설정에서 안 되는 자리면 끄는 동안 빨간 테두리.
+            var placed = new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h + lh };
+            SetInvalid(SmartGuides.Check(placed, _moveOthers, gap) != SmartGuides.Placement.Ok);
             SmartGuides.Show(wa, lines);
             Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
             handled = true;
@@ -452,7 +525,7 @@ internal abstract class DeskCard : Window
         else if (msg == Native.WM_EXITSIZEMOVE)
         {
             SmartGuides.Hide();
-            KeepGap(hwnd);
+            Settle(hwnd);
         }
         else if (msg == _taskbarCreatedMsg && _taskbarCreatedMsg != 0)
         {
@@ -462,35 +535,37 @@ internal abstract class DeskCard : Window
     }
 
     /// <summary>
-    /// 옮기기·크기 조절을 마쳤을 때: 완전히 붙이기(실험)가 꺼져 있는데 옆 카드에 간격보다 가까이 붙었으면
-    /// 간격만큼 떼어 놓고, 붙이려 했던 것이면 설정 안내 창을 띄운다.
+    /// 옮기기를 마쳤을 때 지금 설정으로 자리를 검사한다.
+    /// 겹쳤으면(겹치기 허용이 꺼져 있을 때) 저장하지 않고 끌기 전 자리로 돌려놓는다.
+    /// 나란한 카드와 간격보다 가까우면(완전히 붙이기가 꺼져 있을 때) 간격만큼 떼어 놓는다.
+    /// 어느 쪽이든, 또는 딱 붙이려 했던 것이면 이유와 실험 설정을 알려 준다.
     /// </summary>
-    private void KeepGap(IntPtr hwnd)
+    private void Settle(IntPtr hwnd)
     {
-        if (SmartGuides.Flush) return;
         var others = Mgr.CardRects(except: this);
         var me = Footprint;
-        var (dx, dy) = SmartGuides.PushApart(me, others, SmartGuides.GapPx(Native.MonitorScaleOf(hwnd)));
-        if (dx != 0 || dy != 0)
+        int gap = SmartGuides.GapPx(Native.MonitorScaleOf(hwnd));
+        var p = SmartGuides.Check(me, others, gap);
+        int x = me.Left, y = me.Top;
+        if (p == SmartGuides.Placement.Overlap)
         {
+            x = _moveWindowStart.Left;
+            y = _moveWindowStart.Top;
+        }
+        else if (p == SmartGuides.Placement.TooClose)
+        {
+            var (dx, dy) = SmartGuides.PushApart(me, others, gap);
             int w = me.Right - me.Left, h = me.Bottom - me.Top;
             var wa = DesktopGrid.WorkAreaAt(me.Left + w / 2, me.Top + h / 2);
-            int x = Math.Max(wa.Left, Math.Min(me.Left + dx, wa.Right - w));
-            int y = Math.Max(wa.Top, Math.Min(me.Top + dy, wa.Bottom - h));
-            Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
-            _triedFlush = true;
+            x = Math.Max(wa.Left, Math.Min(me.Left + dx, wa.Right - w));
+            y = Math.Max(wa.Top, Math.Min(me.Top + dy, wa.Bottom - h));
         }
-        if (!_triedFlush) return;
+        if (x != me.Left || y != me.Top)
+            Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        if (p == SmartGuides.Placement.Ok && _triedFlush) p = SmartGuides.Placement.TooClose;
         _triedFlush = false;
-        Dispatcher.BeginInvoke(() =>
-        {
-            Mgr.SavePosition(this);
-            var r = Dialogs.Show(
-                "카드 그림자가 옆 카드에 드리우지 않도록 나란히 놓으면 조금 띄워 둬요. " +
-                "딱 붙이려면 설정 › 일반 › 실험에서 '완전히 붙이기'를 켜 주세요.",
-                MessageBoxButton.OKCancel, heading: "카드끼리는 붙일 수 없어요", primary: "설정 열기");
-            if (r == MessageBoxResult.OK) SettingsWindow.OpenGeneral(Mgr);
-        }, DispatcherPriority.Background);
+        Dispatcher.BeginInvoke(() => Mgr.RefreshPlacement(), DispatcherPriority.Background);
+        if (p != SmartGuides.Placement.Ok) Warn(p);
     }
 
     // ----- 크기 / 위치 -----

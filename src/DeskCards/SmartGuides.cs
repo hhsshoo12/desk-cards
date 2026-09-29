@@ -20,7 +20,14 @@ internal static class SmartGuides
     [Flags]
     private enum Edge { Start = 1, Mid = 2, End = 4, All = 7 }
 
-    private readonly record struct Target(int Pos, int From, int To, bool Draw, Edge Edges = Edge.All);
+    /// <summary>
+    /// 줄 하나. Toward가 0이 아니면 간격 줄이다: 카드가 그 방향(옆 카드 쪽, 부호 = Pos − 카드 줄)으로
+    /// 간격만큼 더 들어와 있어도(맞닿거나 살짝 겹쳐도) 이 줄로 끌어온다. 그래야 옆에 딱 대면 간격 자리에 붙는다.
+    /// </summary>
+    private readonly record struct Target(int Pos, int From, int To, bool Draw, Edge Edges = Edge.All, int Toward = 0, int Reach = 0);
+
+    /// <summary>놓인 자리가 지금 설정에서 괜찮은지.</summary>
+    public enum Placement { Ok, TooClose, Overlap }
 
     /// <summary>붙는 거리(DIP). 이 안으로 들어오면 줄에 맞춘다.</summary>
     private const double SnapDip = 8;
@@ -31,8 +38,11 @@ internal static class SmartGuides
     /// </summary>
     public const double GapDip = 12;
 
-    /// <summary>카드끼리 간격 없이 딱 붙일지(설정 › 일반 › 실험).</summary>
+    /// <summary>카드끼리 간격 없이 딱 붙일지(설정 › 일반 › 실험). 겹치기를 허용하면 늘 켜진다.</summary>
     public static bool Flush { get; set; }
+
+    /// <summary>카드끼리 겹친 자리도 저장할지(설정 › 일반 › 실험).</summary>
+    public static bool AllowOverlap { get; set; }
 
     /// <summary>지금 설정에서 나란한 카드 사이 간격(물리 픽셀).</summary>
     public static int GapPx(double dpiScale) => Flush ? 0 : (int)Math.Round(GapDip * dpiScale);
@@ -55,9 +65,9 @@ internal static class SmartGuides
         y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
         if (Off) return (x, y, new List<Line>());
 
-        var (xs, ys) = Targets(others, wa, GapPx(dpiScale));
-
         int threshold = (int)Math.Round(SnapDip * dpiScale);
+        var (xs, ys) = Targets(others, wa, GapPx(dpiScale), threshold);
+
         x += Nearest(x, w, xs, threshold);
         y += Nearest(y, h, ys, threshold);
         x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
@@ -77,8 +87,8 @@ internal static class SmartGuides
         double w0 = start.Right - start.Left, h0 = start.Bottom - start.Top;
         if (Off) return (g, new List<Line>());
 
-        var (xs, ys) = Targets(others, wa, GapPx(dpiScale));
         double threshold = SnapDip * dpiScale;
+        var (xs, ys) = Targets(others, wa, GapPx(dpiScale), (int)Math.Round(threshold));
         double bestG = g, bestD = double.MaxValue;
         void Try(List<Target> targets, int origin, double size)
         {
@@ -86,8 +96,9 @@ internal static class SmartGuides
                 foreach (double frac in new[] { 1.0, 0.5 })
                 {
                     if ((t.Edges & (frac == 1 ? Edge.End : Edge.Mid)) == 0) continue;
-                    double d = Math.Abs(t.Pos - (origin + size * g * frac));
-                    if (d <= threshold && d < bestD && t.Pos > origin)
+                    double signed = t.Pos - (origin + size * g * frac);
+                    double d = Math.Abs(signed);
+                    if (InReach(t, signed, threshold) && d < bestD && t.Pos > origin)
                     {
                         bestD = d;
                         bestG = (t.Pos - origin) / (size * frac);
@@ -106,7 +117,7 @@ internal static class SmartGuides
     /// 간격이 있으면 다른 카드 옆에 나란히 놓을 때 가장자리끼리 맞닿지 않고 간격만큼 떨어진 줄에 붙는다.
     /// (가장자리끼리 줄 맞춤 — 왼쪽끼리·오른쪽끼리 — 은 그대로 된다.)
     /// </summary>
-    private static (List<Target> Xs, List<Target> Ys) Targets(IReadOnlyList<Native.RECT> others, System.Drawing.Rectangle wa, int gap)
+    private static (List<Target> Xs, List<Target> Ys) Targets(IReadOnlyList<Native.RECT> others, System.Drawing.Rectangle wa, int gap, int threshold)
     {
         var xs = new List<Target>
         {
@@ -122,13 +133,13 @@ internal static class SmartGuides
         };
         foreach (var o in others)
         {
-            AddEdges(xs, o.Left, o.Right, o.Top, o.Bottom, gap);
-            AddEdges(ys, o.Top, o.Bottom, o.Left, o.Right, gap);
+            AddEdges(xs, o.Left, o.Right, o.Top, o.Bottom, gap, threshold);
+            AddEdges(ys, o.Top, o.Bottom, o.Left, o.Right, gap, threshold);
         }
         return (xs, ys);
     }
 
-    private static void AddEdges(List<Target> list, int lo, int hi, int from, int to, int gap)
+    private static void AddEdges(List<Target> list, int lo, int hi, int from, int to, int gap, int threshold)
     {
         list.Add(new((lo + hi) / 2, from, to, true));
         if (gap <= 0)
@@ -140,8 +151,32 @@ internal static class SmartGuides
         // 맞닿는 짝(내 뒤 ↔ 상대 앞, 내 앞 ↔ 상대 뒤)은 빼고, 대신 간격만큼 떨어진 줄을 둔다.
         list.Add(new(lo, from, to, true, Edge.Start | Edge.Mid));
         list.Add(new(hi, from, to, true, Edge.Mid | Edge.End));
-        list.Add(new(lo - gap, from, to, false, Edge.End));
-        list.Add(new(hi + gap, from, to, false, Edge.Start));
+        int reach = gap + threshold;
+        list.Add(new(lo - gap, from, to, false, Edge.End, Toward: -1, Reach: reach));
+        list.Add(new(hi + gap, from, to, false, Edge.Start, Toward: 1, Reach: reach));
+    }
+
+    /// <summary>카드 줄이 대상 줄에 붙을 만큼 가까운지(signed = 대상 줄 − 카드 줄).</summary>
+    private static bool InReach(Target t, double signed, double threshold) =>
+        Math.Abs(signed) <= threshold || (t.Toward != 0 && Math.Sign(signed) == t.Toward && Math.Abs(signed) <= t.Reach);
+
+    /// <summary>
+    /// 자리 검사: 겹치기를 허용하지 않으면 다른 카드와 겹친 자리는 Overlap,
+    /// 간격을 두는 중이면 나란한 카드와 간격보다 가까운 자리는 TooClose.
+    /// </summary>
+    public static Placement Check(Native.RECT me, IReadOnlyList<Native.RECT> others, int gap)
+    {
+        if (!AllowOverlap)
+            foreach (var o in others)
+                if (Math.Min(me.Right, o.Right) > Math.Max(me.Left, o.Left) &&
+                    Math.Min(me.Bottom, o.Bottom) > Math.Max(me.Top, o.Top))
+                    return Placement.Overlap;
+        if (gap > 0)
+        {
+            var (sx, sy) = Separation(me, others);
+            if (sx is >= 0 and var x && x < gap || sy is >= 0 and var y && y < gap) return Placement.TooClose;
+        }
+        return Placement.Ok;
     }
 
     /// <summary>
@@ -224,7 +259,7 @@ internal static class SmartGuides
             {
                 if ((t.Edges & edge) == 0) continue;
                 int d = t.Pos - (start + off);
-                if (Math.Abs(d) <= threshold && Math.Abs(d) < bestAbs) { best = d; bestAbs = Math.Abs(d); }
+                if (InReach(t, d, threshold) && Math.Abs(d) < bestAbs) { best = d; bestAbs = Math.Abs(d); }
             }
         return best;
     }
