@@ -323,10 +323,10 @@ internal partial class SettingsWindow : Window
 
     // ----- 페이지 전환 -----
 
-    /// <summary>페이지가 밀려나가고 들어오는 시간. Windows 설정처럼 묵직하게, 앞부분은 빠르게 지나가 중간부터 들어오는 것처럼 보인다.</summary>
-    private const double PageSlideMs = 500;
-    /// <summary>메뉴를 바꿨을 때 새 페이지가 올라오는 거리와 시간.</summary>
-    private const double PageRise = 160, PageRiseMs = 450;
+    /// <summary>들어오는 페이지가 출발하는 거리: 메뉴를 바꾸면 아래에서, 하위·상위로 가면 옆에서. 둘 다 250ms 감속.</summary>
+    private const double PageRise = 32, PageSlide = 48;
+    /// <summary>나가는 페이지가 밀려나는 거리. 167ms 가속하며 흐려진다.</summary>
+    private const double PageExit = 24;
 
     /// <summary>
     /// 옛 페이지를 그림으로 찍어 둔다. Build로 내용을 갈아엎기 전에 불러야, 하위·상위 이동 때 옛 페이지를 밀어낼 수 있다.
@@ -347,9 +347,9 @@ internal partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// 새 페이지(제목 포함)를 들여보낸다.
-    /// 하위로(오른쪽에서)·상위로(왼쪽에서): 옛 페이지가 반대쪽으로 통째로 밀려나가고 새 페이지가 내용 칸 너비만큼 떨어진 곳에서 밀고 들어온다.
-    /// 메뉴를 바꿀 때(아래에서): 옛 페이지는 바로 사라지고 새 페이지가 아래에서 올라온다.
+    /// 새 페이지(제목 포함)를 들여보낸다(Fluent: 들어오는 것은 감속 250ms, 나가는 것은 가속 167ms).
+    /// 메뉴를 바꿀 때(아래에서): 옛 페이지는 바로 사라지고 새 페이지가 살짝 올라오며 나타난다.
+    /// 하위로(오른쪽에서)·상위로(왼쪽에서): 옛 페이지가 반대쪽으로 조금 밀리며 흐려지고, 새 페이지가 옆에서 들어온다.
     /// </summary>
     private void Play(Slide slide)
     {
@@ -357,33 +357,34 @@ internal partial class SettingsWindow : Window
         PageShift.BeginAnimation(TranslateTransform.YProperty, null);
         PageScroller.BeginAnimation(OpacityProperty, null);
         OldShift.BeginAnimation(TranslateTransform.XProperty, null);
+        OldPage.BeginAnimation(OpacityProperty, null);
         PageShift.X = PageShift.Y = 0;
         var old = OldPage.Source;
         OldPage.Source = null;
         OldPage.Visibility = Visibility.Collapsed;
         if (slide == Slide.None || !Motion.Enabled) return;
 
+        PageScroller.BeginAnimation(OpacityProperty, Motion.In(0, 1, Motion.Fast));
         if (slide == Slide.Up)
         {
-            PageShift.BeginAnimation(TranslateTransform.YProperty, Motion.In(PageRise, 0, PageRiseMs));
-            PageScroller.BeginAnimation(OpacityProperty, Motion.In(0, 1, Motion.Normal));
+            PageShift.BeginAnimation(TranslateTransform.YProperty, Motion.In(PageRise, 0, Motion.Normal));
             return;
         }
 
-        double width = Math.Max(PageHost.ActualWidth, 1);
         double dir = slide == Slide.FromRight ? 1 : -1;
-        PageShift.BeginAnimation(TranslateTransform.XProperty, Motion.In(dir * width, 0, PageSlideMs));
+        PageShift.BeginAnimation(TranslateTransform.XProperty, Motion.In(dir * PageSlide, 0, Motion.Normal));
         if (old == null) return;
         OldPage.Source = old;
         OldPage.Visibility = Visibility.Visible;
-        var push = Motion.In(0, -dir * width, PageSlideMs);
-        push.Completed += (_, _) =>
+        var fade = Motion.Out(1, 0, Motion.Fast);
+        fade.Completed += (_, _) =>
         {
             if (OldPage.Source != old) return;
             OldPage.Source = null;
             OldPage.Visibility = Visibility.Collapsed;
         };
-        OldShift.BeginAnimation(TranslateTransform.XProperty, push);
+        OldShift.BeginAnimation(TranslateTransform.XProperty, Motion.Out(0, -dir * PageExit, Motion.Fast));
+        OldPage.BeginAnimation(OpacityProperty, fade);
     }
 
     // ----- 왼쪽 메뉴 -----

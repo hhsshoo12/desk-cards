@@ -24,8 +24,8 @@ internal static class Motion
     public static readonly CubicBezierEase Decelerate = Freeze(new CubicBezierEase(0, 0, 0, 1));
     /// <summary>나가는 것: 천천히 출발해 빠르게 사라진다.</summary>
     public static readonly CubicBezierEase Accelerate = Freeze(new CubicBezierEase(1, 0, 1, 1));
-    /// <summary>화면 안에서 자리를 옮기는 것.</summary>
-    public static readonly CubicBezierEase Standard = Freeze(new CubicBezierEase(0.8, 0, 0.2, 1));
+    /// <summary>이미 화면에 있는 것이 자리를 옮기는 것(Fluent point-to-point).</summary>
+    public static readonly CubicBezierEase Standard = Freeze(new CubicBezierEase(0.55, 0.55, 0, 1));
 
     /// <summary>Windows 설정 › 접근성 › 시각 효과 › 애니메이션 효과.</summary>
     public static bool Enabled => SystemParameters.ClientAreaAnimation;
