@@ -34,6 +34,7 @@ internal abstract class DeskCard : Window
     private Native.RECT _moveWindowStart;
     private System.Collections.Generic.IReadOnlyList<Native.RECT> _moveOthers = Array.Empty<Native.RECT>();
     private CardLabel? _label;
+    private bool _triedFlush;
 
     protected DeskCard(GroupManager mgr)
     {
@@ -281,6 +282,7 @@ internal abstract class DeskCard : Window
         Native.GetCursorPos(out _moveCursorStart);
         _moveWindowStart = Footprint;
         _moveOthers = Mgr.CardRects(except: this);
+        _triedFlush = false;
     }
 
     private void OnGripDelta()
@@ -431,7 +433,17 @@ internal abstract class DeskCard : Window
             int fx = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
             int fy = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
             var wa = DesktopGrid.WorkAreaAt(fx + w / 2, fy + h / 2);
-            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, Native.MonitorScaleOf(hwnd));
+            double scale = Native.MonitorScaleOf(hwnd);
+            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, scale);
+            // 간격을 두는 중인데 옆 카드에 딱 붙이려고(간격 절반보다 가까이, 살짝 겹치는 데까지) 끌었는지.
+            if (!SmartGuides.Flush)
+            {
+                var raw = new Native.RECT { Left = fx, Top = fy, Right = fx + w, Bottom = fy + h + lh };
+                int gap = SmartGuides.GapPx(scale), slack = (int)Math.Round(8 * scale);
+                var (sx, sy) = SmartGuides.Separation(raw, _moveOthers);
+                bool Near(int? d) => d is { } v && v > -slack && v < gap / 2;
+                _triedFlush |= Near(sx) || Near(sy);
+            }
             SmartGuides.Show(wa, lines);
             Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
             handled = true;
@@ -440,12 +452,45 @@ internal abstract class DeskCard : Window
         else if (msg == Native.WM_EXITSIZEMOVE)
         {
             SmartGuides.Hide();
+            KeepGap(hwnd);
         }
         else if (msg == _taskbarCreatedMsg && _taskbarCreatedMsg != 0)
         {
             AttachToDesktop(hwnd);
         }
         return IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// 옮기기·크기 조절을 마쳤을 때: 완전히 붙이기(실험)가 꺼져 있는데 옆 카드에 간격보다 가까이 붙었으면
+    /// 간격만큼 떼어 놓고, 붙이려 했던 것이면 설정 안내 창을 띄운다.
+    /// </summary>
+    private void KeepGap(IntPtr hwnd)
+    {
+        if (SmartGuides.Flush) return;
+        var others = Mgr.CardRects(except: this);
+        var me = Footprint;
+        var (dx, dy) = SmartGuides.PushApart(me, others, SmartGuides.GapPx(Native.MonitorScaleOf(hwnd)));
+        if (dx != 0 || dy != 0)
+        {
+            int w = me.Right - me.Left, h = me.Bottom - me.Top;
+            var wa = DesktopGrid.WorkAreaAt(me.Left + w / 2, me.Top + h / 2);
+            int x = Math.Max(wa.Left, Math.Min(me.Left + dx, wa.Right - w));
+            int y = Math.Max(wa.Top, Math.Min(me.Top + dy, wa.Bottom - h));
+            Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+            _triedFlush = true;
+        }
+        if (!_triedFlush) return;
+        _triedFlush = false;
+        Dispatcher.BeginInvoke(() =>
+        {
+            Mgr.SavePosition(this);
+            var r = Dialogs.Show(
+                "카드 그림자가 옆 카드에 드리우지 않도록 나란히 놓으면 조금 띄워 둬요. " +
+                "딱 붙이려면 설정 › 일반 › 실험에서 '완전히 붙이기'를 켜 주세요.",
+                MessageBoxButton.OKCancel, heading: "카드끼리는 붙일 수 없어요", primary: "설정 열기");
+            if (r == MessageBoxResult.OK) SettingsWindow.OpenGeneral(Mgr);
+        }, DispatcherPriority.Background);
     }
 
     // ----- 크기 / 위치 -----

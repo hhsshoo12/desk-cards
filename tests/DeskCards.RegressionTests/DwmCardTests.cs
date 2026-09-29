@@ -14,6 +14,42 @@ internal static partial class Program
 {
     private static void DwmCardTests(string root)
     {
+        Test("나란히 붙이면 그림자 간격만큼 띄우고, 완전히 붙이기를 켜면 맞닿는다", () =>
+        {
+            var wa = new System.Drawing.Rectangle(0, 0, 3000, 2400);
+            var other = new Native.RECT { Left = 500, Top = 300, Right = 700, Bottom = 500 };
+            var others = new[] { other };
+            bool flush = SmartGuides.Flush;
+            try
+            {
+                SmartGuides.Flush = false;
+                int gap = SmartGuides.GapPx(1);
+                Check(gap == 12);
+                // 오른쪽 옆에 거의 붙여 놓으면 간격 줄에 붙는다.
+                var (x, _, _) = SmartGuides.Snap(706, 300, 200, 200, others, wa, 1);
+                Check(x == 700 + gap);
+                // 왼쪽 옆도 마찬가지.
+                (x, _, _) = SmartGuides.Snap(294, 300, 200, 200, others, wa, 1);
+                Check(x == 500 - gap - 200);
+                // 위아래로 쌓아도 간격을 둔다.
+                var (_, y, _) = SmartGuides.Snap(500, 506, 200, 200, others, wa, 1);
+                Check(y == 500 + gap);
+                // 가장자리끼리 줄 맞춤(왼쪽끼리)은 그대로 된다.
+                (x, _, _) = SmartGuides.Snap(503, 560, 200, 200, others, wa, 1);
+                Check(x == 500);
+                // 간격보다 가까이 있으면 간격만큼 떼어 놓고, 겹친 것은 건드리지 않는다.
+                Check(SmartGuides.PushApart(new Native.RECT { Left = 703, Top = 300, Right = 903, Bottom = 500 }, others, gap) == (gap - 3, 0));
+                Check(SmartGuides.PushApart(new Native.RECT { Left = 600, Top = 300, Right = 800, Bottom = 500 }, others, gap) == (0, 0));
+                Check(SmartGuides.Separation(new Native.RECT { Left = 705, Top = 350, Right = 905, Bottom = 550 }, others) == (5, null));
+
+                SmartGuides.Flush = true;
+                Check(SmartGuides.GapPx(1) == 0);
+                (x, _, _) = SmartGuides.Snap(703, 300, 200, 200, others, wa, 1);
+                Check(x == 700);
+            }
+            finally { SmartGuides.Flush = flush; }
+        });
+
         Test("폴더 카드 기준 크기는 여백 없이 아이콘 칸만이다(이름은 창 밖 아래)", () =>
         {
             foreach (int cols in new[] { 1, 2, 4, 8 })

@@ -31,5 +31,10 @@ internal partial class SettingsWindow
 
         Header("폴더");
         AddRow(Row("", "그룹 폴더", _mgr.Root, Button("열기", () => FileOps.OpenFolder(_mgr.Root))));
+
+        Header("실험");
+        AddRow(Row("", "완전히 붙이기",
+            "카드끼리 간격 없이 딱 붙여 둘 수 있어요. 그림자가 옆 카드에 겹쳐 보이거나, 카드를 누를 때마다 그림자 방향이 바뀌는 등 모양이 어색해질 수 있어요.",
+            Switch(_mgr.FlushSnap, v => _mgr.FlushSnap = v)));
     }
 }

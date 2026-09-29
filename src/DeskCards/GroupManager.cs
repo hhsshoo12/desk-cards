@@ -58,6 +58,13 @@ internal sealed partial class GroupManager
         }
     }
 
+    /// <summary>실험: 카드끼리 간격 없이 딱 붙여 둘 수 있게 할지.</summary>
+    public bool FlushSnap
+    {
+        get => _cfg.FlushSnap;
+        set => Store(_cfg.FlushSnap != value, () => _cfg.FlushSnap = SmartGuides.Flush = value);
+    }
+
     // ----- 카드 바 -----
 
     public bool BarEnabled { get => _cfg.BarEnabled; set => Store(_cfg.BarEnabled != value, () => _cfg.BarEnabled = value); }
@@ -300,6 +307,7 @@ internal sealed partial class GroupManager
     {
         MigrateScale();
         SmartGuides.Enabled = _cfg.ShowGuides;
+        SmartGuides.Flush = _cfg.FlushSnap;
         Directory.CreateDirectory(Root);
         if (ListGroupFolders() is { Count: 0 }) Directory.CreateDirectory(FileOps.Unique(Root, "새 그룹"));
         Reconcile();
