@@ -458,7 +458,8 @@ internal static partial class Program
                 Check(Config.Load(Path.Combine(root, "dard.json")).DardSettings.ContainsKey(main.Key));
 
                 main.Runtime.OpenSettings("main");
-                Pump(400); // 설정 창은 한 박자 늦게 뜬다(짧으면 가끔 아직 안 떠 있다)
+                // 설정 창은 포커스를 잃으면 스스로 닫힌다. 테스트 중에 다른 창을 쓰면 여기서 실패할 수 있다.
+                Pump(100);
                 Check(app.Windows.OfType<DardSettingsWindow>().Count() == 1);
 
                 // 권한이 같은 새 버전은 다시 묻지 않고 바꿔 띄운다(설정 창은 닫힌다).
