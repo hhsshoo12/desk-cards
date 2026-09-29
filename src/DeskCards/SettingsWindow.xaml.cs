@@ -94,6 +94,8 @@ internal partial class SettingsWindow : Window
     {
         Open(mgr);
         _win!.Go(PageKind.General);
+        // 실험 설정은 페이지 맨 아래에 있다.
+        _win.Dispatcher.BeginInvoke(() => _win?.PageScroller.ScrollToEnd(), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void ShowCard(CardWindow card)

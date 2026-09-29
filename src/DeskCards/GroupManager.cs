@@ -88,6 +88,11 @@ internal sealed partial class GroupManager
     }
 
     /// <summary>편집 중이면 모든 카드의 자리를 지금 설정으로 다시 검사해 안 되는 자리를 빨간 테두리로 표시한다.</summary>
+    private readonly HashSet<SmartGuides.Placement> _tipsShown = new();
+
+    /// <summary>이번 편집 모드에서 이 종류의 자리 안내 말풍선을 아직 안 띄웠으면 true(그리고 띄운 것으로 친다).</summary>
+    public bool TakeTip(SmartGuides.Placement kind) => _tipsShown.Add(kind);
+
     public void RefreshPlacement()
     {
         foreach (var c in AllCards) c.CheckPlacement();
@@ -285,6 +290,7 @@ internal sealed partial class GroupManager
             SettingsWindow.HideForEdit();
             ExpandedWindow.CloseCurrent();
             bool toggled = DesktopShell.ShowDesktop();
+            _tipsShown.Clear();
             foreach (var c in AllCards) c.BeginEdit();
             RefreshPlacement();
             // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).
@@ -308,6 +314,7 @@ internal sealed partial class GroupManager
         Editing = false;
         Selected = null;
         EditDim.CloseAll();
+        BalloonTip.CloseCurrent();
         foreach (var c in AllCards) c.EndEdit();
         EditBar.CloseBar();
         EditChanged?.Invoke();

@@ -338,19 +338,15 @@ internal abstract class DeskCard : Window
     }
 
     /// <summary>안 되는 자리에 놓았을 때 이유와 실험 설정을 알려 준다.</summary>
+    /// <remarks>편집 모드마다 종류별로 처음 한 번만 말풍선을 띄운다. 그 뒤로는 빨간 테두리와 되돌리기로 충분하다.</remarks>
     private void Warn(SmartGuides.Placement p) => Dispatcher.BeginInvoke(() =>
     {
+        if (!_editing || !Mgr.TakeTip(p)) return;
         bool overlap = p == SmartGuides.Placement.Overlap;
-        var r = Dialogs.Show(
-            overlap
-                ? "겹친 자리는 저장되지 않아서 원래 자리로 돌려놨어요. 빈자리에 배치해 주세요. " +
-                  "겹쳐 두려면 설정 › 일반 › 실험에서 '겹치기 · 레이어'를 켜 주세요."
-                : "카드 그림자가 옆 카드에 드리우지 않도록 나란히 놓으면 조금 띄워 둬요. " +
-                  "딱 붙이려면 설정 › 일반 › 실험에서 '완전히 붙이기'를 켜 주세요.",
-            MessageBoxButton.OKCancel,
-            heading: overlap ? "카드는 겹칠 수 없어요" : "카드끼리는 붙일 수 없어요",
-            primary: "설정 열기");
-        if (r == MessageBoxResult.OK) SettingsWindow.OpenGeneral(Mgr);
+        BalloonTip.Show(Footprint,
+            overlap ? "카드는 겹칠 수 없어요. 빈자리에 배치해 주세요." : "카드끼리는 딱 붙일 수 없어요. 조금 띄워 둘게요.",
+            overlap ? "누르면 실험 설정의 '겹치기 · 레이어'로 가요." : "누르면 실험 설정의 '완전히 붙이기'로 가요.",
+            () => SettingsWindow.OpenGeneral(Mgr));
     }, DispatcherPriority.Background);
 
     /// <summary>바뀐 모양을 적용·저장하고, 화면 밖으로 나갔으면 당겨서 위치도 저장한다.</summary>
