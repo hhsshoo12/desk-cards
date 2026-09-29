@@ -12,6 +12,36 @@ using DeskCards;
 
 internal static partial class Program
 {
+    /// <summary>구운 이름 글자를 바탕화면 비슷한 파랑·밝은 하늘색·흰 바탕 위에 6배(픽셀 그대로)로 저장한다.</summary>
+    private static void SnapshotLabel(System.Windows.Media.Imaging.BitmapSource baked, string path)
+    {
+        const int Zoom = 6;
+        var backs = new[] { Color.FromRgb(0x1E, 0x5A, 0xD6), Color.FromRgb(0x8C, 0xB4, 0xD2), Color.FromRgb(0xF3, 0xF3, 0xF3) };
+        var one = new System.Windows.Media.Imaging.FormatConvertedBitmap(baked, PixelFormats.Pbgra32, null, 0);
+        int w = one.PixelWidth, h = one.PixelHeight;
+        var px = new byte[w * h * 4];
+        one.CopyPixels(px, w * 4, 0);
+        int W = w * Zoom, H = h * Zoom * backs.Length;
+        var outPx = new byte[W * H * 4];
+        for (int b = 0; b < backs.Length; b++)
+        for (int y = 0; y < h * Zoom; y++)
+        for (int x = 0; x < W; x++)
+        {
+            int i = ((y / Zoom) * w + x / Zoom) * 4;
+            double a = px[i + 3] / 255.0;
+            int o = ((b * h * Zoom + y) * W + x) * 4;
+            outPx[o] = (byte)(px[i] + backs[b].B * (1 - a));
+            outPx[o + 1] = (byte)(px[i + 1] + backs[b].G * (1 - a));
+            outPx[o + 2] = (byte)(px[i + 2] + backs[b].R * (1 - a));
+            outPx[o + 3] = 255;
+        }
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(W, H, 96, 96, PixelFormats.Bgra32, null, outPx, W * 4);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = File.Create(path);
+        encoder.Save(file);
+    }
+
     private static void DwmCardTests(string root)
     {
         Test("나란히 붙이면 그림자 간격만큼 띄우고, 완전히 붙이기를 켜면 맞닿는다", () =>
@@ -114,7 +144,7 @@ internal static partial class Program
                 // 이름은 카드 창 안에 두지 않고, 카드 바로 아래 따로 띄운 투명 창에 둔다.
                 Check(label.Visibility == Visibility.Collapsed);
                 var name = Application.Current.Windows.OfType<CardLabel>().Single(w => w.Owner == null && w.IsVisible && w.Text == card.Group.Name);
-                // 글자는 테두리·옅은 그림자까지 16표본으로 한 번 구운 그림이다. 가운데는 흰색, 가장자리는 어둡다.
+                // 글자는 그림자까지 한 번 구운 그림이다. 획은 흰색, 오른쪽 아래로 짙은 그림자가 있다.
                 var baked = name.Baked!;
                 var px = new byte[baked.PixelWidth * baked.PixelHeight * 4];
                 baked.CopyPixels(px, baked.PixelWidth * 4, 0);
@@ -122,8 +152,10 @@ internal static partial class Program
                 for (int i = 0; i < px.Length; i += 4)
                 {
                     if (px[i + 3] > 240 && px[i] > 240 && px[i + 1] > 240 && px[i + 2] > 240) white = true;
-                    if (px[i + 3] > 200 && px[i] < 30 && px[i + 1] < 30 && px[i + 2] < 30) dark = true;
+                    if (px[i + 3] > 128 && px[i] < 40 && px[i + 1] < 40 && px[i + 2] < 40) dark = true; // 그림자
                 }
+                if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
+                    SnapshotLabel(baked, Path.Combine(dir, "label.png"));
                 Check(white && dark);
                 Native.GetWindowRect(Hwnd.Of(card), out var cr);
                 Native.GetWindowRect(Hwnd.Of(name), out var lr);

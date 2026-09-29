@@ -1,11 +1,10 @@
 using System;
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using Gdi = System.Drawing;
 
 namespace DeskCards;
 
@@ -15,17 +14,16 @@ namespace DeskCards;
 /// 카드 창이 소유자라 z 순서는 카드를 따라가고, 위치·크기는 카드가 옮길 때마다 Place로 맞춘다.
 /// 클릭은 아래로 그대로 통과한다.
 ///
-/// 글자는 바탕화면 아이콘 이름처럼 흰 글자 오른쪽 아래에 짙은 그림자가 살짝 번지게 하고,
-/// 가로세로 4배(픽셀당 16표본)로 한 번 그린 뒤 실제 픽셀로 평균 내어 구운 그림을 픽셀에 딱 맞춰 띄운다.
-/// 글자·크기·배율이 바뀔 때만 다시 굽는다.
+/// 글자는 바탕화면 아이콘 이름처럼 흰 글자 오른쪽 아래에 짙은 그림자가 살짝 번지게 한다.
+/// 선명하게 보이도록 힌팅(획을 픽셀 격자에 맞춤)을 켠 GDI+로 실제 픽셀 크기에 바로 그리고,
+/// 그림자는 그 글자 모양을 비켜 흐려서 만든다. 투명한 창이라 ClearType 대신 흑백 부드럽게를 쓴다.
+/// 글자·크기·배율이 바뀔 때만 다시 굽고, 구운 그림은 픽셀에 딱 맞춰 띄운다.
 /// </summary>
 internal sealed class CardLabel : Window
 {
     private const double BaseFont = 13;
-    /// <summary>한 방향 표본 수. 4 × 4 = 픽셀당 16표본(SSAA 16x).</summary>
-    private const int SS = 4;
-    private static readonly Typeface Face = new(new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic"),
-        FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+    /// <summary>바탕화면 아이콘 이름과 같은 글꼴. 한글은 Windows 글꼴 연결로 맑은 고딕이 쓰인다.</summary>
+    private const string FontName = "Segoe UI";
 
     private readonly Canvas _canvas = new();
     private readonly Image _image = new() { Stretch = Stretch.None };
@@ -83,47 +81,75 @@ internal sealed class CardLabel : Window
         string key = $"{_text}|{w}|{t:0.####}|{dpi:0.####}";
         if (key == _bakedKey) return;
         _bakedKey = key;
-
-        double k = t * dpi;                                // DIP → 물리 픽셀
-        double fontPx = BaseFont * k;
-        // 바탕화면 아이콘 이름처럼: 테두리 없이 오른쪽 아래로 1px 비킨 짙은 그림자가 살짝 번진다.
-        double spread = 0.5 * k, blur = 1.5 * k, drop = Math.Max(1, Math.Round(0.8 * k));
-        int pad = (int)Math.Ceiling(spread + blur * 2 + drop);
-        int side = (int)Math.Round(4 * k), top = (int)Math.Round(5 * k);
-
         if (string.IsNullOrEmpty(_text))
         {
             _image.Source = null;
             return;
         }
-        var ft = new FormattedText(_text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight, Face, fontPx * SS, Brushes.White, 1.0)
+
+        double k = t * dpi; // DIP → 물리 픽셀
+        float fontPx = (float)(BaseFont * k);
+        double blur = Math.Max(1, 1.2 * k);
+        int drop = Math.Max(1, (int)Math.Round(0.8 * k));
+        int pad = (int)Math.Ceiling(blur * 3) + drop;
+        int side = (int)Math.Round(4 * k), top = (int)Math.Round(5 * k);
+
+        using var font = new Gdi.Font(FontName, fontPx, Gdi.FontStyle.Regular, Gdi.GraphicsUnit.Pixel);
+        using var format = new Gdi.StringFormat(Gdi.StringFormat.GenericTypographic)
         {
-            MaxTextWidth = Math.Max(1, (w - 2 * side) * SS),
-            MaxLineCount = 1,
-            Trimming = TextTrimming.CharacterEllipsis,
+            Trimming = Gdi.StringTrimming.EllipsisCharacter,
+            FormatFlags = Gdi.StringFormatFlags.NoWrap | Gdi.StringFormatFlags.LineLimit | Gdi.StringFormatFlags.MeasureTrailingSpaces,
         };
-        int bw = (int)Math.Ceiling(ft.Width / SS) + 2 * pad, bh = (int)Math.Ceiling(ft.Height / SS) + 2 * pad;
-        var geometry = ft.BuildGeometry(new Point(pad * SS, pad * SS));
-        geometry.Freeze();
-
-        var shadowPen = new Pen(Brushes.Black, spread * 2 * SS) { LineJoin = PenLineJoin.Round };
-        var shadow = new DrawingVisual
+        int maxW = Math.Max(1, w - 2 * side);
+        Gdi.SizeF size;
+        using (var probe = new Gdi.Bitmap(1, 1))
+        using (var g = Gdi.Graphics.FromImage(probe))
         {
-            Effect = new BlurEffect { Radius = blur * SS, KernelType = KernelType.Gaussian },
-            Opacity = 0.85,
-            Offset = new Vector(drop * SS, drop * SS),
-        };
-        using (var dc = shadow.RenderOpen()) dc.DrawGeometry(Brushes.Black, shadowPen, geometry);
+            g.TextRenderingHint = Gdi.Text.TextRenderingHint.AntiAliasGridFit;
+            size = g.MeasureString(_text, font, new Gdi.SizeF(maxW, fontPx * 2), format);
+        }
+        int tw = Math.Min(maxW, (int)Math.Ceiling(size.Width) + 1), th = (int)Math.Ceiling(font.GetHeight()) + 1;
+        int bw = tw + 2 * pad, bh = th + 2 * pad;
 
-        var text = new DrawingVisual();
-        using (var dc = text.RenderOpen()) dc.DrawGeometry(Brushes.White, null, geometry);
-        var root = new ContainerVisual();
-        root.Children.Add(shadow);
-        root.Children.Add(text);
+        // 흰 글자만 먼저 그린다(힌팅 켠 흑백 부드럽게).
+        byte[] glyph;
+        using (var bmp = new Gdi.Bitmap(bw, bh, Gdi.Imaging.PixelFormat.Format32bppPArgb))
+        {
+            using (var g = Gdi.Graphics.FromImage(bmp))
+            {
+                g.Clear(Gdi.Color.Transparent);
+                g.TextRenderingHint = Gdi.Text.TextRenderingHint.AntiAliasGridFit;
+                g.DrawString(_text, font, Gdi.Brushes.White, new Gdi.RectangleF(pad, pad, tw, th), format);
+            }
+            var data = bmp.LockBits(new Gdi.Rectangle(0, 0, bw, bh), Gdi.Imaging.ImageLockMode.ReadOnly, Gdi.Imaging.PixelFormat.Format32bppPArgb);
+            glyph = new byte[bw * bh * 4];
+            for (int y = 0; y < bh; y++)
+                System.Runtime.InteropServices.Marshal.Copy(data.Scan0 + y * data.Stride, glyph, y * bw * 4, bw * 4);
+            bmp.UnlockBits(data);
+        }
 
-        var big = new RenderTargetBitmap(bw * SS, bh * SS, 96, 96, PixelFormats.Pbgra32);
-        big.Render(root);
-        var baked = Downsample(big, bw, bh, 96 * dpi);
+        // 그림자: 글자 모양(알파)을 오른쪽 아래로 비켜 흐리고, 그 위에 흰 글자를 얹는다.
+        var alpha = new float[bw * bh];
+        for (int y = 0; y < bh; y++)
+        for (int x = 0; x < bw; x++)
+        {
+            int sx = x - drop, sy = y - drop;
+            if (sx >= 0 && sy >= 0) alpha[y * bw + x] = glyph[(sy * bw + sx) * 4 + 3] / 255f;
+        }
+        var shadow = Blur(alpha, bw, bh, blur);
+        var dst = new byte[bw * bh * 4];
+        for (int i = 0; i < bw * bh; i++)
+        {
+            // 흐리면 옅어지니 조금 키워서 짙게(바탕화면 아이콘 이름 정도).
+            float sa = Math.Min(1f, shadow[i] * 1.6f) * 0.9f;
+            float ga = glyph[i * 4 + 3] / 255f;
+            float a = ga + sa * (1 - ga);
+            byte white = glyph[i * 4]; // 흰 글자는 알파가 곱해진 색이라 색 값 = 알파
+            dst[i * 4] = dst[i * 4 + 1] = dst[i * 4 + 2] = white; // 그림자는 검정이라 색에 더할 것이 없다
+            dst[i * 4 + 3] = (byte)Math.Round(a * 255);
+        }
+        var baked = BitmapSource.Create(bw, bh, 96 * dpi, 96 * dpi, PixelFormats.Pbgra32, null, dst, bw * 4);
+        baked.Freeze();
 
         _image.Source = baked;
         // 가운데 맞춤. 창 원점이 정수 픽셀이니 정수 픽셀로 놓아 구운 픽셀이 화면 픽셀에 그대로 찍히게 한다.
@@ -131,35 +157,39 @@ internal sealed class CardLabel : Window
         Canvas.SetTop(_image, (top - pad) / dpi);
     }
 
-    /// <summary>SS×SS 칸마다 평균 낸다(상자 필터). 알파가 곱해진 색이라 그대로 평균 내면 된다.</summary>
-    private static BitmapSource Downsample(BitmapSource big, int w, int h, double dpi)
+    /// <summary>가우스 흐림(가로·세로 한 번씩).</summary>
+    private static float[] Blur(float[] src, int w, int h, double sigma)
     {
-        int bigStride = w * SS * 4;
-        var src = new byte[bigStride * h * SS];
-        big.CopyPixels(src, bigStride, 0);
-        var dst = new byte[w * h * 4];
-        const int n = SS * SS;
+        int r = (int)Math.Ceiling(sigma * 3);
+        var kernel = new float[r * 2 + 1];
+        float sum = 0;
+        for (int i = -r; i <= r; i++) sum += kernel[i + r] = (float)Math.Exp(-(i * i) / (2 * sigma * sigma));
+        for (int i = 0; i < kernel.Length; i++) kernel[i] /= sum;
+
+        var tmp = new float[w * h];
         for (int y = 0; y < h; y++)
         for (int x = 0; x < w; x++)
         {
-            int b = 0, g = 0, r = 0, a = 0;
-            for (int sy = 0; sy < SS; sy++)
+            float v = 0;
+            for (int i = -r; i <= r; i++)
             {
-                int row = (y * SS + sy) * bigStride + x * SS * 4;
-                for (int sx = 0; sx < SS; sx++)
-                {
-                    int i = row + sx * 4;
-                    b += src[i]; g += src[i + 1]; r += src[i + 2]; a += src[i + 3];
-                }
+                int xx = x + i;
+                if (xx >= 0 && xx < w) v += src[y * w + xx] * kernel[i + r];
             }
-            int o = (y * w + x) * 4;
-            dst[o] = (byte)((b + n / 2) / n);
-            dst[o + 1] = (byte)((g + n / 2) / n);
-            dst[o + 2] = (byte)((r + n / 2) / n);
-            dst[o + 3] = (byte)((a + n / 2) / n);
+            tmp[y * w + x] = v;
         }
-        var bitmap = BitmapSource.Create(w, h, dpi, dpi, PixelFormats.Pbgra32, null, dst, w * 4);
-        bitmap.Freeze();
-        return bitmap;
+        var dst = new float[w * h];
+        for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+        {
+            float v = 0;
+            for (int i = -r; i <= r; i++)
+            {
+                int yy = y + i;
+                if (yy >= 0 && yy < h) v += tmp[yy * w + x] * kernel[i + r];
+            }
+            dst[y * w + x] = v;
+        }
+        return dst;
     }
 }
