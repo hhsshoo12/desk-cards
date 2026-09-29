@@ -285,7 +285,7 @@ internal partial class SettingsWindow
             num.Text = format(get());
         }
         // 마우스를 올리고 휠을 굴리면 한 칸(120)마다 한 단계씩 바뀐다. 터치패드의 작은 값은 모아서 센다.
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Transparent };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Background = Brushes.Transparent, Tag = SmoothScroll.WheelOwner };
         int wheel = 0;
         panel.MouseWheel += (_, e) =>
         {

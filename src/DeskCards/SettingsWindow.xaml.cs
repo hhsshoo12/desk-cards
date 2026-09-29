@@ -83,6 +83,7 @@ internal partial class SettingsWindow : Window
     private KeyComboEditor? _keyEditor;
 
     private bool _first;
+    private readonly SmoothScroll _smooth;
 
     // 왼쪽 메뉴
     private readonly List<(Border Item, PageKind Page)> _navItems = new();
@@ -111,6 +112,7 @@ internal partial class SettingsWindow : Window
         PreviewKeyDown += OnPreviewKeyDown;
         MouseDown += (_, e) => { if (e.ChangedButton == MouseButton.XButton1) { GoBack(); e.Handled = true; } };
         Deactivated += (_, _) => _keyEditor?.Cancel();
+        _smooth = SmoothScroll.Attach(PageScroller);
         BuildNav();
         Build();
         SetCompact(Width < CompactWidth);
@@ -142,6 +144,7 @@ internal partial class SettingsWindow : Window
         Open(mgr);
         _win!.Go(PageKind.General);
         // 실험 설정은 페이지 맨 아래에 있다.
+        _win._smooth.Stop();
         _win.Dispatcher.BeginInvoke(() => _win?.PageScroller.ScrollToEnd(), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
@@ -196,6 +199,7 @@ internal partial class SettingsWindow : Window
         _card = card;
         _dardPath = dard;
         if (slide != Slide.Up) CaptureOldPage();
+        _smooth.Stop();
         PageScroller.ScrollToVerticalOffset(0);
         Build();
         Play(slide);
