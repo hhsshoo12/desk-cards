@@ -15,7 +15,7 @@ namespace DeskCards;
 /// 카드 창이 소유자라 z 순서는 카드를 따라가고, 위치·크기는 카드가 옮길 때마다 Place로 맞춘다.
 /// 클릭은 아래로 그대로 통과한다.
 ///
-/// 글자는 어떤 배경에서도 읽히도록 흰 글자에 검은 테두리와 옅은 그림자를 두고,
+/// 글자는 바탕화면 아이콘 이름처럼 흰 글자 오른쪽 아래에 짙은 그림자가 살짝 번지게 하고,
 /// 가로세로 4배(픽셀당 16표본)로 한 번 그린 뒤 실제 픽셀로 평균 내어 구운 그림을 픽셀에 딱 맞춰 띄운다.
 /// 글자·크기·배율이 바뀔 때만 다시 굽는다.
 /// </summary>
@@ -86,9 +86,9 @@ internal sealed class CardLabel : Window
 
         double k = t * dpi;                                // DIP → 물리 픽셀
         double fontPx = BaseFont * k;
-        double outline = Math.Max(1, Math.Round(0.75 * k * 2) / 2); // 글자 밖으로 나가는 테두리 두께(px). 100%에서 1px
-        double blur = Math.Max(1.5, 2 * k), drop = Math.Max(1, Math.Round(k));
-        int pad = (int)Math.Ceiling(outline + blur + drop);
+        // 바탕화면 아이콘 이름처럼: 테두리 없이 오른쪽 아래로 1px 비킨 짙은 그림자가 살짝 번진다.
+        double spread = 0.5 * k, blur = 1.5 * k, drop = Math.Max(1, Math.Round(0.8 * k));
+        int pad = (int)Math.Ceiling(spread + blur * 2 + drop);
         int side = (int)Math.Round(4 * k), top = (int)Math.Round(5 * k);
 
         if (string.IsNullOrEmpty(_text))
@@ -106,20 +106,17 @@ internal sealed class CardLabel : Window
         var geometry = ft.BuildGeometry(new Point(pad * SS, pad * SS));
         geometry.Freeze();
 
-        // 옅은 그림자: 테두리까지 포함한 글자 모양을 조금 아래로, 흐리게.
-        var shadowPen = new Pen(Brushes.Black, outline * 2 * SS) { LineJoin = PenLineJoin.Round };
-        var shadow = new DrawingVisual { Effect = new BlurEffect { Radius = blur * SS, KernelType = KernelType.Gaussian }, Opacity = 0.35 };
-        shadow.Offset = new Vector(0, drop * SS);
+        var shadowPen = new Pen(Brushes.Black, spread * 2 * SS) { LineJoin = PenLineJoin.Round };
+        var shadow = new DrawingVisual
+        {
+            Effect = new BlurEffect { Radius = blur * SS, KernelType = KernelType.Gaussian },
+            Opacity = 0.85,
+            Offset = new Vector(drop * SS, drop * SS),
+        };
         using (var dc = shadow.RenderOpen()) dc.DrawGeometry(Brushes.Black, shadowPen, geometry);
 
-        // 글자: 테두리를 먼저 긋고 그 위에 흰 글자를 채운다(테두리가 글자 안쪽을 깎지 않게).
         var text = new DrawingVisual();
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0, 0, 0)), outline * 2 * SS) { LineJoin = PenLineJoin.Round };
-        using (var dc = text.RenderOpen())
-        {
-            dc.DrawGeometry(null, pen, geometry);
-            dc.DrawGeometry(Brushes.White, null, geometry);
-        }
+        using (var dc = text.RenderOpen()) dc.DrawGeometry(Brushes.White, null, geometry);
         var root = new ContainerVisual();
         root.Children.Add(shadow);
         root.Children.Add(text);
