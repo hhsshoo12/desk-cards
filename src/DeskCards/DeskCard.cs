@@ -284,6 +284,7 @@ internal abstract class DeskCard : Window
         _moveWindowStart = Footprint;
         _moveOthers = Mgr.CardRects(except: this);
         _triedFlush = false;
+        BalloonTip.CloseCurrent(); // 앞 안내는 이전 자리 이야기라 새로 옮기기 시작하면 치운다
     }
 
     private void OnGripDelta()
@@ -341,12 +342,16 @@ internal abstract class DeskCard : Window
     /// <remarks>편집 모드마다 종류별로 처음 한 번만 말풍선을 띄운다. 그 뒤로는 빨간 테두리와 되돌리기로 충분하다.</remarks>
     private void Warn(SmartGuides.Placement p) => Dispatcher.BeginInvoke(() =>
     {
-        if (!_editing || !Mgr.TakeTip(p)) return;
         bool overlap = p == SmartGuides.Placement.Overlap;
-        BalloonTip.Show(Footprint,
-            overlap ? "카드는 겹칠 수 없어요. 빈자리에 배치해 주세요." : "카드끼리는 딱 붙일 수 없어요. 조금 띄워 둘게요.",
-            overlap ? "누르면 실험 설정의 '겹치기 · 레이어'로 가요." : "누르면 실험 설정의 '완전히 붙이기'로 가요.",
-            () => SettingsWindow.OpenGeneral(Mgr));
+        string id = overlap ? "placement.overlap" : "placement.flush";
+        if (!_editing || Mgr.TipHidden(id)) return;
+        BalloonTip.Show(Footprint, overlap
+            ? new BalloonTip.Tip("카드는 겹칠 수 없어요",
+                "빈자리에 놓아 주세요. 겹쳐 두려면 실험 설정에서 '겹치기 · 레이어'를 켜 주세요.",
+                "실험 설정 열기", () => SettingsWindow.OpenGeneral(Mgr), () => Mgr.HideTip(id))
+            : new BalloonTip.Tip("카드를 조금 띄워 뒀어요",
+                "카드끼리는 딱 붙일 수 없어요. 붙여 두려면 실험 설정에서 '완전히 붙이기'를 켜 주세요.",
+                "실험 설정 열기", () => SettingsWindow.OpenGeneral(Mgr), () => Mgr.HideTip(id)));
     }, DispatcherPriority.Background);
 
     /// <summary>바뀐 모양을 적용·저장하고, 화면 밖으로 나갔으면 당겨서 위치도 저장한다.</summary>

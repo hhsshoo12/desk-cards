@@ -88,10 +88,15 @@ internal sealed partial class GroupManager
     }
 
     /// <summary>편집 중이면 모든 카드의 자리를 지금 설정으로 다시 검사해 안 되는 자리를 빨간 테두리로 표시한다.</summary>
-    private readonly HashSet<SmartGuides.Placement> _tipsShown = new();
+    /// <summary>안내 말풍선에서 "다시 보지 않기"를 눌렀는지.</summary>
+    public bool TipHidden(string id) => _cfg.HiddenTips.Contains(id);
 
-    /// <summary>이번 편집 모드에서 이 종류의 자리 안내 말풍선을 아직 안 띄웠으면 true(그리고 띄운 것으로 친다).</summary>
-    public bool TakeTip(SmartGuides.Placement kind) => _tipsShown.Add(kind);
+    public int HiddenTipCount => _cfg.HiddenTips.Count;
+
+    public void HideTip(string id) => Store(!_cfg.HiddenTips.Contains(id), () => _cfg.HiddenTips.Add(id));
+
+    /// <summary>숨긴 안내를 모두 다시 보이게 한다.</summary>
+    public void ShowAllTips() => Store(_cfg.HiddenTips.Count > 0, () => _cfg.HiddenTips.Clear());
 
     public void RefreshPlacement()
     {
@@ -290,7 +295,6 @@ internal sealed partial class GroupManager
             SettingsWindow.HideForEdit();
             ExpandedWindow.CloseCurrent();
             bool toggled = DesktopShell.ShowDesktop();
-            _tipsShown.Clear();
             foreach (var c in AllCards) c.BeginEdit();
             RefreshPlacement();
             // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).

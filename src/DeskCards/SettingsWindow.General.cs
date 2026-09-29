@@ -29,6 +29,14 @@ internal partial class SettingsWindow
                 "새 버전이 나오면 미리 받아 두었다가, 다음에 앱을 켤 때(보통 PC를 다시 켤 때) 새 버전으로 열어요.",
                 Switch(updater.AutoUpdate, v => updater.AutoUpdate = v)));
 
+        var tips = Button("다시 보기", () => _mgr.ShowAllTips());
+        tips.IsEnabled = _mgr.HiddenTipCount > 0;
+        AddRow(Row("", "숨긴 안내",
+            _mgr.HiddenTipCount > 0
+                ? $"'다시 보지 않기'를 누른 안내 {_mgr.HiddenTipCount}개를 다시 보여 줘요."
+                : "'다시 보지 않기'를 누른 안내가 없어요.",
+            tips));
+
         Header("폴더");
         AddRow(Row("", "그룹 폴더", _mgr.Root, Button("열기", () => FileOps.OpenFolder(_mgr.Root))));
 

@@ -35,6 +35,9 @@ internal sealed class Config
     /// <summary>실험: 카드끼리 겹친 자리도 저장할지. 기본 꺼짐(겹친 채 놓으면 원래 자리로 돌아간다). 켜면 완전히 붙이기도 켜진다.</summary>
     public bool AllowOverlap { get; set; }
 
+    /// <summary>"다시 보지 않기"를 누른 안내 말풍선 id.</summary>
+    public List<string> HiddenTips { get; set; } = new();
+
     /// <summary>카드의 더보기 칸에 마우스를 잠시 올려 두면 펼칠지. 기본 켜짐.</summary>
     public bool HoverExpand { get; set; } = true;
 
@@ -118,6 +121,7 @@ internal sealed class Config
                     if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
                     else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
+                    cfg.HiddenTips = cfg.HiddenTips?.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList() ?? new();
                     cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
                     cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
                     cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
