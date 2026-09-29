@@ -193,7 +193,59 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 제목 표시줄: [←] [☰(좁을 때)] 아이콘 Desk Cards -->
+        <Grid x:Name="Body" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="NavColumn" Width="300" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+                오른쪽 내용. 페이지를 바꾸면 이 판 전체가 움직인다: 하위·상위로 갈 때는 옛 페이지(찍어 둔 그림)가
+                한쪽으로 밀려나가고 새 페이지가 반대쪽에서 밀고 들어온다. 메뉴를 바꾸면 새 페이지가 아래에서 올라온다.
+                밀려나가는 페이지가 왼쪽 메뉴 위로 넘어가지 않도록 이 칸 안에서 자른다.
+            -->
+            <Grid x:Name="PageHost" Grid.Column="1" ClipToBounds="True">
+                <ScrollViewer x:Name="PageScroller" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <ScrollViewer.RenderTransform>
+                        <TranslateTransform x:Name="PageShift" />
+                    </ScrollViewer.RenderTransform>
+                    <StackPanel x:Name="PageContent" Margin="28,0,40,40" MaxWidth="1000">
+                        <WrapPanel x:Name="Breadcrumb" Margin="0,4,0,24" />
+                        <StackPanel x:Name="Page" />
+                    </StackPanel>
+                </ScrollViewer>
+                <Image x:Name="OldPage" IsHitTestVisible="False" Visibility="Collapsed" Stretch="None"
+                       HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <Image.RenderTransform>
+                        <TranslateTransform x:Name="OldShift" />
+                    </Image.RenderTransform>
+                </Image>
+            </Grid>
+        </Grid>
+
+        <!-- 좁은 창에서 메뉴를 펼쳤을 때 바깥을 누르면 닫는 판 -->
+        <Border x:Name="Scrim" Grid.Row="1" Background="Transparent" Visibility="Collapsed"
+                MouseLeftButtonDown="OnScrimDown" />
+
+        <!--
+            왼쪽 메뉴. 넓은 창에서는 제목 표시줄 아래 왼쪽 칸에 있고,
+            좁은 창에서는 설정 앱처럼 제목 표시줄까지 덮는 판이 된다(위쪽 48은 판 색만 칠하고 버튼은 그 위에 보인다).
+        -->
+        <Border x:Name="NavPane" Grid.Row="1" Width="300" HorizontalAlignment="Left" Padding="16,4,12,16">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="NavShift" />
+            </Border.RenderTransform>
+            <Grid VerticalAlignment="Top">
+                <StackPanel x:Name="Nav" />
+                <Canvas IsHitTestVisible="False">
+                    <Border x:Name="Indicator" Width="3" Height="16" CornerRadius="1.5"
+                            Background="{DynamicResource Accent}" />
+                </Canvas>
+            </Grid>
+        </Border>
+
+        <!-- 제목 표시줄: [←] [☰(좁을 때)] 아이콘 Desk Cards. 펼친 메뉴 판보다 위에 그린다. -->
         <StackPanel Orientation="Horizontal" Margin="4,0,0,0" VerticalAlignment="Center">
             <Button x:Name="BackButton" Style="{StaticResource TitleButton}" ToolTip="뒤로" Click="OnBackClick">
                 <TextBlock Text="&#xE72B;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="12"
@@ -208,42 +260,5 @@
             <TextBlock Text="Desk Cards" FontSize="12" Margin="16,0,0,1" VerticalAlignment="Center"
                        Foreground="{DynamicResource Fg}" />
         </StackPanel>
-
-        <Grid x:Name="Body" Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="NavColumn" Width="300" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <!-- 오른쪽 내용. 페이지를 바꾸면 제목까지 이 판째로 아래·옆에서 들어온다. -->
-            <ScrollViewer x:Name="PageScroller" Grid.Column="1" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled" Focusable="False">
-                <StackPanel x:Name="PageContent" Margin="28,0,40,40" MaxWidth="1000">
-                    <StackPanel.RenderTransform>
-                        <TranslateTransform x:Name="PageShift" />
-                    </StackPanel.RenderTransform>
-                    <WrapPanel x:Name="Breadcrumb" Margin="0,4,0,24" />
-                    <StackPanel x:Name="Page" />
-                </StackPanel>
-            </ScrollViewer>
-
-            <!-- 좁은 창에서 메뉴를 펼쳤을 때 바깥을 누르면 닫는 판 -->
-            <Border x:Name="Scrim" Grid.ColumnSpan="2" Background="Transparent" Visibility="Collapsed"
-                    MouseLeftButtonDown="OnScrimDown" />
-
-            <!-- 왼쪽 메뉴. 좁은 창에서는 내용 위로 덮이는 판이 된다. -->
-            <Border x:Name="NavPane" Padding="16,4,12,16">
-                <Border.RenderTransform>
-                    <TranslateTransform x:Name="NavShift" />
-                </Border.RenderTransform>
-                <Grid VerticalAlignment="Top">
-                    <StackPanel x:Name="Nav" />
-                    <Canvas IsHitTestVisible="False">
-                        <Border x:Name="Indicator" Width="3" Height="16" CornerRadius="1.5"
-                                Background="{DynamicResource Accent}" />
-                    </Canvas>
-                </Grid>
-            </Border>
-        </Grid>
     </Grid>
 </Window>
