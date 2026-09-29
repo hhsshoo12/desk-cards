@@ -77,7 +77,7 @@ internal sealed class ZoneBand : Window
         var property = Side ? WidthProperty : HeightProperty;
         double from = Side ? _band.ActualWidth : _band.ActualHeight;
         if (double.IsNaN(from)) from = 0;
-        var anim = hideAfter ? Motion.Out(from, to, ms) : Motion.In(from, to, ms);
+        var anim = Motion.In(from, to, ms); // 들어갈 때도 감속: 가속 곡선은 끝까지 멈춰 있다가 툭 사라져 보인다
         if (hideAfter) anim.Completed += (_, _) => { if (!_hold.IsEnabled) Hide(); };
         _band.BeginAnimation(property, anim);
     }

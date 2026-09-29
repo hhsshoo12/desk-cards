@@ -11,22 +11,27 @@ namespace DeskCards;
 /// <summary>
 /// 카드 바 설정을 바꾸는 동안 화면에 잠깐 보여 주는 안내:
 /// 바 두께 → 바가 나올 자리의 테두리, 인식 영역 → 가장자리의 어두운 띠, 식별 → 디스플레이마다 큰 번호.
-/// 모두 클릭이 통과하는 창이고, 마지막으로 바꾼 뒤 잠시 지나면 사라진다.
+/// 모두 클릭이 통과하는 창이고, 부드럽게 나타났다가 마지막으로 바꾼 뒤 잠시 지나면 흐려지며 사라진다.
 /// </summary>
 internal static class BarPreview
 {
     private static readonly List<Window> _shown = new();
     private static readonly DispatcherTimer _hide = new() { Interval = TimeSpan.FromMilliseconds(1500) };
 
-    static BarPreview() => _hide.Tick += (_, _) => Clear();
+    static BarPreview() => _hide.Tick += (_, _) => FadeOutAll();
 
-    /// <summary>바가 다 나왔을 때의 자리를 강조색 테두리로.</summary>
+    private static OutlineBand? _outline;
+
+    /// <summary>바가 다 나왔을 때의 자리를 강조색 테두리로. 가장자리에서 자라 나오고, 값을 바꾸면 새 두께로 미끄러진다.</summary>
     public static void Outline(Forms.Screen screen, ScreenEdge edge, int sizePercent)
     {
-        var r = BarWindow.FinalRect(screen, edge, sizePercent);
-        var frame = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(3) };
-        frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
-        Show(new[] { (r, (UIElement)frame) });
+        Clear();
+        if (_outline == null || !_outline.Matches(screen, edge))
+        {
+            _outline?.Close();
+            _outline = new OutlineBand(screen, edge);
+        }
+        _outline.ShowSize(sizePercent);
     }
 
     private static ZoneBand? _zone;
@@ -70,6 +75,21 @@ internal static class BarPreview
         Show(items, TimeSpan.FromSeconds(2.5));
     }
 
+    /// <summary>시간이 다 된 안내를 흐려지며 닫는다.</summary>
+    private static void FadeOutAll()
+    {
+        _hide.Stop();
+        var windows = _shown.ToArray();
+        _shown.Clear();
+        foreach (var w in windows)
+        {
+            if (w.Content is not UIElement content) { w.Close(); continue; }
+            var fade = Motion.In(null, 0, Motion.Normal);
+            fade.Completed += (_, _) => w.Close();
+            content.BeginAnimation(UIElement.OpacityProperty, fade);
+        }
+    }
+
     public static void Clear()
     {
         // 인식 영역 띠는 따로 들어간다(두께를 바꾸는 동안에는 테두리만 지운다).
@@ -107,6 +127,13 @@ internal static class BarPreview
                 Hwnd.MakeClickThrough(hwnd);
                 Native.SetWindowPos(hwnd, Hwnd.Topmost, r.Left, r.Top, r.Width, r.Height, Native.SWP_NOACTIVATE);
             };
+            // 살짝 커지며 나타난다.
+            var grow = new ScaleTransform(0.92, 0.92);
+            content.RenderTransformOrigin = new Point(0.5, 0.5);
+            content.RenderTransform = grow;
+            content.BeginAnimation(UIElement.OpacityProperty, Motion.In(0, 1, Motion.Fast));
+            grow.BeginAnimation(ScaleTransform.ScaleXProperty, Motion.In(0.92, 1, Motion.Normal));
+            grow.BeginAnimation(ScaleTransform.ScaleYProperty, Motion.In(0.92, 1, Motion.Normal));
             w.Show();
             // 다른 배율의 모니터로 옮겨지면서 크기가 다시 잡힐 수 있어 한 번 더 맞춘다.
             Native.SetWindowPos(Hwnd.Of(w), Hwnd.Topmost, r.Left, r.Top, r.Width, r.Height, Native.SWP_NOACTIVATE);

@@ -274,6 +274,22 @@ internal static partial class Program
                             throw new Exception($"width {width}: narrow [{string.Join(", ", narrow)}] clipped [{string.Join(", ", clipped)}]");
                     }
                 });
+                Test("settings page keeps its scroll position when a value change redraws it", () =>
+                {
+                    var go = typeof(SettingsWindow).GetMethod("Go", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                    go.Invoke(settings, new[] { Enum.Parse(go.GetParameters()[0].ParameterType, "Bar") });
+                    settings.Width = 760;
+                    settings.Height = 460;
+                    settings.UpdateLayout();
+                    Pump(400);
+                    settings.PageScroller.ScrollToEnd();
+                    Pump(100);
+                    double before = settings.PageScroller.VerticalOffset;
+                    mgr.BarDelay = mgr.BarDelay == 500 ? 600 : 500; // 값이 바뀌면 페이지를 다시 그린다
+                    Pump(200);
+                    double after = settings.PageScroller.VerticalOffset;
+                    if (!(before > 0 && Math.Abs(after - before) < 1)) throw new Exception($"offset {before:0} -> {after:0}");
+                });
                 Test("key combo subpage opens and returns with escape", () =>
                 {
                     var go = typeof(SettingsWindow).GetMethod("Go", BindingFlags.Instance | BindingFlags.NonPublic)!;
