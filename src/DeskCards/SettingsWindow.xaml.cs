@@ -296,6 +296,7 @@ internal partial class SettingsWindow : Window
         _keyEditor = null;
         Page.Children.Clear();
         Breadcrumb.Children.Clear();
+        PageAction.Content = null;
         _first = true;
         switch (_page)
         {

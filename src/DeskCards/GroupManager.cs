@@ -31,7 +31,8 @@ internal sealed partial class GroupManager
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>바탕화면의 모든 카드(폴더 카드 + .dard 카드).</summary>
-    public IEnumerable<DeskCard> AllCards => _cards.Values.Cast<DeskCard>().Concat(_dards.Values.SelectMany(d => d.Windows));
+    /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
+    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>().Concat(_dards.Values.SelectMany(d => d.Windows));
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -420,6 +421,7 @@ internal sealed partial class GroupManager
         if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[newName] = position;
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
+        RenameInBar(oldName, newName);
         _cfg.Save();
     }
 
@@ -490,7 +492,8 @@ internal sealed partial class GroupManager
         group.Changed += RaiseChanged;
         var card = new CardWindow(group, this);
         _cards[group.Name] = card;
-        PlaceAndShow(card, null);
+        // 카드 바 전용 그룹은 바탕화면에 띄우지 않는다(바가 이 카드의 그룹·모양만 쓴다).
+        if (!IsBarOnly(group.Name)) PlaceAndShow(card, null);
         return card;
     }
 
@@ -671,6 +674,7 @@ internal sealed partial class GroupManager
         _cfg.Positions.Remove(g.Name);
         _cfg.Layouts.Remove(g.Name);
         _cfg.Orders.Remove(g.Name);
+        RemoveFromBar(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
         RaiseChanged();

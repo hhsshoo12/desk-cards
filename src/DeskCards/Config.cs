@@ -49,6 +49,12 @@ internal sealed class Config
     /// <summary>카드 바: 조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 나오는 카드 줄.</summary>
     public bool BarEnabled { get; set; } = true;
 
+    /// <summary>카드 바에 놓은 카드(비어 있으면 빈 바). 위치·크기는 바 두께 단위라 바 두께·모니터가 바뀌어도 같은 모양이다.</summary>
+    public List<BarItem> BarItems { get; set; } = new();
+
+    /// <summary>바탕화면에는 없고 카드 바에만 있는 그룹 이름.</summary>
+    public List<string> BarOnlyGroups { get; set; } = new();
+
     /// <summary>가장자리에 대고 있어야 하는 시간(ms, 0~2000, 0.1초 단위). 이 동안 커서 옆 게이지가 한 바퀴 돈다.</summary>
     public int BarDelay { get; set; } = 500;
 
@@ -122,6 +128,10 @@ internal sealed class Config
                     if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
                     else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
                     cfg.HiddenTips = cfg.HiddenTips?.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList() ?? new();
+                    cfg.BarItems = (cfg.BarItems ?? new())
+                        .Where(i => i != null && !string.IsNullOrEmpty(i.Group) && double.IsFinite(i.X) && double.IsFinite(i.Y) && double.IsFinite(i.W) && i.W > 0)
+                        .GroupBy(i => i.Group, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+                    cfg.BarOnlyGroups = cfg.BarOnlyGroups?.Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new();
                     cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
                     cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
                     cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
@@ -178,6 +188,17 @@ internal sealed class Config
 }
 
 /// <summary>.dard 한 종류(매니페스트 id)의 승인. 해시가 바뀌면 다시 묻는다(권한이 같거나 줄었으면 그대로 승인).</summary>
+/// <summary>카드 바에 놓은 카드 하나. X·Y(왼쪽 위)와 W(너비)는 바 두께를 1로 친 값이다.</summary>
+internal sealed class BarItem
+{
+    public string Group { get; set; } = "";
+    public double X { get; set; }
+    public double Y { get; set; }
+    public double W { get; set; } = 0.8;
+
+    public BarItem Clone() => new() { Group = Group, X = X, Y = Y, W = W };
+}
+
 internal sealed class DardApproval
 {
     public string Hash { get; set; } = "";

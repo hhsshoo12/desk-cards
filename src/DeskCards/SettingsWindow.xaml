@@ -337,7 +337,16 @@
                         <TranslateTransform x:Name="PageShift" />
                     </ScrollViewer.RenderTransform>
                     <StackPanel x:Name="PageContent" Margin="28,0,40,40" MaxWidth="1000">
-                        <WrapPanel x:Name="Breadcrumb" Margin="0,4,0,24" />
+                        <!-- 페이지 제목(경로)과, 오른쪽 끝의 페이지 전체 켬/끔(예: 카드 바 사용) -->
+                        <Grid Margin="0,4,0,24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <WrapPanel x:Name="Breadcrumb" />
+                            <ContentControl x:Name="PageAction" Grid.Column="1" Focusable="False"
+                                            VerticalAlignment="Center" Margin="16,4,0,0" />
+                        </Grid>
                         <StackPanel x:Name="Page" />
                     </StackPanel>
                 </ScrollViewer>

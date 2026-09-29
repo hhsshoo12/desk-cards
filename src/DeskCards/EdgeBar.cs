@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
 using System.Windows.Input;
@@ -41,6 +42,23 @@ internal static class EdgeBar
         _timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
+    }
+
+    /// <summary>카드 바 편집: 바를 열고(이미 열려 있으면 그대로) 편집을 시작한다. 주 디스플레이의 바를 먼저 쓴다.</summary>
+    public static void OpenForEdit()
+    {
+        if (_mgr == null) return;
+        if (_bar is { IsGone: false } open) { open.BeginEdit(); return; }
+        foreach (var screen in Forms.Screen.AllScreens.OrderByDescending(s => s.Primary))
+        {
+            if (_mgr.BarEdgeFor(screen.DeviceName) is not { } edge) continue;
+            Reset();
+            _armed = false;
+            _bar = new BarWindow(_mgr, screen, edge);
+            _bar.Open();
+            _bar.BeginEdit();
+            return;
+        }
     }
 
     public static void Stop()

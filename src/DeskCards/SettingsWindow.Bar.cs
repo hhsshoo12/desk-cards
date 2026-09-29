@@ -17,13 +17,19 @@ internal partial class SettingsWindow
     private System.Windows.Forms.Screen SelectedDisplay(List<System.Windows.Forms.Screen> screens) =>
         screens.FirstOrDefault(s => s.DeviceName == _barDisplay) ?? screens.FirstOrDefault(s => s.Primary) ?? screens[0];
 
-    /// <summary>카드 바 페이지: 켜기, 디스플레이 배치에서 고른 디스플레이의 가장자리, 여는 법, 모양.</summary>
+    /// <summary>카드 바 페이지: 제목 옆 켬/끔, 카드 바 편집, 디스플레이 배치에서 고른 디스플레이의 가장자리, 여는 법, 모양.</summary>
     private void BuildBar()
     {
         Crumb("카드 바");
-        AddRow(Row("", "카드 바 사용",
-            "조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 커서 둘레의 게이지가 한 바퀴 돌고 카드 바가 나와요. 바 밖으로 마우스를 옮기면 들어가요.",
-            Switch(_mgr.BarEnabled, v => _mgr.BarEnabled = v)));
+        // 카드 바 전체 켬/끔은 페이지 제목 오른쪽 끝에 둔다(Windows 설정의 블루투스처럼).
+        var enabled = Switch(_mgr.BarEnabled, v => _mgr.BarEnabled = v);
+        enabled.ToolTip = "카드 바 사용";
+        PageAction.Content = enabled;
+        AddRow(Row("", "카드 바 편집",
+            "바를 열어 둔 채로 카드를 넣고, 원하는 자리에 끌어다 놓아요. 바탕화면처럼 안내선이 줄을 맞춰 줘요.",
+            Button("편집", EdgeBar.OpenForEdit, accent: true)));
+        AddRow(Row("", "여는 법 요약",
+            "조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 커서 둘레의 게이지가 한 바퀴 돌고 카드 바가 나와요. 바 밖으로 마우스를 옮기면 들어가요.", null));
 
         var screens = Displays();
         var selected = SelectedDisplay(screens);

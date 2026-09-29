@@ -26,28 +26,26 @@ internal partial class EditBar : Window
     private readonly GroupManager _mgr;
     private readonly TextBlock _name;
     private readonly ToggleButton _guides;
-    private readonly Button[] _cardButtons, _folderButtons;
-    private readonly Button _gridButton;
+    private readonly Button[] _cardButtons = Array.Empty<Button>(), _folderButtons = Array.Empty<Button>();
+    private readonly Button? _gridButton;
+    /// <summary>카드 바 편집 중이면 그 바. 없으면 바탕화면 편집.</summary>
+    private readonly BarWindow? _cardBar;
     private Popup? _gridPopup;
 
-    private EditBar(GroupManager mgr)
+    private EditBar(GroupManager mgr, BarWindow? cardBar = null)
     {
         InitializeComponent();
         _mgr = mgr;
-
-        Items.Children.Add(Btn("", "새 그룹", () => _mgr.NewGroup()));
+        _cardBar = cardBar;
         _guides = new ToggleButton
         {
             Style = (Style)FindResource("BarToggle"),
-            Content = Glyph(""),
+            Content = Glyph("\uE80A"),
             ToolTip = "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)",
             IsChecked = _mgr.ShowGuides,
         };
         AutomationProperties.SetName(_guides, "안내선");
         _guides.Click += (_, _) => _mgr.ShowGuides = _guides.IsChecked == true;
-        Items.Children.Add(_guides);
-        Items.Children.Add(Sep());
-
         _name = new TextBlock
         {
             FontSize = 13,
@@ -57,6 +55,42 @@ internal partial class EditBar : Window
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
+
+        if (cardBar != null)
+        {
+            // 카드 바 편집: [+ 카드 넣기] [안내선] | 이름 | [바에서 빼기] | [완료]
+            Button? add = null;
+            add = Btn("\uE710", "카드 넣기", () =>
+            {
+                var p = add!.PointToScreen(new Point(0, add.ActualHeight + 4));
+                cardBar.ShowAddMenu(p);
+            });
+            Items.Children.Add(add);
+            Items.Children.Add(_guides);
+            Items.Children.Add(Sep());
+            Items.Children.Add(_name);
+            _cardButtons = new[] { Btn("\uE738", "카드 바에서 빼기 (Delete, 카드 바에만 있던 그룹은 바탕화면으로)", cardBar.RemoveSelected) };
+            foreach (var b in _cardButtons) Items.Children.Add(b);
+            Items.Children.Add(Sep());
+            Items.Children.Add(DoneButton());
+            cardBar.EditStateChanged += Refresh;
+            _mgr.Changed += Refresh;
+            Refresh();
+            SourceInitialized += OnSourceInitialized;
+            BarRoot.SizeChanged += (_, _) =>
+            {
+                Width = BarRoot.ActualWidth;
+                Height = BarRoot.ActualHeight;
+                PlaceTop();
+            };
+            PreviewKeyDown += OnKey;
+            return;
+        }
+
+        Items.Children.Add(Btn("", "새 그룹", () => _mgr.NewGroup()));
+        Items.Children.Add(_guides);
+        Items.Children.Add(Sep());
+
         Items.Children.Add(_name);
 
         _gridButton = GridButton();
@@ -87,6 +121,15 @@ internal partial class EditBar : Window
         PreviewKeyDown += OnKey;
     }
 
+    /// <summary>카드 바 편집 막대(바가 있는 화면에, 바와 떨어진 쪽 가운데).</summary>
+    public static void OpenForCardBar(GroupManager mgr, BarWindow bar)
+    {
+        CloseBar();
+        _bar = new EditBar(mgr, bar);
+        _bar.Show();
+        _bar.Activate();
+    }
+
     public static void Open(GroupManager mgr)
     {
         if (_bar == null)
@@ -112,6 +155,16 @@ internal partial class EditBar : Window
 
     private void Refresh()
     {
+        if (_cardBar != null)
+        {
+            string? name = _cardBar.SelectedName;
+            _name.Text = name ?? "카드를 누르세요";
+            _name.SetResourceReference(TextBlock.ForegroundProperty, name != null ? "Fg" : "SubFg");
+            _name.ToolTip = name;
+            foreach (var b in _cardButtons) b.IsEnabled = name != null;
+            _guides.IsChecked = _mgr.ShowGuides;
+            return;
+        }
         var sel = _mgr.Selected;
         _name.Text = sel?.CardName ?? "카드를 누르세요";
         _name.SetResourceReference(TextBlock.ForegroundProperty, sel != null ? "Fg" : "SubFg");
@@ -131,6 +184,21 @@ internal partial class EditBar : Window
     {
         var card = _mgr.Selected;
         int step = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1;
+        if (_cardBar is { } bar)
+        {
+            switch (e.Key)
+            {
+                case Key.Escape: bar.EndEdit(); break;
+                case Key.Delete: bar.RemoveSelected(); break;
+                case Key.Left: bar.Nudge(-step, 0); break;
+                case Key.Right: bar.Nudge(step, 0); break;
+                case Key.Up: bar.Nudge(0, -step); break;
+                case Key.Down: bar.Nudge(0, step); break;
+                default: return;
+            }
+            e.Handled = true;
+            return;
+        }
         switch (e.Key)
         {
             case Key.Escape:
@@ -265,7 +333,11 @@ internal partial class EditBar : Window
         content.Children.Add(new TextBlock { Text = "완료", FontSize = 14, Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center });
         var b = new Button { Style = (Style)FindResource("BarAccentButton"), Content = content, ToolTip = "편집 끝내기 (Esc)" };
         AutomationProperties.SetName(b, "완료");
-        b.Click += (_, _) => _mgr.EndEditMode();
+        b.Click += (_, _) =>
+        {
+            if (_cardBar != null) _cardBar.EndEdit();
+            else _mgr.EndEditMode();
+        };
         return b;
     }
 
@@ -283,9 +355,18 @@ internal partial class EditBar : Window
 
     private void PlaceTop()
     {
-        var wa = SystemParameters.WorkArea;
-        Left = wa.Left + (wa.Width - Width) / 2;
-        Top = wa.Top + 12;
+        if (_cardBar != null)
+        {
+            // 카드 바가 있는 화면의 위쪽 가운데. 바가 위에 있으면 아래쪽 가운데.
+            var wa = _cardBar.Screen.WorkingArea;
+            double s = Native.MonitorScaleAt(wa.Left + wa.Width / 2, wa.Top + wa.Height / 2);
+            Left = (wa.Left + wa.Width / 2) / s - Width / 2;
+            Top = _cardBar.Edge == ScreenEdge.Top ? wa.Bottom / s - 12 - Height : wa.Top / s + 12;
+            return;
+        }
+        var area = SystemParameters.WorkArea;
+        Left = area.Left + (area.Width - Width) / 2;
+        Top = area.Top + 12;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -299,13 +380,15 @@ internal partial class EditBar : Window
     {
         _mgr.EditChanged -= Refresh;
         _mgr.Changed -= Refresh;
+        if (_cardBar != null) _cardBar.EditStateChanged -= Refresh;
         if (_gridPopup != null) _gridPopup.IsOpen = false;
         base.OnClosed(e);
         // Alt+F4 등으로 막대만 닫혔으면 편집 모드도 끝낸다.
         if (_bar == this)
         {
             _bar = null;
-            _mgr.EndEditMode();
+            if (_cardBar != null) _cardBar.EndEdit();
+            else _mgr.EndEditMode();
         }
     }
 }

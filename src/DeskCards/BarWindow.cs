@@ -12,12 +12,12 @@ using Forms = System.Windows.Forms;
 namespace DeskCards;
 
 /// <summary>
-/// 화면 가장자리에서 미끄러져 나오는 카드 줄(아크릴). 바탕화면 카드와 같은 CardView를 바 두께에 맞춰 늘어놓는다.
-/// 나올 때와 들어갈 때 모두 처음엔 빠르고 끝으로 갈수록 느려진다. 바 밖으로 마우스가 나가면 들어간다.
+/// 화면 가장자리에서 미끄러져 나오는 카드 판(아크릴). 사용자가 카드 바 편집에서 자유롭게 놓은 카드를 보여 준다(BarWindow.Cards).
+/// 나올 때와 들어갈 때 모두 처음엔 빠르고 끝으로 갈수록 느려진다. 바 밖으로 마우스가 나가면 들어간다(편집 중에는 그대로 있다).
 /// </summary>
-internal sealed class BarWindow : Window
+internal sealed partial class BarWindow : Window
 {
-    private const double Gap = 8, Pad = 12, Spacing = 12, MaxCardScale = 2.5;
+    private const double Gap = 8, Pad = 12;
     private const double OpenMs = Motion.Slow, CloseMs = Motion.Normal;
 
     private readonly GroupManager _mgr;
@@ -25,8 +25,6 @@ internal sealed class BarWindow : Window
     private readonly Forms.Screen _screen;
     private readonly double _scale;
     private readonly System.Drawing.Rectangle _final; // 다 나왔을 때 자리(물리 픽셀)
-    private readonly StackPanel _list;
-    private readonly ScrollViewer _scroller;
     private readonly Border _panel;
     private IntPtr _previous;
     private double _from, _to, _offset; // 가장자리 바깥으로 밀려난 정도(0 = 다 나옴, 1 = 다 들어감)
@@ -63,28 +61,12 @@ internal sealed class BarWindow : Window
             UseAeroCaptionButtons = false,
         });
 
-        _list = new StackPanel { Orientation = side ? Orientation.Vertical : Orientation.Horizontal, Margin = new Thickness(Pad) };
-        _scroller = new ScrollViewer
-        {
-            Content = _list,
-            VerticalScrollBarVisibility = side ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled,
-            HorizontalScrollBarVisibility = side ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Hidden,
-            Focusable = false,
-        };
-        // 위·아래 바는 휠로 옆으로 넘긴다.
-        if (!side)
-            _scroller.PreviewMouseWheel += (_, e) =>
-            {
-                _scroller.ScrollToHorizontalOffset(_scroller.HorizontalOffset - e.Delta);
-                e.Handled = true;
-            };
-
         // 창은 가장자리에서 잘린 만큼만 보이고, 안의 판은 늘 다 나온 크기다. 먼저 보이는 쪽(가장자리 반대쪽)에 붙인다.
         _panel = new Border
         {
             Width = _final.Width / _scale,
             Height = _final.Height / _scale,
-            Child = _scroller,
+            Child = CreateSurface(),
             HorizontalAlignment = edge == ScreenEdge.Left ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             VerticalAlignment = edge == ScreenEdge.Top ? VerticalAlignment.Bottom : VerticalAlignment.Top,
         };
@@ -95,8 +77,9 @@ internal sealed class BarWindow : Window
 
         BuildCards();
         _mgr.Changed += OnGroupsChanged;
+        _mgr.BarChanged += OnBarChanged;
         SourceInitialized += OnSourceInitialized;
-        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { BeginClose(); e.Handled = true; } };
+        PreviewKeyDown += OnKey;
     }
 
     private static double ScaleOf(Forms.Screen screen)
@@ -135,65 +118,15 @@ internal sealed class BarWindow : Window
         Animate(0, OpenMs);
     }
 
-    // ----- 카드 -----
-
-    private void OnGroupsChanged()
-    {
-        // 그룹이 생기거나 없어졌을 때만 다시 늘어놓는다(항목 변화는 각 CardView가 알아서 그린다).
-        var shown = Views().Select(v => v.Group).ToList();
-        if (!shown.SequenceEqual(_mgr.Cards.Select(c => c.Group))) Dispatcher.BeginInvoke(BuildCards);
-    }
-
-    private void BuildCards()
-    {
-        foreach (var v in Views().ToList()) v.Detach();
-        _list.Children.Clear();
-        bool side = _edge is ScreenEdge.Left or ScreenEdge.Right;
-        double room = (side ? _final.Width : _final.Height) / _scale - 2 * Pad;
-        double cell = _mgr.CellSize;
-
-        foreach (var card in _mgr.Cards)
-        {
-            var c = card;
-            var layout = _mgr.GetLayout(c.Group.Name);
-            var view = new CardView(c.Group, _mgr, onDesktop: false);
-            view.Apply(layout, cell);
-            view.Expand = hover => OpenExpanded(c, view, hover);
-            view.CardMenu = () => Menus.ForCard(c, _mgr);
-
-            // 바 두께에 맞춰 카드 전체를 같은 비율로 키우거나 줄인다.
-            double k = Math.Min(MaxCardScale, room / (side ? view.Width : view.Height));
-            var holder = new Border
-            {
-                Child = view,
-                Tag = view,
-                LayoutTransform = new ScaleTransform(k, k),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = side ? new Thickness(0, 0, 0, Spacing) : new Thickness(0, 0, Spacing, 0),
-            };
-            _list.Children.Add(holder);
-        }
-        if (_list.Children.Count == 0)
-        {
-            var empty = new TextBlock { Text = "카드가 없어요", FontSize = 13, Margin = new Thickness(4) };
-            empty.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-            _list.Children.Add(new Border { Child = empty, Tag = null });
-        }
-    }
-
-    private System.Collections.Generic.IEnumerable<CardView> Views() =>
-        _list.Children.OfType<FrameworkElement>().Select(f => f.Tag).OfType<CardView>();
-
     /// <summary>더보기로 펼친 창은 바 옆(화면 안쪽)에, 누른 카드 높이(또는 가로 위치)에 맞춰 띄운다.</summary>
-    private void OpenExpanded(CardWindow card, CardView view, bool hover)
+    private void OpenExpanded(CardWindow card, FrameworkElement view, bool hover, bool editTitle = false)
     {
         if (hover && ExpandedWindow.IsOpenFor(card)) return;
         var topLeft = view.PointToScreen(new Point(0, 0));
         var bottomRight = view.PointToScreen(new Point(view.ActualWidth, view.ActualHeight));
         var wa = _screen.WorkingArea;
         double s = _scale, gap = Gap;
-        ExpandedWindow.Open(card, _mgr, hover: hover, anchor: this, place: size =>
+        ExpandedWindow.Open(card, _mgr, editTitle: editTitle, hover: hover, anchor: this, place: size =>
         {
             double cx = (topLeft.X + bottomRight.X) / 2 / s, cy = (topLeft.Y + bottomRight.Y) / 2 / s;
             double bl = _final.Left / s, bt = _final.Top / s, br = _final.Right / s, bb = _final.Bottom / s;
@@ -283,7 +216,7 @@ internal sealed class BarWindow : Window
     /// </summary>
     public void CheckLeave()
     {
-        if (_closing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
+        if (_closing || _editing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
         if (!Native.GetCursorPos(out var pt)) return;
         var r = _final;
         var b = _screen.Bounds;
@@ -299,7 +232,10 @@ internal sealed class BarWindow : Window
         BeginClose();
     }
 
-    private void BeginClose()
+    public Forms.Screen Screen => _screen;
+    public ScreenEdge Edge => _edge;
+
+    public void BeginClose()
     {
         if (_closing) return;
         _closing = true;
@@ -313,7 +249,10 @@ internal sealed class BarWindow : Window
         IsGone = true;
         if (_animating) CompositionTarget.Rendering -= OnFrame;
         _mgr.Changed -= OnGroupsChanged;
-        foreach (var v in Views().ToList()) v.Detach();
+        _mgr.BarChanged -= OnBarChanged;
+        if (_editing) EditBar.CloseBar();
+        SmartGuides.Hide();
+        foreach (var e2 in _entries) e2.View.Detach();
         base.OnClosed(e);
     }
 }

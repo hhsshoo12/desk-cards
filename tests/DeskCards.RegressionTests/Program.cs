@@ -232,6 +232,67 @@ internal static partial class Program
             }
             finally { mgr.Shutdown(); }
         });
+        Test("card bar keeps its own free layout and bar-only groups stay off the desktop", () =>
+        {
+            string groups = Path.Combine(root, "bar-groups");
+            Directory.CreateDirectory(Path.Combine(groups, "DESK"));
+            string cfgPath = Path.Combine(root, "bar.json");
+            var cfg = Config.Load(cfgPath);
+            var mgr = new GroupManager(groups, cfg);
+            try
+            {
+                mgr.Start();
+                Pump(100);
+                Check(mgr.BarItems.Count == 0); // 처음엔 빈 바
+                var desk = mgr.Cards.Single();
+                Check(mgr.CardsNotInBar().Single() == desk);
+
+                // 바에만 있는 그룹: 카드는 있지만 바탕화면에는 뜨지 않고, 편집·배치 대상에서도 빠진다.
+                var only = mgr.NewBarGroup()!;
+                Pump(100);
+                Check(mgr.IsBarOnly(only.Group.Name) && !only.IsVisible && !mgr.AllCards.Contains(only));
+                Check(!mgr.CardsNotInBar().Contains(only));
+
+                mgr.SetBarItems(new[]
+                {
+                    new BarItem { Group = "DESK", X = 0.1, Y = 0.2, W = 0.8 },
+                    new BarItem { Group = only.Group.Name, X = 0.1, Y = 2, W = 0.5 },
+                });
+                var saved = Config.Load(cfgPath);
+                Check(saved.BarItems.Count == 2 && saved.BarItems[0].Y == 0.2 && saved.BarOnlyGroups.Single() == only.Group.Name);
+
+                // 이름을 바꾸면 바 배치와 바 전용 표시도 따라간다.
+                Check(mgr.RenameGroup(only, "ONLY"));
+                Check(mgr.BarItems.Any(i => i.Group == "ONLY") && mgr.IsBarOnly("ONLY"));
+
+                // 바는 저장된 자리에 그대로 놓는다(바 두께 단위). 넣은 카드는 빈자리에, 다른 카드와 겹치지 않게.
+                var screen = System.Windows.Forms.Screen.PrimaryScreen!;
+                var bar = new BarWindow(mgr, screen, ScreenEdge.Right);
+                try
+                {
+                    bar.Open();
+                    Pump(500);
+                    Check(!bar.IsEditing);
+                    bar.BeginEdit();
+                    Pump(100);
+                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1);
+                    bar.EndEdit();
+                    Pump(100);
+                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any());
+                }
+                finally { bar.Close(); }
+
+                // 바탕화면으로 꺼내면 바 전용 표시가 풀리고 바탕화면에 뜬다.
+                mgr.ShowOnDesktop(mgr.GroupCard("ONLY")!);
+                Pump(100);
+                Check(!mgr.IsBarOnly("ONLY") && mgr.GroupCard("ONLY")!.IsVisible && mgr.AllCards.Contains(mgr.GroupCard("ONLY")!));
+
+                // 그룹을 지우면 바에서도 빠진다.
+                Check(mgr.DeleteGroup(mgr.GroupCard("DESK")!));
+                Check(mgr.BarItems.All(i => i.Group != "DESK"));
+            }
+            finally { mgr.Shutdown(); }
+        });
         Test("settings, edit bar, and expanded window lifecycle", () =>
         {
             var cfg = Config.Load(Path.Combine(root, "windows.json"));
