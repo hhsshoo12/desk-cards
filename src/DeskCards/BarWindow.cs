@@ -208,6 +208,7 @@ internal sealed partial class BarWindow : Window
         _animating = false;
         CompositionTarget.Rendering -= OnFrame;
         if (_closing) Close();
+        else ShowFloat();
     }
 
     /// <summary>
@@ -229,6 +230,7 @@ internal sealed partial class BarWindow : Window
             default: bb = b.Bottom; break;
         }
         if (pt.X >= l && pt.X < rr && pt.Y >= t && pt.Y < bb) return;
+        if (_float != null && _float.Contains(pt.X, pt.Y)) return; // 옆에 떠 있는 설정 버튼 위도 바 안으로 친다
         BeginClose();
     }
 
@@ -239,6 +241,7 @@ internal sealed partial class BarWindow : Window
     {
         if (_closing) return;
         _closing = true;
+        HideFloat();
         // 바에서 앱을 열었으면 그 앱이 앞에 있으니 그대로 두고, 아니면 원래 쓰던 창으로 돌려준다.
         if (Native.GetForegroundWindow() == Hwnd.Of(this) && _previous != IntPtr.Zero) Native.SetForegroundWindow(_previous);
         Animate(1, CloseMs);
@@ -250,6 +253,7 @@ internal sealed partial class BarWindow : Window
         if (_animating) CompositionTarget.Rendering -= OnFrame;
         _mgr.Changed -= OnGroupsChanged;
         _mgr.BarChanged -= OnBarChanged;
+        _float?.Close();
         if (_editing) EditBar.CloseBar();
         SmartGuides.Hide();
         foreach (var e2 in _entries) e2.View.Detach();

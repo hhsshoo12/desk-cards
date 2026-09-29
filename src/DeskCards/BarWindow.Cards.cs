@@ -76,55 +76,34 @@ internal sealed partial class BarWindow
         var grid = new Grid { Margin = new Thickness(Pad) };
         grid.Children.Add(_canvas);
         grid.Children.Add(_empty);
-        var root = new Grid();
-        root.Children.Add(grid);
-        root.Children.Add(_settingsButton = SettingsButton());
-        return root;
+        return grid;
     }
 
-    private Border? _settingsButton;
+    private BarFloatButton? _float;
 
-    /// <summary>
-    /// 바 오른쪽 위의 작은 설정(톱니) 버튼. Windows의 아이콘 버튼처럼 평소엔 바탕 없이 아이콘만, 올리면 옅은 바탕.
-    /// 누르면 바를 넣고 설정 › 카드 바를 연다.
-    /// </summary>
-    private Border SettingsButton()
+    /// <summary>바가 다 나오면 바 옆(화면 안쪽, 시작 모서리)에 설정 버튼을 띄운다. 편집 중에는 띄우지 않는다.</summary>
+    private void ShowFloat()
     {
-        var icon = new TextBlock
+        if (_editing || _closing || IsGone) return;
+        _float ??= new BarFloatButton(this, () =>
         {
-            Text = "",
-            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = 14,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        icon.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
-        var hover = new Border { CornerRadius = new CornerRadius(4), Opacity = 0 };
-        hover.SetResourceReference(Border.BackgroundProperty, "HoverBg");
-        var b = new Border
-        {
-            Width = 32,
-            Height = 32,
-            Background = Brushes.Transparent,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, 4, 4, 0),
-            Child = new Grid { Children = { hover, icon } },
-            ToolTip = "카드 바 설정",
-        };
-        Panel.SetZIndex(b, 2);
-        b.MouseEnter += (_, _) => hover.BeginAnimation(OpacityProperty, Motion.In(null, 1, Motion.Faster));
-        b.MouseLeave += (_, _) => { hover.BeginAnimation(OpacityProperty, Motion.In(null, 0, Motion.Faster)); icon.Opacity = 1; };
-        b.MouseLeftButtonDown += (_, e) => { e.Handled = true; icon.Opacity = 0.7; };
-        b.MouseLeftButtonUp += (_, e) =>
-        {
-            e.Handled = true;
-            icon.Opacity = 1;
             BeginClose();
             SettingsWindow.OpenBar(_mgr);
+        });
+        int gap = (int)Math.Round(Gap * _scale), size = (int)Math.Round(BarFloatButton.Size * _scale);
+        var f = _final;
+        var (x, y) = _edge switch
+        {
+            ScreenEdge.Right => (f.Left - gap - size, f.Top),
+            ScreenEdge.Left => (f.Right + gap, f.Top),
+            ScreenEdge.Top => (f.Left, f.Bottom + gap),
+            _ => (f.Left, f.Top - gap - size),
         };
-        return b;
+        _float.PlaceBody(x, y, _scale);
+        _float.FadeIn();
     }
+
+    private void HideFloat() => _float?.FadeOut();
 
     private void OnGroupsChanged()
     {
@@ -288,7 +267,7 @@ internal sealed partial class BarWindow
         _editing = true;
         ExpandedWindow.CloseCurrent();
         foreach (var e in _entries) e.Shield.Visibility = Visibility.Visible;
-        if (_settingsButton != null) _settingsButton.Visibility = Visibility.Collapsed;
+        HideFloat();
         UpdateEmpty();
         EditBar.OpenForCardBar(_mgr, this);
         EditStateChanged?.Invoke();
@@ -301,7 +280,7 @@ internal sealed partial class BarWindow
         if (_dragging != null) EndDrag();
         Select(null);
         foreach (var e in _entries) e.Shield.Visibility = Visibility.Collapsed;
-        if (_settingsButton != null) _settingsButton.Visibility = Visibility.Visible;
+        ShowFloat();
         UpdateEmpty();
         SmartGuides.Hide();
         EditBar.CloseBar();

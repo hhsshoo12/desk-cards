@@ -273,17 +273,18 @@ internal static partial class Program
                     bar.Open();
                     Pump(500);
                     Check(!bar.IsEditing);
-                    // 오른쪽 위 작은 설정 버튼: 평소엔 보이고 편집 중엔 숨는다.
-                    Border SettingsButton() => Visuals<Border>(bar).Single(b => b.ToolTip as string == "카드 바 설정");
-                    Check(SettingsButton().IsVisible);
+                    // 바 옆에 떠 있는 설정 버튼: 바가 다 나오면 보이고, 바의 시작 모서리 옆(화면 안쪽)에 있고, 편집 중엔 숨는다.
+                    var gear = app.Windows.OfType<BarFloatButton>().Single();
+                    Native.GetWindowRect(Hwnd.Of(bar), out var barRect);
+                    Check(gear.IsVisible && gear.Opacity > 0.5 && gear.BodyRect.Right < barRect.Left && gear.BodyRect.Top == barRect.Top);
                     if (Environment.GetEnvironmentVariable("DESKCARDS_SNAPSHOT_DIR") is { Length: > 0 } dir)
                         Snapshot(bar, Path.Combine(dir, "card-bar.png"));
                     bar.BeginEdit();
                     Pump(100);
-                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1 && !SettingsButton().IsVisible);
+                    Check(bar.IsEditing && app.Windows.OfType<EditBar>().Count() == 1 && gear.Opacity < 0.5);
                     bar.EndEdit();
                     Pump(100);
-                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any() && SettingsButton().IsVisible);
+                    Check(!bar.IsEditing && !app.Windows.OfType<EditBar>().Any() && gear.Opacity > 0.5);
                 }
                 finally { bar.Close(); }
 
