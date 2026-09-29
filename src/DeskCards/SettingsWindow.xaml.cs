@@ -138,6 +138,13 @@ internal partial class SettingsWindow : Window
         _win.Reveal(mgr);
     }
 
+    /// <summary>설정 창을 카드 바 페이지로 연다(카드 바의 설정 버튼에서).</summary>
+    public static void OpenBar(GroupManager mgr)
+    {
+        Open(mgr);
+        _win!.Go(PageKind.Bar);
+    }
+
     /// <summary>설정 창을 일반 페이지로 연다(붙이기 안내 말풍선에서).</summary>
     public static void OpenGeneral(GroupManager mgr)
     {
