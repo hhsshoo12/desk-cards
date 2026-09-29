@@ -158,6 +158,27 @@ internal sealed partial class BarWindow
             Item = item, Card = card, View = view, Box = box, Scaled = scaled, Frame = frame, Grip = grip, Shield = shield,
             Aspect = view.Height / Math.Max(1, view.Width),
         };
+        // 바탕화면 카드처럼 파일·아이콘을 끌어다 놓으면 그 그룹에 넣는다. 놓을 수 있는 동안 파란 테두리.
+        box.AllowDrop = true;
+        void Over(object? _, DragEventArgs a)
+        {
+            bool ok = FileOps.CanAccept(a.Data, card.Group.Folder);
+            a.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
+            ShowDropTarget(e, ok);
+            a.Handled = true;
+        }
+        box.DragEnter += Over;
+        box.DragOver += Over;
+        box.DragLeave += (_, _) => ShowDropTarget(e, false);
+        box.Drop += (_, a) =>
+        {
+            ShowDropTarget(e, false);
+            if (a.Data.GetData(DataFormats.FileDrop) is string[] paths)
+                FileOps.AddToGroup(paths, card.Group.Folder, _mgr.Root);
+            // 이동은 우리가 직접 했으므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
+            a.Effects = DragDropEffects.None;
+            a.Handled = true;
+        };
         shield.MouseLeftButtonDown += (_, a) => StartDrag(e, a, resize: false, shield);
         grip.MouseLeftButtonDown += (_, a) => StartDrag(e, a, resize: true, grip);
         foreach (var handle in new UIElement[] { shield, grip })
@@ -260,6 +281,12 @@ internal sealed partial class BarWindow
         e.Frame.BorderBrush = invalid ? new SolidColorBrush(Color.FromRgb(0xE8, 0x11, 0x23)) : null;
         if (!invalid) e.Frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
         e.Frame.Visibility = invalid || (e == _selected && _editing) ? Visibility.Visible : Visibility.Hidden;
+    }
+
+    private void ShowDropTarget(Entry e, bool on)
+    {
+        if (e.Invalid) return;
+        e.Frame.Visibility = on || (e == _selected && _editing) ? Visibility.Visible : Visibility.Hidden;
     }
 
     /// <summary>[+]: 바탕화면 카드 넣기, 또는 바에만 있는 새 그룹 만들기.</summary>
