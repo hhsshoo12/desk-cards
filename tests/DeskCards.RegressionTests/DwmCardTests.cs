@@ -111,11 +111,20 @@ internal static partial class Program
                 var cells = card.View.Children.OfType<UniformGrid>().Single();
                 Check(frame.Background == null && frame.Effect == null && frame.BorderThickness == new Thickness(0));
                 Check(Math.Abs(frame.ActualHeight - card.View.ActualHeight) < 1);
-                // 이름은 카드 창 안에 두지 않고, 카드 바로 아래 따로 띄운 투명 창에 그림자 없는 흰 글자로 둔다.
+                // 이름은 카드 창 안에 두지 않고, 카드 바로 아래 따로 띄운 투명 창에 둔다.
                 Check(label.Visibility == Visibility.Collapsed);
                 var name = Application.Current.Windows.OfType<CardLabel>().Single(w => w.Owner == null && w.IsVisible && w.Text == card.Group.Name);
-                var text = (TextBlock)name.Content;
-                Check(text.Effect == null && text.Foreground == Brushes.White);
+                // 글자는 테두리·옅은 그림자까지 16표본으로 한 번 구운 그림이다. 가운데는 흰색, 가장자리는 어둡다.
+                var baked = name.Baked!;
+                var px = new byte[baked.PixelWidth * baked.PixelHeight * 4];
+                baked.CopyPixels(px, baked.PixelWidth * 4, 0);
+                bool white = false, dark = false;
+                for (int i = 0; i < px.Length; i += 4)
+                {
+                    if (px[i + 3] > 240 && px[i] > 240 && px[i + 1] > 240 && px[i + 2] > 240) white = true;
+                    if (px[i + 3] > 200 && px[i] < 30 && px[i + 1] < 30 && px[i + 2] < 30) dark = true;
+                }
+                Check(white && dark);
                 Native.GetWindowRect(Hwnd.Of(card), out var cr);
                 Native.GetWindowRect(Hwnd.Of(name), out var lr);
                 Check(lr.Left == cr.Left && lr.Right == cr.Right && lr.Top == cr.Bottom && lr.Bottom > lr.Top);
