@@ -43,6 +43,8 @@ internal static class Theme
             r["Danger"] = Brush("#FFC42B1C");
             r["MenuLine"] = Brush("#14000000");
             r["MonitorBg"] = Brush("#FFD6D6D6");
+            r["ScrollThumb"] = Brush("#FF8A8A8A");
+            r["ScrollTrack"] = Brush("#F2F9F9F9");
         }
         else
         {
@@ -66,6 +68,8 @@ internal static class Theme
             r["Danger"] = Brush("#FFFF99A4");
             r["MenuLine"] = Brush("#1FFFFFFF");
             r["MonitorBg"] = Brush("#FF3D3D3D");
+            r["ScrollThumb"] = Brush("#FF9F9F9F");
+            r["ScrollTrack"] = Brush("#F22C2C2C");
         }
         Changed?.Invoke();
     }

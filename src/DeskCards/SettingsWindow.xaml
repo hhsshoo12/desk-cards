@@ -185,6 +185,125 @@
             <Setter Property="Cursor" Value="Arrow" />
             <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
         </Style>
+
+        <!--
+            Windows 11 설정의 스크롤바: 평소엔 트랙 없이 가는 캡슐(2px)만 보이고,
+            마우스를 올리거나 잡으면 굵어지고(6px) 트랙 바탕과 ▲▼ 화살표가 나타난다. 떠나면 0.5초 뒤 다시 가늘어진다.
+            내용 위에 겹쳐 떠서 자리를 차지하지 않는다.
+        -->
+        <Style x:Key="ScrollArrow" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Grid Background="Transparent">
+                            <TextBlock x:Name="Glyph" Text="{TemplateBinding Content}" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ScrollThumb}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Glyph" Property="Opacity" Value="0.6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ScrollPage" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RepeatButton">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FluentScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="12" />
+            <Setter Property="MinWidth" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="14" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="14" />
+                            </Grid.RowDefinitions>
+                            <Border x:Name="Track" Grid.RowSpan="3" CornerRadius="6" Opacity="0"
+                                    Background="{DynamicResource ScrollTrack}" />
+                            <RepeatButton x:Name="Up" Style="{StaticResource ScrollArrow}" Opacity="0"
+                                          Command="ScrollBar.LineUpCommand" Content="&#xEDDB;" />
+                            <Track x:Name="PART_Track" Grid.Row="1" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageUpCommand" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb" Width="2" HorizontalAlignment="Center">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border CornerRadius="3" Background="{DynamicResource ScrollThumb}" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource ScrollPage}" Command="ScrollBar.PageDownCommand" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                            <RepeatButton x:Name="Down" Grid.Row="2" Style="{StaticResource ScrollArrow}" Opacity="0"
+                                          Command="ScrollBar.LineDownCommand" Content="&#xEDDC;" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Thumb" Storyboard.TargetProperty="Width" BeginTime="0:0:0"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="6" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Track" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="1" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Up" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="1" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Down" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="1" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Thumb" Storyboard.TargetProperty="Width" BeginTime="0:0:0.5"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="2" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Track" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0.5"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="0" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Up" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0.5"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="0" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                            <DoubleAnimationUsingKeyFrames Storyboard.TargetName="Down" Storyboard.TargetProperty="Opacity" BeginTime="0:0:0.5"><SplineDoubleKeyFrame KeyTime="0:0:0.167" Value="0" KeySpline="0,0,0,1" /></DoubleAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FluentScroll" TargetType="ScrollViewer">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Margin="{TemplateBinding Padding}"
+                                                    CanContentScroll="{TemplateBinding CanContentScroll}" />
+                            <ScrollBar x:Name="PART_VerticalScrollBar" Style="{StaticResource FluentScrollBar}"
+                                       HorizontalAlignment="Right" Margin="0,2,3,2" Orientation="Vertical"
+                                       Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid x:Name="Root">
@@ -212,7 +331,7 @@
                         <TranslateTransform x:Name="OldShift" />
                     </Image.RenderTransform>
                 </Image>
-                <ScrollViewer x:Name="PageScroller" VerticalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="PageScroller" Style="{StaticResource FluentScroll}" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <ScrollViewer.RenderTransform>
                         <TranslateTransform x:Name="PageShift" />
