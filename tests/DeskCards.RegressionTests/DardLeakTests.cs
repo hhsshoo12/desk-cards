@@ -91,6 +91,7 @@ internal static partial class Program
             try
             {
                 mgr.Start();
+                WaitUntilLong(() => mgr.AllCards.OfType<DardWindow>().Any(), 30000);
                 string net = WaitFor(WebOf(mgr.AllCards.OfType<DardWindow>().Single()), "__net");
                 Console.WriteLine("  fetch https://example.com: " + net);
                 Check(net == "ok");
@@ -146,6 +147,7 @@ internal static partial class Program
         try
         {
             mgr.Start();
+            WaitUntilLong(() => mgr.AllCards.OfType<DardWindow>().Any(), 30000);
             var card = mgr.AllCards.OfType<DardWindow>().Single();
             var web = Visuals<DardView>(card).Single().Children.OfType<Microsoft.Web.WebView2.Wpf.WebView2>().Single();
             WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");

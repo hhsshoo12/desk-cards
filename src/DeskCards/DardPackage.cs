@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -75,24 +76,46 @@ internal sealed class DardPackage
     /// 저장소가 있는 곳. 브라우저 데이터 폴더(online/offline)와 나누는 방식이 같으면 같은 저장소를 본다.
     /// 업데이트로 이 값이 바뀌면 불러오기 전에 저장소를 옮긴다.
     /// </summary>
-    public string StorageLocation => (Internet ? "online" : "offline") + "/" + (StoragePerCard ? "card" : "shared");
+    public string StorageLocation => (Internet ? "online" : "offline") + "/v2/" + (StoragePerCard ? "card" : "shared");
 
     /// <summary>.dard의 가상 호스트. 저장소를 같이 쓰면 모든 카드와 설정 화면이 이 주소에서 뜬다.</summary>
-    public string Host => Id + ".card.desk";
+    public string Host => StorageHost(Id, "s--v2");
 
-    /// <summary>카드 하나(와 그 카드의 설정 화면)가 뜨는 호스트. 저장소를 카드마다 나누면 카드 id가 앞에 붙는다.</summary>
-    public string HostFor(string cardId) => StoragePerCard ? cardId + "." + Host : Host;
+    private static string StorageHost(string key, string scope)
+    {
+        // SHA-256을 DNS용 base32로 표현해 긴 패키지·카드 id도 IndexedDB의 파일 경로를 늘리지 않는다.
+        // 가운데 '--' 레이블은 구형 매니페스트 id 문법으로 만들 수 없다.
+        const string alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+        var encoded = new StringBuilder(52);
+        int bits = 0, value = 0;
+        foreach (byte b in SHA256.HashData(Encoding.UTF8.GetBytes(key)))
+        {
+            value = (value << 8) | b;
+            bits += 8;
+            while (bits >= 5) { bits -= 5; encoded.Append(alphabet[(value >> bits) & 31]); }
+        }
+        if (bits > 0) encoded.Append(alphabet[(value << (5 - bits)) & 31]);
+        return $"{encoded}.{scope}.card.desk";
+    }
+
+    /// <summary>카드와 설정 화면의 호스트. 카드별 저장이면 패키지 id와 카드 id를 함께 해시한다.</summary>
+    public string HostFor(string cardId) => HostFor(cardId, StoragePerCard);
+
+    private string HostFor(string cardId, bool perCard) => perCard ? StorageHost(Id + "\0" + cardId, "c--v2") : Host;
 
     /// <summary>이 .dard가 쓰는 모든 origin(저장소 단위).</summary>
     public IReadOnlyList<string> Origins =>
         StoragePerCard ? Cards.Select(c => "https://" + HostFor(c.Id)).ToList() : new[] { "https://" + Host };
 
     /// <summary>카드의 옛 저장소 위치(perCard 방식이었는지에 따라)에서 이 카드가 쓰던 origin.</summary>
-    public string OriginFor(string cardId, bool perCard) => "https://" + (perCard ? cardId + "." + Host : Host);
+    public string OriginFor(string cardId, bool perCard) => "https://" + HostFor(cardId, perCard);
+
+    public string LegacyOriginFor(string cardId, bool perCard) => "https://" + (perCard ? cardId + "." : "") + Id + ".card.desk";
 
     /// <summary>이 .dard의 주소인지(다른 카드의 주소 포함).</summary>
     public bool OwnsHost(string host) =>
-        string.Equals(host, Host, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + Host, StringComparison.OrdinalIgnoreCase);
+        string.Equals(host, Host, StringComparison.OrdinalIgnoreCase) ||
+        Cards.Any(c => string.Equals(host, HostFor(c.Id, true), StringComparison.OrdinalIgnoreCase));
 
     public static DardPackage Load(string path)
     {

@@ -121,6 +121,10 @@ internal sealed partial class GroupManager
     /// <summary>확인할 것 하나를 처리한다. clear면 데이터를 지우고(되돌릴 수 없음), 아니면 그대로 두고 다시 알리지 않는다.</summary>
     public void ResolveDardIssue(DardIssue issue, bool clear)
     {
+        // 확인 창이 떠 있는 동안 파일 감시·이전 완료로 목록이 바뀔 수 있다.
+        var current = DardIssues().FirstOrDefault(i => i.Key == issue.Key);
+        if (current == null) return;
+        issue = current;
         if (!clear)
         {
             _cfg.KeptDardData.Add(issue.Key);

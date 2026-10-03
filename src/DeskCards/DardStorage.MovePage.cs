@@ -46,7 +46,7 @@ internal static class MovePage
             const ref = b => { const name = `blob/${n++}`; blobs.push({ name, b }); return name; };
             try {
               if (Array.isArray(v)) return v.map(x => enc(x, blobs, seen));
-              if (v instanceof Date) return { $: 'date', v: v.getTime() };
+              if (v instanceof Date) return { $: 'date', v: String(v.getTime()) };
               if (v instanceof RegExp) return { $: 're', s: v.source, f: v.flags };
               if (v instanceof Map) return { $: 'map', v: [...v].map(([k, x]) => [enc(k, blobs, seen), enc(x, blobs, seen)]) };
               if (v instanceof Set) return { $: 'set', v: [...v].map(x => enc(x, blobs, seen)) };
@@ -64,14 +64,14 @@ internal static class MovePage
               if (v instanceof Error) return { $: 'err', n: v.name, m: v.message };
               const proto = Object.getPrototypeOf(v);
               if (proto !== Object.prototype && proto !== null) throw new Error('skip');
-              const o = {};
+              const o = Object.create(null);
               for (const k of Object.keys(v)) o[k] = enc(v[k], blobs, seen);
               return { $: 'obj', v: o };
             } finally { seen.delete(v); }
           };
           const index = { v: 1, local: null, idb: [], opfs: [], skipped: 0 };
 
-          const ls = {};
+          const ls = Object.create(null);
           for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls[k] = localStorage.getItem(k); }
           await put('local.json', json(ls));
           index.local = 'local.json';
@@ -83,6 +83,11 @@ internal static class MovePage
               const st0 = db.transaction(sn).objectStore(sn);
               const s = { name: sn, keyPath: st0.keyPath, autoIncrement: st0.autoIncrement, chunks: [],
                 indexes: [...st0.indexNames].map(i => { const x = st0.index(i); return { name: x.name, keyPath: x.keyPath, unique: x.unique, multiEntry: x.multiEntry }; }) };
+              if (s.autoIncrement) {
+                const r = await fetch(`/__desk/metadata?db=${encodeURIComponent(db.name)}&store=${encodeURIComponent(sn)}`);
+                if (!r.ok) throw new Error('키 생성기 정보를 읽지 못했어요');
+                s.next = (await r.json()).keyGeneratorValue;
+              }
               let last, has = false;
               while (true) {
                 const st = db.transaction(sn).objectStore(sn);
@@ -141,7 +146,7 @@ internal static class MovePage
               case 'num': return v.v === '-0' ? -0 : Number(v.v);
               case 'undef': return undefined;
               case 'big': return BigInt(v.v);
-              case 'date': return new Date(v.v);
+              case 'date': return new Date(Number(v.v));
               case 're': return new RegExp(v.s, v.f);
               case 'map': { const m = new Map(); for (const [k, x] of v.v) m.set(await dec(k), await dec(x)); return m; }
               case 'set': { const s = new Set(); for (const x of v.v) s.add(await dec(x)); return s; }
@@ -153,7 +158,7 @@ internal static class MovePage
               case 'file': return new File([await (await get(v.b)).blob()], v.n, { type: v.t, lastModified: v.m });
               case 'boxed': return Object(await dec(v.v));
               case 'err': { const e = new Error(v.m); e.name = v.n; return e; }
-              case 'obj': { const o = {}; for (const [k, x] of Object.entries(v.v)) o[k] = await dec(x); return o; }
+              case 'obj': { const o = {}; for (const [k, x] of Object.entries(v.v)) Object.defineProperty(o, k, { value: await dec(x), enumerable: true, writable: true, configurable: true }); return o; }
             }
             throw new Error('모르는 값');
           };
@@ -170,12 +175,30 @@ internal static class MovePage
               }
             };
             const db = await req(open);
-            for (const s of d.stores) for (const chunk of s.chunks) {
-              const rows = [];
-              for (const [k, v] of await (await get(chunk)).json()) rows.push([await dec(k), await dec(v)]);
-              const tx = db.transaction(s.name, 'readwrite'), st = tx.objectStore(s.name);
-              for (const [k, v] of rows) { if (s.keyPath === null) st.put(v, k); else st.put(v); }
-              await new Promise((ok, no) => { tx.oncomplete = ok; tx.onerror = () => no(tx.error); tx.onabort = () => no(tx.error); });
+            for (const s of d.stores) {
+              // 삭제된 높은 키도 재사용하지 않도록 생성기를 먼저 복원한다. 임시 레코드는 같은 트랜잭션에서 지운다.
+              if (s.autoIncrement && s.next > 1) {
+                const key = s.next - 1, value = {};
+                if (s.keyPath !== null) {
+                  const path = s.keyPath.split('.'); let at = value;
+                  for (const p of path.slice(0, -1)) {
+                    const child = {};
+                    Object.defineProperty(at, p, { value: child, enumerable: true, writable: true, configurable: true }); at = child;
+                  }
+                  Object.defineProperty(at, path[path.length - 1], { value: key, enumerable: true, writable: true, configurable: true });
+                }
+                const tx = db.transaction(s.name, 'readwrite'), st = tx.objectStore(s.name);
+                if (s.keyPath === null) st.put(value, key); else st.put(value);
+                st.delete(key);
+                await new Promise((ok, no) => { tx.oncomplete = ok; tx.onerror = () => no(tx.error); tx.onabort = () => no(tx.error); });
+              }
+              for (const chunk of s.chunks) {
+                const rows = [];
+                for (const [k, v] of await (await get(chunk)).json()) rows.push([await dec(k), await dec(v)]);
+                const tx = db.transaction(s.name, 'readwrite'), st = tx.objectStore(s.name);
+                for (const [k, v] of rows) { if (s.keyPath === null) st.put(v, k); else st.put(v); }
+                await new Promise((ok, no) => { tx.oncomplete = ok; tx.onerror = () => no(tx.error); tx.onabort = () => no(tx.error); });
+              }
             }
             db.close();
           }

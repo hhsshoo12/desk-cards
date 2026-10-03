@@ -74,7 +74,7 @@ internal static partial class Program
                 mgr.Start();
                 var main = WebOf(mgr.AllCards.OfType<DardWindow>().Single(c => c.Info.Id == "main"));
                 var mini = WebOf(mgr.AllCards.OfType<DardWindow>().Single(c => c.Info.Id == "mini"));
-                Check(Eval(main, "location.host") == "\"main.com.test.store.card.desk\"");
+                Check(Eval(main, "location.host") == JsonSerializer.Serialize(pkg.HostFor("main")));
                 // 한도는 실제로 써 봐서 확인한다(estimate()의 quota는 Chromium이 지문 방지로 고정값을 보여 준다).
                 // storage.large 카드는 기본 한도(128MB)를 넘겨 쓸 수 있다.
                 Check(WriteOpfs(main, 140) == "wrote");
@@ -112,14 +112,14 @@ internal static partial class Program
                 string ready = WaitFor(web, "__ready");
                 Console.WriteLine("  v1: " + ready);
                 Check(ready.StartsWith("ok"));
-                Check(cfg.DardStorage["com.test.move"] == "offline/shared");
+                Check(cfg.DardStorage["com.test.move"] == "offline/v2/shared");
 
                 // 지난번에 옮기다 앱이 꺼진 것처럼 표시를 남겨 둔다. 이번에 이어서 옮기고 그렇다고 알려야 한다.
-                cfg.DardMoving["com.test.move"] = "online/shared";
+                cfg.DardMoving["com.test.move"] = "online/v2/shared";
                 var dialogs = CloseDialogs(() =>
                 {
                     File.WriteAllBytes(file, Dard(("manifest.json", v2), ("card.html", MoveReader)));
-                    WaitUntilLong(() => cfg.DardStorage["com.test.move"] == "online/shared" && mgr.AllCards.OfType<DardWindow>().Any(), 60000);
+                    WaitUntilLong(() => cfg.DardStorage["com.test.move"] == "online/v2/shared" && mgr.AllCards.OfType<DardWindow>().Any(), 60000);
                     web = WebOf(mgr.AllCards.OfType<DardWindow>().Single());
                     string got = WaitFor(web, "__got");
                     Console.WriteLine("  v2: " + got);

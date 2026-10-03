@@ -23,6 +23,7 @@ internal static partial class Program
         // Keep the sandbox as diagnostic evidence. Never touch the user's groups/config.
         string root = Path.Combine(Path.GetTempPath(), "DeskCards-regression-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        AppPaths.WebDataDir = Path.Combine(root, "webview2");
         Console.WriteLine("Sandbox: " + root);
         Test("null position entries are discarded", () =>
         {
@@ -411,12 +412,11 @@ internal static partial class Program
 
     private static void DardTests(string root, Application app)
     {
-        AppPaths.WebDataDir = Path.Combine(root, "webview2");
         Test(".dard manifest is read with cards, ratios and default settings ratio", () =>
         {
             var pkg = DardPackage.Parse(Dard(("manifest.json", ClockManifest), ("card.html", "<p>hi"), ("settings.html", "<p>s")), "x.dard");
             Check(pkg.Id == "com.test.clock" && pkg.Cards.Count == 2 && pkg.Cards[1].Name == "작은 시계" && pkg.Cards[0].Name == "시계");
-            Check(pkg.Cards[0].RatioW == 2 && pkg.SettingsRatio == (3, 4) && pkg.Host == "com.test.clock.card.desk" && pkg.Permissions.Count == 0);
+            Check(pkg.Cards[0].RatioW == 2 && pkg.SettingsRatio == (3, 4) && pkg.Host.EndsWith(".s--v2.card.desk", StringComparison.Ordinal) && pkg.Permissions.Count == 0);
             var size = DardPackage.SizeFor(2, 1, DardPackage.CardArea);
             Check(Math.Abs(size.Width * size.Height - DardPackage.CardArea) < 0.01 && Math.Abs(size.Width / size.Height - 2) < 0.001);
         });
@@ -439,12 +439,12 @@ internal static partial class Program
                 "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"memory\", \"cpu\"], \"internet\": true },")), ("card.html", "")), "x.dard");
             Check(perms.Permissions.Select(p => p.Key).SequenceEqual(new[] { "system:cpu", "system:memory", "internet" }) && perms.Internet);
             Check(perms.PermissionLines.Select(p => p.Label).SequenceEqual(new[] { "시스템 상태 읽기 (cpu, memory)", "인터넷과 통신 (내부망 제외)" }));
-            Check(perms.Quota == DardPackage.DefaultQuota && perms.StorageLocation == "online/shared" && perms.Origins.SequenceEqual(new[] { "https://com.test.clock.card.desk" }));
+            Check(perms.Quota == DardPackage.DefaultQuota && perms.StorageLocation == "online/v2/shared" && perms.Origins.SequenceEqual(new[] { "https://" + perms.Host }));
             var large = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
                 "\"version\": \"1.0.0\", \"storage\": \"card\", \"permissions\": { \"storage.large\": true },")), ("card.html", "")), "x.dard");
-            Check(large.Quota == DardPackage.LargeQuota && large.StorageLocation == "offline/card" && large.HostFor("mini") == "mini.com.test.clock.card.desk");
-            Check(large.Origins.SequenceEqual(new[] { "https://main.com.test.clock.card.desk", "https://mini.com.test.clock.card.desk" }));
-            Check(large.OwnsHost("mini.com.test.clock.card.desk") && !large.OwnsHost("evilcom.test.clock.card.desk"));
+            Check(large.Quota == DardPackage.LargeQuota && large.StorageLocation == "offline/v2/card" && large.HostFor("mini") != large.HostFor("main"));
+            Check(large.Origins.SequenceEqual(new[] { "https://" + large.HostFor("main"), "https://" + large.HostFor("mini") }));
+            Check(large.OwnsHost(large.HostFor("mini")) && !large.OwnsHost("evil" + large.Host));
             Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",", "\"version\": \"1.0.0\", \"storage\": \"window\",")), ("card.html", ""))));
             // internet은 있다/없다만 받는다(예전의 도메인 목록은 거부).
             Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
@@ -471,8 +471,8 @@ internal static partial class Program
                 Test(".dard 카드도 공통 아크릴 틀을 쓰고 활성화는 허용한다", () => CheckDwmCard(main, activatable: true));
                 Test(".dard 웹 화면은 편집 중 캡처로 바뀌고 끝나면 같은 확대 비율로 돌아온다", () => CheckDardEditing(main));
 
-                Check(Config.Load(Path.Combine(root, "dard.json")).DardStorage["com.test.clock"] == "offline/shared");
-                Check(Eval(WebOf(main), "localStorage.setItem('clock', 'h12'); location.host") == "\"com.test.clock.card.desk\"");
+                Check(Config.Load(Path.Combine(root, "dard.json")).DardStorage["com.test.clock"] == "offline/v2/shared");
+                Check(Eval(WebOf(main), "localStorage.setItem('clock', 'h12'); location.host") == System.Text.Json.JsonSerializer.Serialize(main.Runtime.Package.Host));
 
                 main.Runtime.OpenSettings("main");
                 // 설정 창은 포커스를 잃으면 스스로 닫힌다. 테스트 중에 다른 창을 쓰면 여기서 실패할 수 있다.
@@ -514,6 +514,7 @@ internal static partial class Program
         DardLeakTests(root);
         DardStorageTests(root);
         DardIssueTests(root);
+        DardRecoveryTests(root);
     }
 
     // ----- 앱 자체 업데이트: 임시 설치 폴더와 가짜 네트워크만 쓴다 -----

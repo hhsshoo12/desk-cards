@@ -154,7 +154,7 @@ internal sealed class Config
                     cfg.Dards = dards;
                     var dardStorage = new Dictionary<string, string>(StringComparer.Ordinal);
                     foreach (var (id, location) in cfg.DardStorage ?? new())
-                        if (!string.IsNullOrEmpty(id) && location is "offline/shared" or "offline/card" or "online/shared" or "online/card") dardStorage[id] = location;
+                        if (!string.IsNullOrEmpty(id) && DeskCards.DardStorage.IsLocation(location)) dardStorage[id] = location;
                     cfg.DardStorage = dardStorage;
                     cfg.DardMoving = new Dictionary<string, string>((cfg.DardMoving ?? new()).Where(p => !string.IsNullOrEmpty(p.Key) && dardStorage.ContainsKey(p.Key)), StringComparer.Ordinal);
                     cfg.KeptDardData = cfg.KeptDardData?.Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList() ?? new();
@@ -169,7 +169,10 @@ internal sealed class Config
         return new Config { _filePath = filePath };
     }
 
-    public void Save()
+    public void Save() => TrySave();
+
+    /// <summary>데이터를 지우기 전에 저장 성공을 확인해야 하는 작업에서 쓴다.</summary>
+    public bool TrySave()
     {
         string temporary = _filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -183,10 +186,11 @@ internal sealed class Config
             }
             if (File.Exists(_filePath)) File.Replace(temporary, _filePath, _filePath + ".bak");
             else File.Move(temporary, _filePath);
+            return true;
         }
         catch
         {
-            // 저장 실패는 치명적이지 않다.
+            return false;
         }
         finally
         {

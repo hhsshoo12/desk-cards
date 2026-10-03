@@ -278,9 +278,8 @@ internal static partial class Program
         var snapshot = view.Children.OfType<Image>().Single();
         WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");
         // 캡처는 문서가 실제로 표시된 뒤 가능하다.
-        var loaded = web.ExecuteScriptAsync("document.readyState");
-        WaitUntil(() => loaded.IsCompleted);
-        Check(loaded.GetAwaiter().GetResult() is "\"complete\"" or "\"interactive\"");
+        WaitUntil(() => Eval(web, "document.readyState", wait: false) is "\"complete\"" or "\"interactive\"");
+        Check(Eval(web, "document.readyState") is "\"complete\"" or "\"interactive\"");
         double zoom = web.ZoomFactor;
         try
         {
