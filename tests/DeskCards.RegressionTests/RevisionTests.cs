@@ -9,6 +9,16 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision A10: enumerated directory attributes preserve dotted folder names", () =>
+        {
+            string folder = Path.Combine(root, "entry-attributes"); Directory.CreateDirectory(Path.Combine(folder, "folder.ext"));
+            File.WriteAllText(Path.Combine(folder, "file.ext"), "test");
+            using var group = new GroupModel(folder, iconLoader: _ => null);
+            Check(group.Items.Any(e => e.Name == "folder.ext") && group.Items.Any(e => e.Name == "file"));
+            using var cancelled = new System.Threading.CancellationTokenSource(); cancelled.Cancel();
+            var gone = new ShellEntry(Path.Combine(folder, "gone.ext"), cancelled.Token, isDirectory: true);
+            Check(gone.Name == "gone.ext"); // 存在確認に依存しない列挙時点の属性
+        });
         RecoveryTest("revision A8: nested template scripts run when cloned and foreign scripts remain blocked", async () =>
         {
             const string html = """

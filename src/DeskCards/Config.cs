@@ -208,7 +208,6 @@ internal sealed class Config
     }
 }
 
-/// <summary>.dard 한 종류(매니페스트 id)의 승인. 해시가 바뀌면 다시 묻는다(권한이 같거나 줄었으면 그대로 승인).</summary>
 /// <summary>카드 바에 놓은 카드 하나. X·Y(왼쪽 위)와 W(너비)는 바 두께를 1로 친 값이다.</summary>
 internal sealed class BarItem
 {
@@ -220,6 +219,7 @@ internal sealed class BarItem
     public BarItem Clone() => new() { Group = Group, X = X, Y = Y, W = W };
 }
 
+/// <summary>.dard 한 종류(매니페스트 id)의 승인. 해시가 바뀌면 다시 묻는다(권한이 같거나 줄었으면 그대로 승인).</summary>
 internal sealed class DardApproval
 {
     public string Hash { get; set; } = "";

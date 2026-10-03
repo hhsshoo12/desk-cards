@@ -12,11 +12,11 @@ namespace DeskCards;
 
 internal sealed class ShellEntry : INotifyPropertyChanged
 {
-    public ShellEntry(string path, CancellationToken token, Func<string, ImageSource?>? loader = null)
+    public ShellEntry(string path, CancellationToken token, Func<string, ImageSource?>? loader = null, bool isDirectory = false)
     {
         Path = path;
         string ext = System.IO.Path.GetExtension(path);
-        Name = Directory.Exists(path) || ext.Length == 0
+        Name = isDirectory || ext.Length == 0
             ? System.IO.Path.GetFileName(path)
             : System.IO.Path.GetFileNameWithoutExtension(path);
         if (Name.Length == 0) Name = System.IO.Path.GetFileName(path);
@@ -112,7 +112,7 @@ internal sealed class GroupModel : IDisposable
                 {
                     var attr = File.GetAttributes(p);
                     if ((attr & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
-                    list.Add(new ShellEntry(p, _icons.Token, _iconLoader));
+                    list.Add(new ShellEntry(p, _icons.Token, _iconLoader, (attr & FileAttributes.Directory) != 0));
                 }
                 catch (IOException) { } // 한 항목이 사라져도 나머지는 표시한다.
                 catch (UnauthorizedAccessException) { }

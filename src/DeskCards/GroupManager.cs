@@ -32,7 +32,6 @@ internal sealed partial class GroupManager
     public string Root { get; }
     public bool IsShuttingDown => _shuttingDown;
 
-    /// <summary>바탕화면의 모든 카드(폴더 카드 + .dard 카드).</summary>
     /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
     public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>().Concat(_dards.Values.SelectMany(d => d.Windows));
 
@@ -84,13 +83,12 @@ internal sealed partial class GroupManager
                 _cfg.AllowOverlap = SmartGuides.AllowOverlap = value;
                 if (value) _cfg.FlushSnap = true;
                 SmartGuides.AllowOverlap = _cfg.AllowOverlap;
-        SmartGuides.Flush = _cfg.FlushSnap || _cfg.AllowOverlap;
+                SmartGuides.Flush = _cfg.FlushSnap || _cfg.AllowOverlap;
             });
             RefreshPlacement();
         }
     }
 
-    /// <summary>편집 중이면 모든 카드의 자리를 지금 설정으로 다시 검사해 안 되는 자리를 빨간 테두리로 표시한다.</summary>
     /// <summary>안내 말풍선에서 "다시 보지 않기"를 눌렀는지.</summary>
     public bool TipHidden(string id) => _cfg.HiddenTips.Contains(id);
 
@@ -101,6 +99,7 @@ internal sealed partial class GroupManager
     /// <summary>숨긴 안내를 모두 다시 보이게 한다.</summary>
     public void ShowAllTips() => Store(_cfg.HiddenTips.Count > 0, () => _cfg.HiddenTips.Clear());
 
+    /// <summary>편집 중이면 모든 카드의 자리를 지금 설정으로 다시 검사해 안 되는 자리를 빨간 테두리로 표시한다.</summary>
     public void RefreshPlacement()
     {
         foreach (var c in AllCards) c.CheckPlacement();
