@@ -25,62 +25,25 @@ internal sealed class SetupEngine
         string temp = Path.Combine(_env.TempDir, "DeskCards-Setup-" + Guid.NewGuid().ToString("N"));
         string stage = Path.Combine(temp, "stage"), old = _env.AppExe + ".old";
         string step = "설치 준비";
-        bool backedUp = false, replaced = false, createdDirectory = false;
-        string versionPath = Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name);
-        byte[]? oldVersion = null;
-        bool versionReplaced = false;
+        var rollback = new InstallRollback();
         void Step(string value) { step = value; _log.Write(value); status(value); }
         try
         {
             if (Registration.IsUpdate && ReleaseService.CompareInstalled(Registration.InstalledVersion, release.Version) > 0)
                 throw new SetupFailure("설치된 버전(" + Registration.InstalledVersion + ")이 더 새로워요", false);
             Directory.CreateDirectory(temp);
-            Step("다운로드");
-            string zip = Path.Combine(temp, SetupEnvironment.ZipName), hash = Path.Combine(temp, SetupEnvironment.HashName);
-            await _downloads.DownloadAsync(release.ZipUrl, zip, Packages.DownloadLimit, progress, token).ConfigureAwait(false);
-            await _downloads.DownloadAsync(release.HashUrl, hash, 65536, null, token).ConfigureAwait(false);
-            Step("검증"); Packages.Verify(zip, hash);
-            Step("압축 풀기"); string version = Packages.Extract(zip, stage, release.Version, token);
+            string version = await DownloadAndVerifyAsync(release, temp, stage, progress, Step, token).ConfigureAwait(false);
             token.ThrowIfCancellationRequested();
             disableCancel();
             token.ThrowIfCancellationRequested();
             // The UI cannot cancel or close from this point through registration.
             Step("앱 종료"); AppStopper.Stop(_processes, _env.AppExe);
             Step("파일 교체");
-            if (!Directory.Exists(_env.InstallDir))
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(_env.InstallDir)!);
-                // TEMP may be on another volume: copy first, with rollback confined to these new files.
-                Directory.CreateDirectory(_env.InstallDir); createdDirectory = true;
-                CopyDirectory(stage, _env.InstallDir); replaced = true;
-            }
-            else
-            {
-                if (File.Exists(versionPath)) oldVersion = File.ReadAllBytes(versionPath);
-                // 앱이 스스로 업데이트하고 남긴 .old가 있으면 먼저 치운다.
-                DeleteFile(old);
-                if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); backedUp = true; }
-                replaced = true;
-                File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
-                Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, release.Version));
-                versionReplaced = true;
-            }
-            DeleteFile(Path.Combine(_env.InstallDir, "DeskFolders.exe"));
-            Step("제거기 복사");
-            if (!Path.GetFullPath(setupExe).Equals(_env.Uninstaller, StringComparison.OrdinalIgnoreCase))
-            {
-                string next = _env.Uninstaller + ".new";
-                File.Copy(setupExe, next, true);
-                if (File.Exists(_env.Uninstaller)) File.Replace(next, _env.Uninstaller, null);
-                else File.Move(next, _env.Uninstaller);
-            }
-            Step("바로가기");
-            SetLink(_env.MenuLink, options.StartMenu); SetLink(_env.DesktopLink, options.Desktop);
-            Step("설치된 앱 등록"); Registration.Register(version);
-            Step("자동 실행"); Registration.SetAutoStart(options.AutoStart);
+            ReplaceApp(stage, old, release, rollback);
+            RegisterInstall(setupExe, options, version, Step);
             Step("정리"); Registration.RemoveOldRun();
-            if (backedUp) File.Delete(old);
-            backedUp = false;
+            if (rollback.backedUp) File.Delete(old);
+            rollback.backedUp = false;
             Step("설치 완료");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -90,19 +53,12 @@ internal sealed class SetupEngine
             _log.Write(step + " 실패", ex);
             try
             {
-                if (backedUp) { File.Delete(_env.AppExe); File.Move(old, _env.AppExe); _log.Write("기존 앱 복구"); }
-                else if (createdDirectory) { SetupEnvironment.DeleteTree(_env.InstallDir, Path.GetDirectoryName(_env.InstallDir)!); }
-                else if (replaced) File.Delete(_env.AppExe);
-                if (versionReplaced)
-                {
-                    if (oldVersion != null) Shared.InstalledVersionFile.Write(_env.InstallDir, oldVersion);
-                    else File.Delete(versionPath);
-                }
+                RollbackInstall(old, rollback);
             }
-            catch (Exception rollback)
+            catch (Exception recoveryError)
             {
-                _log.Write("복구 실패", rollback);
-                throw new SetupFailure(step + " 단계에서 실패했고 기존 앱을 복구하지 못했어요. 로그를 확인해 주세요.", false, new AggregateException(ex, rollback));
+                _log.Write("복구 실패", recoveryError);
+                throw new SetupFailure(step + " 단계에서 실패했고 기존 앱을 복구하지 못했어요. 로그를 확인해 주세요.", false, new AggregateException(ex, recoveryError));
             }
             throw new SetupFailure(step + ": " + (ex is SetupFailure ? ex.Message : "작업을 완료하지 못했어요. 로그를 확인해 주세요."), false, ex);
         }
@@ -110,6 +66,74 @@ internal sealed class SetupEngine
         {
             try { SetupEnvironment.DeleteTree(temp, _env.TempDir); }
             catch (Exception ex) { _log.Write("임시 폴더 정리 실패", ex); }
+        }
+    }
+
+    private sealed class InstallRollback
+    {
+        public bool backedUp, replaced, createdDirectory, versionReplaced;
+        public byte[]? oldVersion;
+    }
+
+    private async Task<string> DownloadAndVerifyAsync(AppRelease release, string temp, string stage, IProgress<TransferProgress>? progress, Action<string> Step, CancellationToken token)
+    {
+        Step("다운로드");
+        string zip = Path.Combine(temp, SetupEnvironment.ZipName), hash = Path.Combine(temp, SetupEnvironment.HashName);
+        await _downloads.DownloadAsync(release.ZipUrl, zip, Packages.DownloadLimit, progress, token).ConfigureAwait(false);
+        await _downloads.DownloadAsync(release.HashUrl, hash, 65536, null, token).ConfigureAwait(false);
+        Step("검증"); Packages.Verify(zip, hash);
+        Step("압축 풀기"); string version = Packages.Extract(zip, stage, release.Version, token);
+        return version;
+    }
+
+    private void ReplaceApp(string stage, string old, AppRelease release, InstallRollback rollback)
+    {
+        if (!Directory.Exists(_env.InstallDir))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_env.InstallDir)!);
+            // TEMP may be on another volume: copy first, with rollback confined to these new files.
+            Directory.CreateDirectory(_env.InstallDir); rollback.createdDirectory = true;
+            CopyDirectory(stage, _env.InstallDir); rollback.replaced = true;
+        }
+        else
+        {
+            if (File.Exists(Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name))) rollback.oldVersion = File.ReadAllBytes(Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name));
+            // 앱이 스스로 업데이트하고 남긴 .old가 있으면 먼저 치운다.
+            DeleteFile(old);
+            if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); rollback.backedUp = true; }
+            rollback.replaced = true;
+            File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
+            Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, release.Version));
+            rollback.versionReplaced = true;
+        }
+        DeleteFile(Path.Combine(_env.InstallDir, "DeskFolders.exe"));
+    }
+
+    private void RegisterInstall(string setupExe, InstallOptions options, string version, Action<string> Step)
+    {
+        Step("제거기 복사");
+        if (!Path.GetFullPath(setupExe).Equals(_env.Uninstaller, StringComparison.OrdinalIgnoreCase))
+        {
+            string next = _env.Uninstaller + ".new";
+            File.Copy(setupExe, next, true);
+            if (File.Exists(_env.Uninstaller)) File.Replace(next, _env.Uninstaller, null);
+            else File.Move(next, _env.Uninstaller);
+        }
+        Step("바로가기");
+        SetLink(_env.MenuLink, options.StartMenu); SetLink(_env.DesktopLink, options.Desktop);
+        Step("설치된 앱 등록"); Registration.Register(version);
+        Step("자동 실행"); Registration.SetAutoStart(options.AutoStart);
+    }
+
+    private void RollbackInstall(string old, InstallRollback rollback)
+    {
+        if (rollback.backedUp) { File.Delete(_env.AppExe); File.Move(old, _env.AppExe); _log.Write("기존 앱 복구"); }
+        else if (rollback.createdDirectory) { SetupEnvironment.DeleteTree(_env.InstallDir, Path.GetDirectoryName(_env.InstallDir)!); }
+        else if (rollback.replaced) File.Delete(_env.AppExe);
+        if (rollback.versionReplaced)
+        {
+            if (rollback.oldVersion != null) Shared.InstalledVersionFile.Write(_env.InstallDir, rollback.oldVersion);
+            else File.Delete(Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name));
         }
     }
 

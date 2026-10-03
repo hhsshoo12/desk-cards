@@ -479,16 +479,7 @@ internal abstract class DeskCard : Window
         }
         else if (msg == Native.WM_WINDOWPOSCHANGING)
         {
-            // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
-            // 누르기(활성화)로 순서가 바뀌면 카드끼리 앞뒤가 뒤바뀌며 그림자가 이쪽저쪽 드리우므로,
-            // 앱이 직접 맨 아래로 보낼 때 말고는 순서를 바꾸지 않는다.
-            var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
-            if ((wp.flags & Native.SWP_NOZORDER) == 0 && !_editing)
-            {
-                if (_ownZ) wp.hwndInsertAfter = Native.HWND_BOTTOM;
-                else wp.flags |= Native.SWP_NOZORDER;
-                Marshal.StructureToPtr(wp, lParam, false);
-            }
+            KeepDesktopOrder(lParam);
         }
         else if (msg == Native.WM_ENTERSIZEMOVE)
         {
@@ -496,32 +487,7 @@ internal abstract class DeskCard : Window
         }
         else if (msg == Native.WM_MOVING)
         {
-            // 자유 이동 + 스마트 가이드: 다른 카드·화면 가운데와 줄이 맞으면 살짝 붙고 안내선을 보여 준다.
-            // 시스템이 주는 제안 위치는 직전(이미 붙은) 위치 기준이라 한번 붙으면 빠져나오지 못한다.
-            // 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
-            var r = Marshal.PtrToStructure<Native.RECT>(lParam);
-            Native.GetCursorPos(out var cur);
-            int w = r.Right - r.Left, h = r.Bottom - r.Top, lh = LabelPx;
-            int fx = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
-            int fy = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
-            var wa = DesktopGrid.WorkAreaAt(fx + w / 2, fy + h / 2);
-            double scale = Native.MonitorScaleOf(hwnd);
-            var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, scale);
-            // 간격을 두는 중인데 옆 카드에 딱 붙이려고(간격 절반보다 가까이, 살짝 겹치는 데까지) 끌었는지.
-            int gap = SmartGuides.GapPx(scale);
-            if (gap > 0)
-            {
-                var raw = new Native.RECT { Left = fx, Top = fy, Right = fx + w, Bottom = fy + h + lh };
-                int slack = (int)Math.Round(8 * scale);
-                var (sx, sy) = SmartGuides.Separation(raw, _moveOthers);
-                bool Near(int? d) => d is { } v && v > -slack && v < gap / 2;
-                _triedFlush |= Near(sx) || Near(sy);
-            }
-            // 지금 설정에서 안 되는 자리면 끄는 동안 빨간 테두리.
-            var placed = new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h + lh };
-            SetInvalid(SmartGuides.Check(placed, _moveOthers, gap) != SmartGuides.Placement.Ok);
-            SmartGuides.Show(wa, lines);
-            Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
+            MoveWithGuides(hwnd, lParam);
             handled = true;
             return new IntPtr(1);
         }
@@ -535,6 +501,50 @@ internal abstract class DeskCard : Window
             AttachToDesktop(hwnd);
         }
         return IntPtr.Zero;
+    }
+
+    private void KeepDesktopOrder(IntPtr lParam)
+    {
+        // 항상 다른 창 뒤(바탕화면 바로 위)에 머문다. 편집 중에만 어두운 막 위로 올라온다.
+        // 누르기(활성화)로 순서가 바뀌면 카드끼리 앞뒤가 뒤바뀌며 그림자가 이쪽저쪽 드리우므로,
+        // 앱이 직접 맨 아래로 보낼 때 말고는 순서를 바꾸지 않는다.
+        var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
+        if ((wp.flags & Native.SWP_NOZORDER) == 0 && !_editing)
+        {
+            if (_ownZ) wp.hwndInsertAfter = Native.HWND_BOTTOM;
+            else wp.flags |= Native.SWP_NOZORDER;
+            Marshal.StructureToPtr(wp, lParam, false);
+        }
+    }
+
+    private void MoveWithGuides(IntPtr hwnd, IntPtr lParam)
+    {
+        // 자유 이동 + 스마트 가이드: 다른 카드·화면 가운데와 줄이 맞으면 살짝 붙고 안내선을 보여 준다.
+        // 시스템이 주는 제안 위치는 직전(이미 붙은) 위치 기준이라 한번 붙으면 빠져나오지 못한다.
+        // 그래서 끌기 시작점부터의 전체 마우스 이동량으로 직접 계산한다.
+        var r = Marshal.PtrToStructure<Native.RECT>(lParam);
+        Native.GetCursorPos(out var cur);
+        int w = r.Right - r.Left, h = r.Bottom - r.Top, lh = LabelPx;
+        int fx = _moveWindowStart.Left + (cur.X - _moveCursorStart.X);
+        int fy = _moveWindowStart.Top + (cur.Y - _moveCursorStart.Y);
+        var wa = DesktopGrid.WorkAreaAt(fx + w / 2, fy + h / 2);
+        double scale = Native.MonitorScaleOf(hwnd);
+        var (x, y, lines) = SmartGuides.Snap(fx, fy, w, h + lh, _moveOthers, wa, scale);
+        // 간격을 두는 중인데 옆 카드에 딱 붙이려고(간격 절반보다 가까이, 살짝 겹치는 데까지) 끌었는지.
+        int gap = SmartGuides.GapPx(scale);
+        if (gap > 0)
+        {
+            var raw = new Native.RECT { Left = fx, Top = fy, Right = fx + w, Bottom = fy + h + lh };
+            int slack = (int)Math.Round(8 * scale);
+            var (sx, sy) = SmartGuides.Separation(raw, _moveOthers);
+            bool Near(int? d) => d is { } v && v > -slack && v < gap / 2;
+            _triedFlush |= Near(sx) || Near(sy);
+        }
+        // 지금 설정에서 안 되는 자리면 끄는 동안 빨간 테두리.
+        var placed = new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h + lh };
+        SetInvalid(SmartGuides.Check(placed, _moveOthers, gap) != SmartGuides.Placement.Ok);
+        SmartGuides.Show(wa, lines);
+        Marshal.StructureToPtr(new Native.RECT { Left = x, Top = y, Right = x + w, Bottom = y + h }, lParam, false);
     }
 
     /// <summary>

@@ -132,60 +132,11 @@ internal sealed class DardPackage
         if (!files.TryGetValue(CardPage, out var cardHtml)) throw new DardException("card.html이 없어요.");
         files.TryGetValue(SettingsPage, out var settingsHtml);
 
-        JsonElement m;
-        try
-        {
-            using var doc = JsonDocument.Parse(manifestBytes, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
-            m = doc.RootElement.Clone();
-        }
-        catch (JsonException ex)
-        {
-            throw new DardException("manifest.json을 읽을 수 없어요: " + ex.Message);
-        }
-        if (m.ValueKind != JsonValueKind.Object) throw new DardException("manifest.json이 객체가 아니에요.");
-
-        if (!m.TryGetProperty("dard", out var ver) || ver.ValueKind != JsonValueKind.Number || ver.GetDouble() != 1)
-            throw new DardException("지원하지 않는 형식이에요(\"dard\": 1만 열 수 있어요).");
-        string id = Text(m, "id", 100);
-        if (!IdPattern.IsMatch(id) || id.Split('.').Any(label => label.Length > 63))
-            throw new DardException("id는 영어 소문자·숫자·점·하이픈으로 써 주세요(예: com.example.clock).");
-        string name = Text(m, "name", 40);
-        string version = Text(m, "version", 20);
-
-        var cards = new List<DardCardInfo>();
-        if (!m.TryGetProperty("cards", out var cardsEl) || cardsEl.ValueKind != JsonValueKind.Array || cardsEl.GetArrayLength() == 0)
-            throw new DardException("cards에 카드를 한 장 이상 적어 주세요.");
-        if (cardsEl.GetArrayLength() > 64) throw new DardException("카드가 너무 많아요(64장까지).");
-        foreach (var c in cardsEl.EnumerateArray())
-        {
-            if (c.ValueKind != JsonValueKind.Object) throw new DardException("cards의 항목은 객체여야 해요.");
-            string cid = Text(c, "id", 32);
-            if (!CardIdPattern.IsMatch(cid)) throw new DardException($"카드 id '{cid}'는 영어 소문자·숫자·하이픈으로 써 주세요.");
-            if (cards.Any(x => x.Id == cid)) throw new DardException($"카드 id '{cid}'가 두 번 나와요.");
-            string cname = c.TryGetProperty("name", out _) ? Text(c, "name", 40) : name;
-            var (rw, rh) = Ratio(c, $"카드 '{cid}'");
-            cards.Add(new DardCardInfo(cid, cname, rw, rh));
-        }
-
-        (double, double)? settingsRatio = null;
-        if (m.TryGetProperty("settings", out var settingsEl))
-        {
-            if (settingsHtml == null) throw new DardException("settings가 있으면 settings.html도 넣어 주세요.");
-            if (settingsEl.ValueKind != JsonValueKind.Object) throw new DardException("settings는 객체여야 해요.");
-            settingsRatio = Ratio(settingsEl, "설정 화면");
-        }
-        else if (settingsHtml != null) settingsRatio = (3, 4);
-
-        bool perCard = false;
-        if (m.TryGetProperty("storage", out var storageEl))
-        {
-            perCard = (storageEl.ValueKind == JsonValueKind.String ? storageEl.GetString() : null) switch
-            {
-                "shared" => false,
-                "card" => true,
-                _ => throw new DardException("storage는 \"shared\"나 \"card\"로 적어 주세요."),
-            };
-        }
+        var m = ReadManifest(manifestBytes);
+        var (id, name, version) = ReadIdentity(m);
+        var cards = ReadCards(m, name);
+        var settingsRatio = ReadSettingsRatio(m, settingsHtml);
+        bool perCard = ReadStorage(m);
 
         return new DardPackage
         {
@@ -201,6 +152,86 @@ internal sealed class DardPackage
             Permissions = ReadPermissions(m),
             StoragePerCard = perCard,
         };
+    }
+
+    private static JsonElement ReadManifest(byte[] manifestBytes)
+    {
+        JsonElement m;
+        try
+        {
+            using var doc = JsonDocument.Parse(manifestBytes, new JsonDocumentOptions { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip });
+            m = doc.RootElement.Clone();
+        }
+        catch (JsonException ex)
+        {
+            throw new DardException("manifest.json을 읽을 수 없어요: " + ex.Message);
+        }
+        if (m.ValueKind != JsonValueKind.Object) throw new DardException("manifest.json이 객체가 아니에요.");
+
+        return m;
+    }
+
+    private static (string Id, string Name, string Version) ReadIdentity(JsonElement m)
+    {
+        if (!m.TryGetProperty("dard", out var ver) || ver.ValueKind != JsonValueKind.Number || ver.GetDouble() != 1)
+            throw new DardException("지원하지 않는 형식이에요(\"dard\": 1만 열 수 있어요).");
+        string id = Text(m, "id", 100);
+        if (!IdPattern.IsMatch(id) || id.Split('.').Any(label => label.Length > 63))
+            throw new DardException("id는 영어 소문자·숫자·점·하이픈으로 써 주세요(예: com.example.clock).");
+        string name = Text(m, "name", 40);
+        string version = Text(m, "version", 20);
+
+        return (id, name, version);
+    }
+
+    private static List<DardCardInfo> ReadCards(JsonElement m, string name)
+    {
+        var cards = new List<DardCardInfo>();
+        if (!m.TryGetProperty("cards", out var cardsEl) || cardsEl.ValueKind != JsonValueKind.Array || cardsEl.GetArrayLength() == 0)
+            throw new DardException("cards에 카드를 한 장 이상 적어 주세요.");
+        if (cardsEl.GetArrayLength() > 64) throw new DardException("카드가 너무 많아요(64장까지).");
+        foreach (var c in cardsEl.EnumerateArray())
+        {
+            if (c.ValueKind != JsonValueKind.Object) throw new DardException("cards의 항목은 객체여야 해요.");
+            string cid = Text(c, "id", 32);
+            if (!CardIdPattern.IsMatch(cid)) throw new DardException($"카드 id '{cid}'는 영어 소문자·숫자·하이픈으로 써 주세요.");
+            if (cards.Any(x => x.Id == cid)) throw new DardException($"카드 id '{cid}'가 두 번 나와요.");
+            string cname = c.TryGetProperty("name", out _) ? Text(c, "name", 40) : name;
+            var (rw, rh) = Ratio(c, $"카드 '{cid}'");
+            cards.Add(new DardCardInfo(cid, cname, rw, rh));
+        }
+
+        return cards;
+    }
+
+    private static (double, double)? ReadSettingsRatio(JsonElement m, byte[]? settingsHtml)
+    {
+        (double, double)? settingsRatio = null;
+        if (m.TryGetProperty("settings", out var settingsEl))
+        {
+            if (settingsHtml == null) throw new DardException("settings가 있으면 settings.html도 넣어 주세요.");
+            if (settingsEl.ValueKind != JsonValueKind.Object) throw new DardException("settings는 객체여야 해요.");
+            settingsRatio = Ratio(settingsEl, "설정 화면");
+        }
+        else if (settingsHtml != null) settingsRatio = (3, 4);
+
+        return settingsRatio;
+    }
+
+    private static bool ReadStorage(JsonElement m)
+    {
+        bool perCard = false;
+        if (m.TryGetProperty("storage", out var storageEl))
+        {
+            perCard = (storageEl.ValueKind == JsonValueKind.String ? storageEl.GetString() : null) switch
+            {
+                "shared" => false,
+                "card" => true,
+                _ => throw new DardException("storage는 \"shared\"나 \"card\"로 적어 주세요."),
+            };
+        }
+
+        return perCard;
     }
 
     /// <summary>비율(가로:세로)과 넓이로 크기를 정한다.</summary>

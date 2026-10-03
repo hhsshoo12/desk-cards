@@ -65,6 +65,16 @@ internal sealed partial class GroupManager
     {
         var files = ListDardFiles();
         if (files == null) return;
+        ForgetMissingDards(files);
+
+        bool busy = false;
+        foreach (var path in files) ReconcileDard(path, ref busy);
+        _dardFilesBusy = busy;
+        CheckDardIssues();
+    }
+
+    private void ForgetMissingDards(List<string> files)
+    {
         var present = new HashSet<string>(files, StringComparer.OrdinalIgnoreCase);
 
         foreach (var path in _dards.Keys.Where(p => !present.Contains(p)).ToList())
@@ -85,70 +95,68 @@ internal sealed partial class GroupManager
             _dardIds.Remove(path);
         }
 
-        bool busy = false;
-        foreach (var path in files)
+    }
+
+    private void ReconcileDard(string path, ref bool busy)
+    {
+        if (_dardIds.TryGetValue(path, out var movingId) && _dardMovingNow.Contains(movingId)) return;
+        if (StampOf(path) is not { } stamp) return;
+        _dards.TryGetValue(path, out var loaded);
+        if (loaded?.Stamp == stamp) return;
+        if (_dardSkipped.TryGetValue(path, out var skipped) && skipped == stamp) return;
+
+        DardPackage pkg;
+        try
         {
-            if (_dardIds.TryGetValue(path, out var movingId) && _dardMovingNow.Contains(movingId)) continue;
-            if (StampOf(path) is not { } stamp) continue;
-            _dards.TryGetValue(path, out var loaded);
-            if (loaded?.Stamp == stamp) continue;
-            if (_dardSkipped.TryGetValue(path, out var skipped) && skipped == stamp) continue;
-
-            DardPackage pkg;
-            try
-            {
-                pkg = DardPackage.Load(path);
-            }
-            catch (DardException ex)
-            {
-                UnloadDard(path);
-                _dardIds.Remove(path);
-                _dardSkipped[path] = stamp;
-                Dialogs.Show(ex.Message, heading: $"'{Path.GetFileName(path)}' 카드를 열 수 없어요");
-                continue;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                busy = true;
-                continue; // 아직 쓰는 중일 수 있다. 다 쓰면 감시가 다시 알려 준다.
-            }
-
-            if (loaded != null && loaded.Package.Hash == pkg.Hash)
-            {
-                loaded.Stamp = stamp; // 내용은 같고 시각만 바뀌었다
-                continue;
-            }
-            UnloadDard(path);
-            _dardIds[path] = pkg.Id;
-
-            if (_dardMovingNow.Contains(pkg.Id))
-            {
-                _dardSkipped[path] = stamp;
-                continue;
-            }
-
-            if (_dards.Values.Any(d => d.Package.Id == pkg.Id))
-            {
-                _dardSkipped[path] = stamp; // 같은 id가 이미 떠 있다. 경고(DardIssues)로 알린다.
-                continue;
-            }
-
-            switch (Approval(pkg))
-            {
-                case true:
-                    LoadDard(pkg, stamp);
-                    break;
-                case false:
-                    _dardSkipped[path] = stamp;
-                    break;
-                default:
-                    _dardSkipped[path] = stamp;
-                    AskDard(pkg);
-                    break;
-            }
+            pkg = DardPackage.Load(path);
         }
-        _dardFilesBusy = busy;
-        CheckDardIssues();
+        catch (DardException ex)
+        {
+            UnloadDard(path);
+            _dardIds.Remove(path);
+            _dardSkipped[path] = stamp;
+            Dialogs.Show(ex.Message, heading: $"'{Path.GetFileName(path)}' 카드를 열 수 없어요");
+            return;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            busy = true;
+            return; // 아직 쓰는 중일 수 있다. 다 쓰면 감시가 다시 알려 준다.
+        }
+
+        if (loaded != null && loaded.Package.Hash == pkg.Hash)
+        {
+            loaded.Stamp = stamp; // 내용은 같고 시각만 바뀌었다
+            return;
+        }
+        UnloadDard(path);
+        _dardIds[path] = pkg.Id;
+
+        if (_dardMovingNow.Contains(pkg.Id))
+        {
+            _dardSkipped[path] = stamp;
+            return;
+        }
+
+        if (_dards.Values.Any(d => d.Package.Id == pkg.Id))
+        {
+            _dardSkipped[path] = stamp; // 같은 id가 이미 떠 있다. 경고(DardIssues)로 알린다.
+            return;
+        }
+
+        switch (Approval(pkg))
+        {
+            case true:
+                LoadDard(pkg, stamp);
+                break;
+            case false:
+                _dardSkipped[path] = stamp;
+                break;
+            default:
+                _dardSkipped[path] = stamp;
+                AskDard(pkg);
+                break;
+        }
     }
 
     /// <summary>승인했으면 true, 거절했으면 false, 아직 모르면(처음 보거나 권한이 늘었으면) null.</summary>

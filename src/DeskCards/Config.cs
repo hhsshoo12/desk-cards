@@ -113,52 +113,11 @@ internal sealed class Config
         {
             try
             {
-                if (!File.Exists(candidate)) continue;
-                var cfg = JsonSerializer.Deserialize<Config>(File.ReadAllText(candidate));
+                var cfg = ReadCandidate(candidate);
                 if (cfg != null)
                 {
                     cfg._filePath = filePath;
-                    var positions = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (name, p) in cfg.Positions ?? new())
-                        if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
-                    cfg.Positions = positions;
-                    var layouts = new Dictionary<string, CardLayout>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (name, layout) in cfg.Layouts ?? new())
-                        if (layout != null) layouts[name] = layout.Normalized();
-                    cfg.Layouts = layouts;
-                    var orders = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (name, order) in cfg.Orders ?? new())
-                        if (order != null) orders[name] = order.Where(n => !string.IsNullOrEmpty(n)).ToList();
-                    cfg.Orders = orders;
-                    if (!double.IsFinite(cfg.CellSize) || cfg.CellSize < 16 || cfg.CellSize > 512) cfg.CellSize = 0;
-                    if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
-                    if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
-                    else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
-                    cfg.HiddenTips = cfg.HiddenTips?.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList() ?? new();
-                    cfg.BarItems = (cfg.BarItems ?? new())
-                        .Where(i => i != null && !string.IsNullOrEmpty(i.Group) && double.IsFinite(i.X) && double.IsFinite(i.Y) && double.IsFinite(i.W) && i.W > 0)
-                        .GroupBy(i => i.Group, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
-                    cfg.BarOnlyGroups = cfg.BarOnlyGroups?.Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new();
-                    cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
-                    cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
-                    cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
-                    cfg.BarZone = Math.Clamp(cfg.BarZone, 0, BarZoneMax);
-                    if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
-                    var edges = new Dictionary<string, ScreenEdge?>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var (display, edge) in cfg.BarEdges ?? new())
-                        if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
-                    cfg.BarEdges = edges;
-                    cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
-                    var dards = new Dictionary<string, DardApproval>(StringComparer.Ordinal);
-                    foreach (var (id, approval) in cfg.Dards ?? new())
-                        if (!string.IsNullOrEmpty(id) && approval is { Hash.Length: > 0 }) dards[id] = approval.Normalized();
-                    cfg.Dards = dards;
-                    var dardStorage = new Dictionary<string, string>(StringComparer.Ordinal);
-                    foreach (var (id, location) in cfg.DardStorage ?? new())
-                        if (!string.IsNullOrEmpty(id) && DeskCards.DardStorage.IsLocation(location)) dardStorage[id] = location;
-                    cfg.DardStorage = dardStorage;
-                    cfg.DardMoving = new Dictionary<string, string>((cfg.DardMoving ?? new()).Where(p => !string.IsNullOrEmpty(p.Key) && dardStorage.ContainsKey(p.Key)), StringComparer.Ordinal);
-                    cfg.KeptDardData = cfg.KeptDardData?.Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList() ?? new();
+                    Normalize(cfg);
                     return cfg;
                 }
             }
@@ -168,6 +127,54 @@ internal sealed class Config
             }
         }
         return new Config { _filePath = filePath };
+    }
+
+    private static Config? ReadCandidate(string path) =>
+        File.Exists(path) ? JsonSerializer.Deserialize<Config>(File.ReadAllText(path)) : null;
+
+    private static void Normalize(Config cfg)
+    {
+        var positions = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, p) in cfg.Positions ?? new())
+            if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
+        cfg.Positions = positions;
+        var layouts = new Dictionary<string, CardLayout>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, layout) in cfg.Layouts ?? new())
+            if (layout != null) layouts[name] = layout.Normalized();
+        cfg.Layouts = layouts;
+        var orders = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, order) in cfg.Orders ?? new())
+            if (order != null) orders[name] = order.Where(n => !string.IsNullOrEmpty(n)).ToList();
+        cfg.Orders = orders;
+        if (!double.IsFinite(cfg.CellSize) || cfg.CellSize < 16 || cfg.CellSize > 512) cfg.CellSize = 0;
+        if (!double.IsFinite(cfg.FixedScale) || cfg.FixedScale <= 0 || cfg.FixedScale > 8) cfg.FixedScale = 0;
+        if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
+        else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
+        cfg.HiddenTips = cfg.HiddenTips?.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList() ?? new();
+        cfg.BarItems = (cfg.BarItems ?? new())
+            .Where(i => i != null && !string.IsNullOrEmpty(i.Group) && double.IsFinite(i.X) && double.IsFinite(i.Y) && double.IsFinite(i.W) && i.W > 0)
+            .GroupBy(i => i.Group, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
+        cfg.BarOnlyGroups = cfg.BarOnlyGroups?.Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new();
+        cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
+        cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
+        cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
+        cfg.BarZone = Math.Clamp(cfg.BarZone, 0, BarZoneMax);
+        if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
+        var edges = new Dictionary<string, ScreenEdge?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (display, edge) in cfg.BarEdges ?? new())
+            if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
+        cfg.BarEdges = edges;
+        cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
+        var dards = new Dictionary<string, DardApproval>(StringComparer.Ordinal);
+        foreach (var (id, approval) in cfg.Dards ?? new())
+            if (!string.IsNullOrEmpty(id) && approval is { Hash.Length: > 0 }) dards[id] = approval.Normalized();
+        cfg.Dards = dards;
+        var dardStorage = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, location) in cfg.DardStorage ?? new())
+            if (!string.IsNullOrEmpty(id) && DeskCards.DardStorage.IsLocation(location)) dardStorage[id] = location;
+        cfg.DardStorage = dardStorage;
+        cfg.DardMoving = new Dictionary<string, string>((cfg.DardMoving ?? new()).Where(p => !string.IsNullOrEmpty(p.Key) && dardStorage.ContainsKey(p.Key)), StringComparer.Ordinal);
+        cfg.KeptDardData = cfg.KeptDardData?.Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList() ?? new();
     }
 
     public void Save() => TrySave();

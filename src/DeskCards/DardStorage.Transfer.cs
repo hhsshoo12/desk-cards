@@ -152,38 +152,53 @@ internal static partial class DardStorage
             var from = legacyProfile ? await KeeperAt(AppPaths.WebDataDir, false) : await KeeperFor(fromNet);
             var to = await KeeperFor(pkg.Internet);
             await PrepareAsync(pkg);
-            if (!move.Exported)
-            {
-                move.Skipped = 0;
-                var recorded = legacyProfile ? new Dictionary<string, string>() : Recorded(fromNet);
-                foreach (var p in pairs)
-                {
-                    if (recorded.TryGetValue(p.From, out string? owner) && owner != pkg.Id)
-                        throw new IOException("예전 저장소 주소를 다른 카드도 사용하고 있어 자동으로 옮길 수 없어요. 원본 데이터는 그대로 남겨 뒀어요.");
-                    move.Skipped += await from.RunAsync(p.From, MovePage.Export, Path.Combine(dir, p.Archive));
-                    using var saved = new FileStream(Path.Combine(dir, p.Archive), FileMode.Open, FileAccess.Write, FileShare.None);
-                    saved.Flush(flushToDisk: true);
-                }
-                move.Exported = true;
-                WriteAtomic(path, move);
-            }
-            if (!move.Imported)
-            {
-                foreach (var p in pairs)
-                {
-                    await to.Cdp("Storage.clearDataForOrigin", new { origin = p.To, storageTypes = "all" });
-                    await to.RunAsync(p.To, MovePage.Import, Path.Combine(dir, p.Archive));
-                }
-                move.Imported = true;
-                WriteAtomic(path, move);
-            }
-            var keep = sameEnv ? pairs.Select(p => p.To).ToHashSet() : new HashSet<string>();
-            var cleared = pairs.Select(p => p.From).Distinct().Where(o => !keep.Contains(o)).ToList();
-            foreach (string origin in cleared)
-                await from.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
-            if (!legacyProfile) UpdateIndex(fromNet, index => cleared.ForEach(o => index.Remove(o)));
+            await ExportMoveAsync(from, move, legacyProfile, fromNet, pkg.Id, dir, path);
+            await ImportMoveAsync(to, move, dir, path);
+            await ClearMoveSourceAsync(from, move, sameEnv, legacyProfile, fromNet);
             return move.Skipped;
         }
         finally { _moving.Release(); }
+    }
+
+    private static async Task ExportMoveAsync(Keeper from, MoveRecord move, bool legacyProfile, bool fromNet, string id, string dir, string path)
+    {
+        if (!move.Exported)
+        {
+            move.Skipped = 0;
+            var recorded = legacyProfile ? new Dictionary<string, string>() : Recorded(fromNet);
+            foreach (var p in move.Origins)
+            {
+                if (recorded.TryGetValue(p.From, out string? owner) && owner != id)
+                    throw new IOException("예전 저장소 주소를 다른 카드도 사용하고 있어 자동으로 옮길 수 없어요. 원본 데이터는 그대로 남겨 뒀어요.");
+                move.Skipped += await from.RunAsync(p.From, MovePage.Export, Path.Combine(dir, p.Archive));
+                using var saved = new FileStream(Path.Combine(dir, p.Archive), FileMode.Open, FileAccess.Write, FileShare.None);
+                saved.Flush(flushToDisk: true);
+            }
+            move.Exported = true;
+            WriteAtomic(path, move);
+        }
+    }
+
+    private static async Task ImportMoveAsync(Keeper to, MoveRecord move, string dir, string path)
+    {
+        if (!move.Imported)
+        {
+            foreach (var p in move.Origins)
+            {
+                await to.Cdp("Storage.clearDataForOrigin", new { origin = p.To, storageTypes = "all" });
+                await to.RunAsync(p.To, MovePage.Import, Path.Combine(dir, p.Archive));
+            }
+            move.Imported = true;
+            WriteAtomic(path, move);
+        }
+    }
+
+    private static async Task ClearMoveSourceAsync(Keeper from, MoveRecord move, bool sameEnv, bool legacyProfile, bool fromNet)
+    {
+        var keep = sameEnv ? move.Origins.Select(p => p.To).ToHashSet() : new HashSet<string>();
+        var cleared = move.Origins.Select(p => p.From).Distinct().Where(o => !keep.Contains(o)).ToList();
+        foreach (string origin in cleared)
+            await from.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
+        if (!legacyProfile) UpdateIndex(fromNet, index => cleared.ForEach(o => index.Remove(o)));
     }
 }
