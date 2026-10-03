@@ -25,6 +25,7 @@ internal sealed partial class GroupManager
         _cfg = config ?? Config.Load();
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
+        DardStorage.BrowserLost += OnBrowserLost;
     }
 
     public string Root { get; }
@@ -688,6 +689,7 @@ internal sealed partial class GroupManager
     {
         if (_shuttingDown) return;
         _shuttingDown = true;
+        DardStorage.BrowserLost -= OnBrowserLost;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _debounce.Stop();
         _dpiCheck?.Stop();

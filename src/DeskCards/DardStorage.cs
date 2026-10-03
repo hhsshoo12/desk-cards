@@ -21,6 +21,7 @@ internal static partial class DardStorage
     private static readonly Dictionary<string, Task<CoreWebView2Environment>> _environments = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Task<Keeper>> _keepers = new(StringComparer.OrdinalIgnoreCase);
     private static readonly SemaphoreSlim _moving = new(1, 1);
+    internal static event Action<string>? BrowserLost;
 
     static DardStorage()
     {
@@ -53,10 +54,31 @@ internal static partial class DardStorage
         // 잘못된 저장 경로는 브라우저 시작 전에 I/O 오류로 돌려준다.
         Directory.CreateDirectory(path);
         var endpoint = internet ? DardProxy.Instance.EndPoint : DeadEnd.Instance.EndPoint;
-        return _environments[path] = CoreWebView2Environment.CreateAsync(null, path,
+        return _environments[path] = CreateEnvironment(path, endpoint, webrtc);
+    }
+
+    private static async Task<CoreWebView2Environment> CreateEnvironment(string path, IPEndPoint endpoint, string webrtc)
+    {
+        var env = await CoreWebView2Environment.CreateAsync(null, path,
             new CoreWebView2EnvironmentOptions(
                 $"--proxy-server=http://{endpoint} --proxy-bypass-list=<-loopback> --disable-quic " +
                 $"--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE {endpoint.Address}\" " + webrtc));
+        env.BrowserProcessExited += (_, _) => InvalidateBrowser(path, env);
+        return env;
+    }
+
+    private static void InvalidateBrowser(string path, CoreWebView2Environment env)
+    {
+        if (!_environments.TryGetValue(path, out var current) || !current.IsCompletedSuccessfully || !ReferenceEquals(current.Result, env)) return;
+        _environments.Remove(path);
+        if (_keepers.Remove(path, out var keeper)) _ = DisposeKeeper(keeper);
+        BrowserLost?.Invoke(path);
+    }
+
+    private static async Task DisposeKeeper(Task<Keeper> task)
+    {
+        try { (await task).Dispose(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
     }
 
     /// <summary>

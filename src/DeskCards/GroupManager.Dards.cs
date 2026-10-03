@@ -11,6 +11,22 @@ namespace DeskCards;
 // 그룹 루트의 .dard 파일 = 카드. 처음 보는 파일은 추가할지 한 번 묻고, 승인한 파일만 띄운다.
 internal sealed partial class GroupManager
 {
+    private void OnBrowserLost(string profile)
+    {
+        // 환경이 모든 자원을 놓은 뒤 한 번만 통지한다. 카드별 ProcessFailed에서는 재생성하지 않는다.
+        _debounce.Dispatcher.BeginInvoke(() =>
+        {
+            if (_shuttingDown) return;
+            foreach (var runtime in _dards.Values.Where(r => string.Equals(
+                Path.GetFullPath(Path.Combine(AppPaths.WebDataDir, r.Package.Internet ? "online" : "offline")),
+                profile, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                DardSettingsWindow.CloseFor(runtime);
+                foreach (var card in runtime.Windows.ToList()) RecreateDardWindow(card);
+            }
+        });
+    }
+
     private readonly Dictionary<string, DardRuntime> _dards = new(StringComparer.OrdinalIgnoreCase); // 파일 경로 → 불러온 카드
     private readonly Dictionary<string, DardStamp> _dardSkipped = new(StringComparer.OrdinalIgnoreCase); // 거절·오류·묻는 중이라 이 상태로는 다시 안 보는 파일
     private readonly Dictionary<string, string> _dardIds = new(StringComparer.OrdinalIgnoreCase); // 파일 경로 → 매니페스트 id

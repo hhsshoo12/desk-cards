@@ -29,6 +29,7 @@ internal static partial class Program
         AppPaths.WebDataDir = Path.Combine(root, "webview2");
         Console.WriteLine("Sandbox: " + root);
         ReportTests(root);
+        RevisionTests(root);
         Test("null position entries are discarded", () =>
         {
             string path = Path.Combine(root, "null-position.json");

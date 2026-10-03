@@ -139,7 +139,15 @@ internal sealed class DardView : Grid
         core.WebMessageReceived += OnMessage;
         core.ProcessFailed += (_, e) =>
         {
-            if (!_closed && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited) core.Reload();
+            if (_closed) return;
+            // BrowserProcessExited는 환경의 종료 통지가 캐시/keeper와 카드들을 함께 복구한다.
+            // GPU·보조 프로세스는 런타임의 자동 복구에 맡긴다. 주 렌더러 실패·무응답은 페이지를 다시 연다.
+            if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+            {
+                try { core.Reload(); }
+                catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+                { ShowError("카드를 다시 열지 못했어요: " + ex.Message); }
+            }
         };
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(DeskScript());
