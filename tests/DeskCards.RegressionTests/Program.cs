@@ -437,7 +437,7 @@ internal static partial class Program
             var perms = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
                 "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"memory\", \"cpu\"], \"internet\": true },")), ("card.html", "")), "x.dard");
             Check(perms.Permissions.Select(p => p.Key).SequenceEqual(new[] { "system:cpu", "system:memory", "internet" }) && perms.Internet);
-            Check(perms.PermissionLines.Select(p => p.Label).SequenceEqual(new[] { "시스템 상태 읽기 (cpu, memory)", "외부 네트워크와 자유롭게 통신" }));
+            Check(perms.PermissionLines.Select(p => p.Label).SequenceEqual(new[] { "시스템 상태 읽기 (cpu, memory)", "인터넷과 통신 (내부망 제외)" }));
             Check(perms.Quota == DardPackage.DefaultQuota && perms.StorageLocation == "online/shared" && perms.Origins.SequenceEqual(new[] { "https://com.test.clock.card.desk" }));
             var large = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
                 "\"version\": \"1.0.0\", \"storage\": \"card\", \"permissions\": { \"storage.large\": true },")), ("card.html", "")), "x.dard");

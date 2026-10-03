@@ -60,7 +60,7 @@ internal sealed class DardPackage
     public (double W, double H)? SettingsRatio { get; private init; }
     public IReadOnlyList<DardPermission> Permissions { get; private init; } = Array.Empty<DardPermission>();
 
-    /// <summary>외부 네트워크와 자유롭게 통신해도 되는지. 아니면 브라우저의 모든 연결이 막다른 길로 간다.</summary>
+    /// <summary>인터넷과 통신해도 되는지(내부망·이 PC는 언제나 막힘). 아니면 브라우저의 모든 연결이 막다른 길로 간다.</summary>
     public bool Internet => Permissions.Any(p => p.Key == "internet");
 
     /// <summary>카드마다 브라우저 저장소를 따로 쓰는지(매니페스트 "storage": "card"). 아니면 모든 카드가 하나를 같이 쓴다("shared", 기본).</summary>
@@ -268,7 +268,7 @@ internal sealed class DardPackage
                     list.AddRange(controls.Select(f => new DardPermission("system.control:" + f, $"소리·화면 밝기 조절 ({both})", false)));
                     break;
                 case "internet":
-                    if (Flag(prop)) list.Add(new DardPermission("internet", "외부 네트워크와 자유롭게 통신", true));
+                    if (Flag(prop)) list.Add(new DardPermission("internet", "인터넷과 통신 (내부망 제외)", true));
                     break;
                 case "storage.large":
                     if (Flag(prop)) list.Add(new DardPermission("storage.large", "큰 저장 공간 (2GB까지)", true));

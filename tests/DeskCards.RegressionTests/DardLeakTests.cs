@@ -18,6 +18,7 @@ internal static partial class Program
     /// </summary>
     private static void DardLeakTests(string root)
     {
+        if (Environment.GetEnvironmentVariable("DESKCARDS_LNA") == "1") LnaProbe(root);
         Test(".dard without internet permission cannot reach the network", () =>
         {
             ProbeDeadEnd();
@@ -29,13 +30,72 @@ internal static partial class Program
             Console.WriteLine($"  dead end {deadEnd.EndPoint}: {deadEnd.Hits} blocked");
             Check(deadEnd.EndPoint.Address.ToString().StartsWith("127.255.255.") && deadEnd.Hits > 0);
         });
-        Test(".dard with internet permission reaches the network but still cannot navigate away", () =>
+        Test(".dard with internet permission still cannot reach this PC or the local network", () =>
         {
-            // 같은 카드에 internet 권한만 준다. 수신기가 실제로 잡는다는 것도 함께 확인된다.
+            // 같은 카드에 internet 권한만 준다. 수신기는 이 PC(루프백)라 내부망과 같이 막혀야 한다.
+            int before = DardProxy.Instance.Blocked;
             var hits = RunLeakCard(root, "dard-online", internet: true);
-            foreach (var hit in hits) Console.WriteLine("  hit " + hit);
-            Check(hits.Contains("tcp GET /fetch HTTP/1.1") && hits.Contains("tcp GET /img HTTP/1.1"));
-            Check(!hits.Any(h => h.Contains("/script") || h.Contains("/location") || h.Contains("/form") || h.Contains("/frame-src") || h.Contains("/open")));
+            foreach (var hit in hits) Console.WriteLine("  LEAK " + hit);
+            Console.WriteLine($"  proxy {DardProxy.Instance.EndPoint}: {DardProxy.Instance.Blocked - before} blocked");
+            Check(hits.Length == 0 && DardProxy.Instance.Blocked > before);
+        });
+        Test("internet proxy lets only public addresses through", () =>
+        {
+            foreach (string ip in new[] { "127.0.0.1", "127.255.255.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.0.1", "169.254.1.1",
+                "100.64.0.1", "0.0.0.0", "224.0.0.1", "255.255.255.255", "198.18.0.1", "::1", "::", "fe80::1", "fd00::1", "fc00::1",
+                "::ffff:192.168.0.1", "::ffff:127.0.0.1", "64:ff9b::c0a8:1", "2002:c0a8:1::1", "2001:0:c0a8::1", "ff02::1" })
+                Check(!DardProxy.IsPublicAddress(System.Net.IPAddress.Parse(ip)));
+            foreach (string ip in new[] { "8.8.8.8", "1.1.1.1", "93.184.215.14", "172.32.0.1", "100.128.0.1", "::ffff:8.8.8.8", "2606:4700:4700::1111" })
+                Check(DardProxy.IsPublicAddress(System.Net.IPAddress.Parse(ip)));
+        });
+        Test("internet proxy treats this PC's own network as local even for public IPv6", () =>
+        {
+            // 이 PC의 네트워크 어댑터 주소와 게이트웨이는 같은 네트워크라 막힌다. 공인 IPv6(2xxx:)를 받은 어댑터면 그 주소도.
+            var nics = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up &&
+                            n.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
+                .Select(n => n.GetIPProperties()).Where(p => p.GatewayAddresses.Count > 0).ToList();
+            foreach (var p in nics)
+            {
+                foreach (var a in p.UnicastAddresses.Select(u => u.Address).Where(a => !a.IsIPv6LinkLocal))
+                {
+                    Console.WriteLine($"  own {(a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? "IPv6" : "IPv4")}: on-link={DardProxy.IsOnLink(a)} public-address={DardProxy.IsPublicAddress(a)}");
+                    Check(DardProxy.IsOnLink(a) && !DardProxy.IsPublic(a));
+                }
+            }
+            Check(!DardProxy.IsOnLink(System.Net.IPAddress.Parse("8.8.8.8")) || nics.Count == 0);
+            Check(DardProxy.IsPublic(System.Net.IPAddress.Parse("8.8.8.8")) || nics.Count == 0);
+        });
+        Test(".dard with internet permission reaches the internet", () =>
+        {
+            // 이 PC가 인터넷에 닿을 때만 본다.
+            try
+            {
+                using var direct = new System.Net.Sockets.TcpClient();
+                if (!direct.ConnectAsync("example.com", 443).Wait(5000)) throw new TimeoutException();
+            }
+            catch (Exception)
+            {
+                Console.WriteLine("  (skipped: no internet)");
+                return;
+            }
+            string groups = Path.Combine(root, "dard-web");
+            Directory.CreateDirectory(Path.Combine(groups, "그룹"));
+            string file = Path.Combine(groups, "web.dard");
+            File.WriteAllBytes(file, Dard(("manifest.json", LeakManifest.Replace("__PERMS__", """, "permissions": { "internet": true }""")),
+                ("card.html", "<script>fetch('https://example.com/', { mode: 'no-cors' }).then(() => window.__net = 'ok', e => window.__net = String(e));</script>")));
+            var pkg = DardPackage.Load(file);
+            var cfg = Config.Load(Path.Combine(root, "dard-web.json"));
+            cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = true, Permissions = new() { "internet" } };
+            var mgr = new GroupManager(groups, cfg);
+            try
+            {
+                mgr.Start();
+                string net = WaitFor(WebOf(mgr.AllCards.OfType<DardWindow>().Single()), "__net");
+                Console.WriteLine("  fetch https://example.com: " + net);
+                Check(net == "ok");
+            }
+            finally { mgr.Shutdown(); }
         });
     }
 

@@ -226,7 +226,7 @@ details[open] summary { margin-bottom: 6px; }
   }
 }</pre>
   <ul>
-    <li><b><code>internet</code>은 있다/없다만</b>: <code>true</code>나 <code>false</code>로 적고, 도메인 목록은 받지 않습니다(2026-10-03 결정). 없으면 브라우저의 모든 연결이 막다른 길로 가고, 있으면 어디와도 자유롭게 통신합니다.</li>
+    <li><b><code>internet</code>은 있다/없다만</b>: <code>true</code>나 <code>false</code>로 적고, 도메인 목록은 받지 않습니다(2026-10-03 결정). 없으면 브라우저의 모든 연결이 막다른 길로 가고, 있으면 인터넷과 자유롭게 통신합니다. 내부망과 이 PC는 권한이 있어도 막습니다(아래 <a href="#webview">WebView 정책</a>).</li>
     <li><b>적은 항목만 쓸 수 있음</b>: <code>system</code>에 <code>cpu</code>만 적었으면 메모리는 읽을 수 없습니다. 설치 창 풍선에도 적은 항목만 나옵니다.</li>
   </ul>
 </section>
@@ -322,7 +322,7 @@ details[open] summary { margin-bottom: 6px; }
     <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>알림 보내기</td><td><code>notify</code></td><td>Windows 알림 띄우기</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>소리·화면 밝기 조절</td><td><code>system.control</code></td><td>시스템 볼륨·음소거, 화면 밝기 읽기/바꾸기</td></tr>
-    <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 자유롭게 통신</td><td><code>internet</code></td><td>보통 웹 방식(<code>fetch</code>, 이미지, WebSocket 등)으로 어디와도 통신. 다른 페이지로 이동·프레임·외부 스크립트는 여전히 안 됨</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>인터넷과 통신 (내부망 제외)</td><td><code>internet</code></td><td>보통 웹 방식(<code>fetch</code>, 이미지, WebSocket 등)으로 인터넷과 통신. 내부망·이 PC는 막힘. 다른 페이지로 이동·프레임·외부 스크립트는 여전히 안 됨</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>큰 저장 공간 (2GB까지)</td><td><code>storage.large</code></td><td>저장소 한도를 128MB에서 2GB로 늘림 (<code>"storage.large": true</code>)</td></tr>
   </table></div>
   <h3 id="storage">저장소</h3>
@@ -365,7 +365,7 @@ details[open] summary { margin-bottom: 6px; }
       <label><input type="checkbox" id="pVolume"> 소리 조절</label>
       <label><input type="checkbox" id="pBright"> 화면 밝기 조절</label>
       <div class="grp">🟠 주황</div>
-      <label><input type="checkbox" id="pInternet" checked> 외부 네트워크와 자유롭게 통신</label>
+      <label><input type="checkbox" id="pInternet" checked> 인터넷과 통신 (내부망 제외)</label>
     </div>
     <div>
       <div class="dialog" id="dialog"></div>
@@ -441,6 +441,7 @@ details[open] summary { margin-bottom: 6px; }
     <li><b>모달 창</b>: <code>ScriptDialogOpening</code>에서 막음</li>
     <li><b>이동·새 창·다운로드</b>: <code>NavigationStarting</code>, <code>NewWindowRequested</code>, <code>DownloadStarting</code>에서 취소</li>
     <li><b>외부 리소스</b>: <code>WebResourceRequested</code>로 모든 요청을 가로챈다. 카드 자신의 주소는 파일 두 장만, 다른 문서로 가는 요청(이동·프레임)은 늘 거부, 그 밖의 요청은 <code>internet</code> 권한이 있을 때만 내보낸다</li>
+    <li><b>내부망 막기</b>: 권한이 있는 쪽도 모든 연결을 앱의 프록시(127.255.255.1~32 중 하나, 독점)에 맡기고 브라우저는 이름을 풀지 않는다. 프록시가 이름을 직접 풀어 인터넷 주소로 확인된 IP에만 잇는다(이름 바꿔치기 방지). 판단 기준은 Chrome·OS 수준에 맞춘다(2026-10-03 결정): ① 주소 목록 — 이 PC(127/8, ::1), 사설·링크 로컬·CGNAT·멀티캐스트·예약 대역, IPv6에 담긴 IPv4, ② 같은 네트워크 — Windows 경로표(GetBestRoute2)에서 게이트웨이 없이 바로 닿는 주소(공인 IPv6를 받은 집 안 기기 포함). 공유기 바깥 주소로 되돌아 들어오기(NAT 루프백)는 OS들처럼 막지 않는다. WebView2(런타임 154)의 Chromium 로컬 네트워크 접근 차단은 실험해 보니 동작하지 않았다(실제 인터넷 페이지에서도 127.0.0.1에 요청이 닿음, <code>LnaProbe.cs</code>)</li>
     <li><b>네트워크 자체</b>: 권한 있는 카드와 없는 카드는 브라우저 프로세스(데이터 폴더 <code>online</code>/<code>offline</code>)를 따로 쓴다. 없는 쪽은 모든 연결을 앱이 쥔 막다른 길로 보내고(루프백 예외 없음) 이름 풀이도 전부 실패시킨다. 막다른 길은 앱이 켜질 때 <code>127.255.255.1</code>~<code>32</code> 중 하나에 빈 포트를 독점으로 열어 둔 소켓으로, 들어온 연결을 받자마자 끊는다(다른 프로그램이 가로챌 수 없고, 127 대역은 이 PC 자신이라 밖으로 나가지 않음). 이름 풀이 차단 규칙은 이 주소만 빼야 프록시에 닿는다(빼지 않으면 프록시 주소까지 풀이에 실패한다 — 테스트로 확인)</li>
   </ul>
   <div class="callout warn">
@@ -686,8 +687,8 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
     var internet = $("pInternet").checked;
 
     var counted = [], info = [];
-    if (internet) counted.push(row("외부 네트워크와 자유롭게 통신", icon("o", "!",
-      "이 카드는 인터넷의 어느 주소와도 데이터를 주고받을 수 있어요.<br><br>카드가 볼 수 있는 정보를 밖으로 보낼 수도 있어요." +
+    if (internet) counted.push(row("인터넷과 통신 (내부망 제외)", icon("o", "!",
+      "이 카드는 인터넷과 데이터를 주고받을 수 있어요. 공유기·NAS 같은 내부망과 이 PC에는 닿지 않아요.<br><br>카드가 볼 수 있는 정보를 밖으로 보낼 수도 있어요." +
       '<div class="lim">다른 페이지로 이동하거나 인터넷에서 코드를 받아 실행할 수는 없어요.</div>')));
     if (notify) counted.push(row("알림 보내기", icon("y", "!",
       "이 카드는 Windows 알림을 띄울 수 있어요.<br><br>알림을 너무 자주 보내면 방해가 될 수 있어요." +

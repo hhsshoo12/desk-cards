@@ -26,6 +26,7 @@ internal static class DardStorage
     private static readonly SemaphoreSlim _moving = new(1, 1);
 
     /// <summary>
+    /// 권한이 있으면 모든 연결이 앱의 프록시(<see cref="DardProxy"/>)를 지나 인터넷(공인 주소)에만 닿는다. 내부망은 막는다.
     /// 권한이 없으면 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 열기 때문에(회귀 테스트로 확인)
     /// 모든 연결을 앱이 쥐고 있는 막다른 길(<see cref="DeadEnd"/>)로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다.
     /// 어느 쪽이든 WebRTC는 프록시 밖 UDP를 쓰지 못하게 하고, 페이지에서도 지운다(로컬 IP가 드러나므로).
@@ -34,10 +35,18 @@ internal static class DardStorage
     public static Task<CoreWebView2Environment> Environment(bool internet)
     {
         const string webrtc = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp";
-        if (internet)
-            return _online ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "online"),
-                new CoreWebView2EnvironmentOptions(webrtc));
+        if (internet) return _online ??= CreateOnline();
         return _offline ??= CreateOffline();
+
+        // 인터넷만: 모든 연결을 앱의 프록시에 맡기고(루프백도 예외 없이) 브라우저는 이름을 풀지 않는다. 프록시가 내부망을 막는다.
+        static Task<CoreWebView2Environment> CreateOnline()
+        {
+            var proxy = DardProxy.Instance;
+            return CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "online"),
+                new CoreWebView2EnvironmentOptions(
+                    $"--proxy-server=http://{proxy.EndPoint} --proxy-bypass-list=<-loopback> --disable-quic " +
+                    $"--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE {proxy.EndPoint.Address}\" " + webrtc));
+        }
 
         static Task<CoreWebView2Environment> CreateOffline()
         {
@@ -66,31 +75,12 @@ internal static class DardStorage
             _ = Task.Run(AcceptLoop);
         }
 
-        public static DeadEnd Instance => _instance ??= Open();
+        public static DeadEnd Instance => _instance ??= new DeadEnd(Loopback.Listen());
 
         public IPEndPoint EndPoint => (IPEndPoint)_socket.LocalEndPoint!;
 
         /// <summary>지금까지 막은 연결 수(권한 없는 카드가 밖으로 나가려 한 횟수).</summary>
         public int Hits => Volatile.Read(ref _hits);
-
-        private static DeadEnd Open()
-        {
-            for (int n = 1; n <= 32; n++)
-            {
-                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
-                try
-                {
-                    socket.Bind(new IPEndPoint(IPAddress.Parse($"127.255.255.{n}"), 0));
-                    socket.Listen(64);
-                    return new DeadEnd(socket);
-                }
-                catch (SocketException)
-                {
-                    socket.Dispose();
-                }
-            }
-            throw new IOException("카드의 네트워크를 막을 자리(127.255.255.1~32)를 열지 못했어요.");
-        }
 
         private async Task AcceptLoop()
         {
