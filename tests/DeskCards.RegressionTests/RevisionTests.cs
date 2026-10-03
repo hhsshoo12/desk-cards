@@ -9,6 +9,33 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        RecoveryTest("revision A8: nested template scripts run when cloned and foreign scripts remain blocked", async () =>
+        {
+            const string html = """
+                <template id="outer"><template id="inner"><script>window.nested='한글';</script></template></template>
+                <script>document.body.append(document.getElementById('outer').content.cloneNode(true));document.body.append(document.getElementById('inner').content.cloneNode(true));</script>
+                """;
+            using var page = await HiddenPage.Open(await DardStorage.Environment(false), "https://template.card.desk", "<body>" + html,
+                "Content-Security-Policy: " + DardView.ContentPolicy(System.Text.Encoding.UTF8.GetBytes("<body>" + html), false));
+            Check(await page.Eval("window.nested") == "\"한글\"");
+            Check(await page.Eval("const s=document.createElement('script');s.textContent='window.foreign=1';document.body.append(s);!window.foreign") == "true");
+        });
+        Test("revision A9: malformed and unsupported archives report a package error", () =>
+        {
+            byte[] unsupported = Dard(("manifest.json", ClockManifest), ("card.html", "<p>test"));
+            for (int n = 0; n + 12 < unsupported.Length; n++)
+            {
+                uint sig = BitConverter.ToUInt32(unsupported, n);
+                int offset = sig == 0x04034b50 ? 8 : sig == 0x02014b50 ? 10 : -1;
+                if (offset >= 0) { unsupported[n + offset] = 99; unsupported[n + offset + 1] = 0; }
+            }
+            foreach (byte[] bytes in new[] { new byte[] { 0, 1, 2 }, unsupported, unsupported.Take(40).ToArray() })
+            {
+                bool caught = false;
+                try { DardPackage.Parse(bytes, "broken.dard"); } catch (DardException ex) { caught = ex.Message.Contains("손상"); }
+                Check(caught);
+            }
+        });
         Test("revision A7: transient replace lock retries and permanent failure logs without losing config", () =>
         {
             string path = Path.Combine(root, "save-retry.json"); var cfg = Config.Load(path); cfg.Save();

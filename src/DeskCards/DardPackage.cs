@@ -240,7 +240,7 @@ internal sealed class DardPackage
                 files[n] = buffer.ToArray();
             }
         }
-        catch (InvalidDataException)
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IOException)
         {
             throw new DardException("zip 파일이 아니거나 손상됐어요.");
         }
