@@ -184,12 +184,21 @@ internal sealed class Config
                 stream.Write(json);
                 stream.Flush(flushToDisk: true);
             }
-            if (File.Exists(_filePath)) File.Replace(temporary, _filePath, _filePath + ".bak");
+            if (File.Exists(_filePath))
+            {
+                for (int attempt = 0; ; attempt++)
+                {
+                    try { File.Replace(temporary, _filePath, _filePath + ".bak"); break; }
+                    catch (IOException) when (attempt < 3) { System.Threading.Thread.Sleep(50); }
+                }
+            }
             else File.Move(temporary, _filePath);
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Trace.TraceError("설정 저장 실패: {0}: {1}", _filePath, ex);
+            try { File.AppendAllText(_filePath + ".log", $"{DateTimeOffset.Now:o} 설정 저장 실패: {ex}{System.Environment.NewLine}"); } catch { }
             return false;
         }
         finally

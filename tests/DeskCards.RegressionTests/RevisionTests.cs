@@ -9,6 +9,21 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision A7: transient replace lock retries and permanent failure logs without losing config", () =>
+        {
+            string path = Path.Combine(root, "save-retry.json"); var cfg = Config.Load(path); cfg.Save();
+            var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var release = Task.Run(async () => { await Task.Delay(65); locked.Dispose(); });
+            cfg.ShowGuides = false;
+            Check(cfg.TrySave()); release.GetAwaiter().GetResult();
+            Check(!Config.Load(path).ShowGuides);
+            using (var permanent = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                cfg.ShowGuides = true; Check(!cfg.TrySave());
+                Check(!Config.Load(path).ShowGuides && File.ReadAllText(path + ".log").Contains("설정 저장 실패"));
+            }
+            Check(!Directory.EnumerateFiles(root, "save-retry.json.*.tmp").Any());
+        });
         Test("revision A5: queued settings entry points do nothing after manager shutdown", () =>
         {
             var mgr = new GroupManager(Path.Combine(root, "settings-shutdown"), Config.Load(Path.Combine(root, "settings-shutdown.json")));
