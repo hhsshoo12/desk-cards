@@ -178,9 +178,48 @@ internal sealed partial class GroupManager
 
     private void LoadDard(DardPackage pkg, DardStamp stamp)
     {
+        // 업데이트로 저장소 위치(internet 권한, storage 방식)가 바뀌었으면 먼저 옮기고 나서 띄운다.
+        if (_cfg.DardStorage.TryGetValue(pkg.Id, out var from) && from != pkg.StorageLocation)
+        {
+            MoveDardStorage(pkg, stamp, from);
+            return;
+        }
+        if (from == null)
+        {
+            _cfg.DardStorage[pkg.Id] = pkg.StorageLocation;
+            _cfg.Save();
+        }
         var runtime = new DardRuntime(pkg, this, stamp);
         _dards[pkg.Path] = runtime;
         foreach (var info in pkg.Cards) CreateDardWindow(runtime, info);
+    }
+
+    /// <summary>
+    /// 저장소를 옛 위치에서 새 위치로 옮긴 뒤 다시 맞춘다(그때 띄운다). 옮기는 동안 이 파일은 다시 보지 않는다.
+    /// 실패해도 새 위치로 넘어가되 옛 저장소는 지우지 않고 남겨 둔다.
+    /// </summary>
+    private async void MoveDardStorage(DardPackage pkg, DardStamp stamp, string from)
+    {
+        _dardSkipped[pkg.Path] = stamp;
+        string? error = null;
+        int skipped = 0;
+        try
+        {
+            skipped = await DardStorage.MoveAsync(pkg, from);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        if (_shuttingDown) return;
+        _cfg.DardStorage[pkg.Id] = pkg.StorageLocation;
+        _cfg.Save();
+        _dardSkipped.Remove(pkg.Path);
+        Reconcile();
+        if (error != null)
+            Dialogs.Show($"카드는 새 저장소로 띄웠고, 예전 데이터는 지우지 않고 남겨 뒀어요.\n\n{error}", heading: $"'{pkg.Name}' 카드의 저장된 데이터를 옮기지 못했어요");
+        else if (skipped > 0)
+            Dialogs.Show($"옮길 수 없는 값이 들어 있던 항목 {skipped}개는 빠졌어요.", heading: $"'{pkg.Name}' 카드의 저장된 데이터를 옮겼어요");
     }
 
     private void CreateDardWindow(DardRuntime runtime, DardCardInfo info)
@@ -294,7 +333,7 @@ internal sealed partial class GroupManager
     {
         var pkg = runtime.Package;
         string file = Path.GetFileName(pkg.Path);
-        var r = Dialogs.Show($"{file}을 휴지통으로 옮겨요. 이 파일로 띄운 카드 {pkg.Cards.Count}장이 모두 사라져요.",
+        var r = Dialogs.Show($"{file}을 휴지통으로 옮겨요. 이 파일로 띄운 카드 {pkg.Cards.Count}장과 카드가 저장한 데이터가 모두 사라져요.",
             MessageBoxButton.OKCancel, heading: $"'{pkg.Name}' 카드를 지울까요?", primary: "삭제");
         if (r != MessageBoxResult.OK) return false;
         FileOps.Recycle(pkg.Path);
@@ -305,24 +344,22 @@ internal sealed partial class GroupManager
             string key = runtime.KeyFor(info.Id);
             _cfg.Positions.Remove(key);
             _cfg.Layouts.Remove(key);
-            _cfg.DardSettings.Remove(key);
         }
         _cfg.Dards.Remove(pkg.Id);
+        if (_cfg.DardStorage.Remove(pkg.Id, out var location))
+        {
+            var (internet, perCard) = DardStorage.ParseLocation(location);
+            ClearDardStorage(internet, pkg.Cards.Select(c => pkg.OriginFor(c.Id, perCard)).Distinct().ToList());
+        }
         _cfg.Save();
         RaiseChanged();
         return true;
     }
 
-    // ----- 카드 설정(desk.card.settings) -----
-
-    public JsonNode? GetDardSettings(string key) =>
-        _cfg.DardSettings.TryGetValue(key, out var v) ? JsonNode.Parse(v.GetRawText()) : null;
-
-    public void SetDardSettings(string key, JsonNode? value)
+    private static async void ClearDardStorage(bool internet, IReadOnlyList<string> origins)
     {
-        if (value == null) _cfg.DardSettings.Remove(key);
-        else _cfg.DardSettings[key] = JsonSerializer.SerializeToElement(value);
-        _cfg.Save();
+        try { await DardStorage.ClearAsync(internet, origins); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine("카드 저장소를 지우지 못함: " + ex.Message); }
     }
 }
 

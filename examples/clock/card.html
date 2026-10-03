@@ -32,9 +32,15 @@
     date.textContent = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' });
     document.body.classList.toggle('accent', opts.accent);
   }
-  function apply(v) { opts = Object.assign({ hour24: true, seconds: false, accent: false }, v || {}); render(); }
-  desk.card.settings.get().then(apply);
-  desk.on('settings', apply);
+  // 설정은 localStorage에 둔다. 설정 화면은 이 카드와 같은 주소라, 거기서 바꾸면 storage 이벤트가 온다.
+  function load() {
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem('clock') || '{}'); } catch { }
+    opts = Object.assign({ hour24: true, seconds: false, accent: false }, saved);
+    render();
+  }
+  window.addEventListener('storage', e => { if (e.key === 'clock') load(); });
+  load();
   // 마우스를 올리면 오른쪽 위에 설정 버튼이 보인다.
   document.getElementById('gear').addEventListener('click', () => desk.card.openSettings().catch(() => {}));
   setInterval(render, 1000);

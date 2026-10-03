@@ -5,8 +5,8 @@ using System.Text.Json.Nodes;
 namespace DeskCards;
 
 /// <summary>
-/// 불러온 .dard 하나. 카드 창들과 그 안의 화면(카드·설정)을 묶어서, 카드끼리 메시지를 전하고
-/// 카드 설정이 바뀌면 같은 카드의 다른 화면에 알린다.
+/// 불러온 .dard 하나. 카드 창들과 그 안의 화면(카드·설정)을 묶어서 카드끼리 메시지를 전한다.
+/// 카드 설정은 카드가 브라우저 저장소(localStorage 등)에 직접 둔다. 설정 화면은 그 카드와 같은 주소라 같은 저장소를 본다.
 /// </summary>
 internal sealed class DardRuntime
 {
@@ -28,7 +28,7 @@ internal sealed class DardRuntime
 
     public IReadOnlyCollection<DardWindow> Windows => _windows.Values;
 
-    /// <summary>위치·모양·설정을 저장하는 이름. 폴더 이름에는 ':'가 없으니 그룹과 겹치지 않는다.</summary>
+    /// <summary>위치·모양을 저장하는 이름. 폴더 이름에는 ':'가 없으니 그룹과 겹치지 않는다.</summary>
     public string KeyFor(string cardId) => $"dard:{Package.Id}/{cardId}";
 
     public void AddWindow(DardWindow w) => _windows[w.Info.Id] = w;
@@ -43,16 +43,6 @@ internal sealed class DardRuntime
     public void Register(DardView view) => _views.Add(view);
 
     public void Forget(DardView view) => _views.Remove(view);
-
-    public JsonNode? GetSettings(string cardId) => _mgr.GetDardSettings(KeyFor(cardId));
-
-    /// <summary>카드 설정을 저장하고, 같은 카드를 보여 주는 다른 화면(카드 ↔ 설정)에 "settings" 이벤트로 알린다.</summary>
-    public void SetSettings(string cardId, JsonNode? value, DardView from)
-    {
-        _mgr.SetDardSettings(KeyFor(cardId), value);
-        foreach (var v in _views.Where(v => v.CardId == cardId && v != from).ToList())
-            v.Emit("settings", value?.DeepClone());
-    }
 
     /// <summary>같은 .dard의 다른 카드에 "message" 이벤트를 보낸다. 그런 카드가 없으면 false.</summary>
     public bool Deliver(string from, string to, JsonNode? data)

@@ -438,6 +438,13 @@ internal static partial class Program
                 "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"memory\", \"cpu\"], \"internet\": true },")), ("card.html", "")), "x.dard");
             Check(perms.Permissions.Select(p => p.Key).SequenceEqual(new[] { "system:cpu", "system:memory", "internet" }) && perms.Internet);
             Check(perms.PermissionLines.Select(p => p.Label).SequenceEqual(new[] { "시스템 상태 읽기 (cpu, memory)", "외부 네트워크와 자유롭게 통신" }));
+            Check(perms.Quota == DardPackage.DefaultQuota && perms.StorageLocation == "online/shared" && perms.Origins.SequenceEqual(new[] { "https://com.test.clock.card.desk" }));
+            var large = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
+                "\"version\": \"1.0.0\", \"storage\": \"card\", \"permissions\": { \"storage.large\": true },")), ("card.html", "")), "x.dard");
+            Check(large.Quota == DardPackage.LargeQuota && large.StorageLocation == "offline/card" && large.HostFor("mini") == "mini.com.test.clock.card.desk");
+            Check(large.Origins.SequenceEqual(new[] { "https://main.com.test.clock.card.desk", "https://mini.com.test.clock.card.desk" }));
+            Check(large.OwnsHost("mini.com.test.clock.card.desk") && !large.OwnsHost("evilcom.test.clock.card.desk"));
+            Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",", "\"version\": \"1.0.0\", \"storage\": \"window\",")), ("card.html", ""))));
             // internet은 있다/없다만 받는다(예전의 도메인 목록은 거부).
             Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
                 "\"version\": \"1.0.0\", \"permissions\": { \"internet\": [\"api.example.com\"] },")), ("card.html", ""))));
@@ -463,14 +470,15 @@ internal static partial class Program
                 Test(".dard 카드도 공통 아크릴 틀을 쓰고 활성화는 허용한다", () => CheckDwmCard(main, activatable: true));
                 Test(".dard 웹 화면은 편집 중 캡처로 바뀌고 끝나면 같은 확대 비율로 돌아온다", () => CheckDardEditing(main));
 
-                mgr.SetDardSettings(main.Key, System.Text.Json.Nodes.JsonNode.Parse("""{"hour24":false}"""));
-                Check((bool?)mgr.GetDardSettings(main.Key)?["hour24"] == false);
-                Check(Config.Load(Path.Combine(root, "dard.json")).DardSettings.ContainsKey(main.Key));
+                Check(Config.Load(Path.Combine(root, "dard.json")).DardStorage["com.test.clock"] == "offline/shared");
+                Check(Eval(WebOf(main), "localStorage.setItem('clock', 'h12'); location.host") == "\"com.test.clock.card.desk\"");
 
                 main.Runtime.OpenSettings("main");
                 // 설정 창은 포커스를 잃으면 스스로 닫힌다. 테스트 중에 다른 창을 쓰면 여기서 실패할 수 있다.
                 Pump(100);
                 Check(app.Windows.OfType<DardSettingsWindow>().Count() == 1);
+                // 설정 화면은 카드와 같은 주소라 같은 저장소를 본다(카드 설정은 localStorage로).
+                Check(Eval(WebOf(app.Windows.OfType<DardSettingsWindow>().Single()), "localStorage.getItem('clock')") == "\"h12\"");
 
                 // 권한이 같은 새 버전은 다시 묻지 않고 바꿔 띄운다(설정 창은 닫힌다).
                 File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest), ("card.html", "<p>2"), ("settings.html", "<p>s")));
@@ -503,6 +511,7 @@ internal static partial class Program
             finally { mgr.Shutdown(); }
         });
         DardLeakTests(root);
+        DardStorageTests(root);
     }
 
     // ----- 앱 자체 업데이트: 임시 설치 폴더와 가짜 네트워크만 쓴다 -----

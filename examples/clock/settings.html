@@ -29,10 +29,11 @@
   const keys = ['hour24', 'seconds', 'accent'];
   let opts = { hour24: true, seconds: false, accent: false };
   const show = () => keys.forEach(k => document.getElementById(k).checked = !!opts[k]);
-  desk.card.settings.get().then(v => { opts = Object.assign(opts, v || {}); show(); });
+  try { opts = Object.assign(opts, JSON.parse(localStorage.getItem('clock') || '{}')); } catch { }
+  show();
   keys.forEach(k => document.getElementById(k).addEventListener('change', e => {
     opts[k] = e.target.checked;
-    desk.card.settings.set(opts);
+    localStorage.setItem('clock', JSON.stringify(opts));
   }));
 </script>
 </body>

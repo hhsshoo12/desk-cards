@@ -20,8 +20,8 @@ internal sealed class Config
     /// <summary>.dard 카드 승인 기록. 매니페스트 id → 승인한(또는 거절한) 파일 해시. 카드 파일이 스스로 적을 수 없게 여기 둔다.</summary>
     public Dictionary<string, DardApproval> Dards { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>.dard 카드별 설정(desk.card.settings). "id/카드id" → 카드가 저장한 JSON.</summary>
-    public Dictionary<string, JsonElement> DardSettings { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>.dard 저장소가 지금 있는 곳(DardPackage.StorageLocation). 매니페스트 id → "offline/shared" 등. 바뀌면 불러오기 전에 옮긴다.</summary>
+    public Dictionary<string, string> DardStorage { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
@@ -146,10 +146,10 @@ internal sealed class Config
                     foreach (var (id, approval) in cfg.Dards ?? new())
                         if (!string.IsNullOrEmpty(id) && approval is { Hash.Length: > 0 }) dards[id] = approval.Normalized();
                     cfg.Dards = dards;
-                    var dardSettings = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-                    foreach (var (key, value) in cfg.DardSettings ?? new())
-                        if (!string.IsNullOrEmpty(key) && value.ValueKind != JsonValueKind.Undefined) dardSettings[key] = value;
-                    cfg.DardSettings = dardSettings;
+                    var dardStorage = new Dictionary<string, string>(StringComparer.Ordinal);
+                    foreach (var (id, location) in cfg.DardStorage ?? new())
+                        if (!string.IsNullOrEmpty(id) && location is "offline/shared" or "offline/card" or "online/shared" or "online/card") dardStorage[id] = location;
+                    cfg.DardStorage = dardStorage;
                     return cfg;
                 }
             }

@@ -24,13 +24,11 @@ namespace DeskCards;
 /// </summary>
 internal sealed class DardView : Grid
 {
-    /// <summary>카드가 저장하는 설정·주고받는 메시지 하나의 최대 크기(JSON 글자 수).</summary>
+    /// <summary>카드끼리 주고받는 메시지 하나의 최대 크기(JSON 글자 수).</summary>
     public const int MaxMessage = 64 * 1024;
 
     /// <summary>사용자가 누른 직후에만 되는 일(브라우저 열기, 설정 열기)의 허용 시간.</summary>
     private const int GestureMs = 1500;
-
-    private static Task<CoreWebView2Environment>? _offline, _online;
 
     private readonly DardRuntime _runtime;
     private readonly WebView2 _web;
@@ -89,29 +87,13 @@ internal sealed class DardView : Grid
         if (_web.CoreWebView2 != null) _web.ZoomFactor = _zoom;
     }
 
-    /// <summary>
-    /// internet 권한이 있는 카드와 없는 카드는 브라우저 프로세스를 따로 쓴다(실행 인자는 데이터 폴더마다 하나라서 폴더도 따로).
-    /// 권한이 없으면 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 열기 때문에(회귀 테스트로 확인)
-    /// 모든 연결을 없는 프록시로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다.
-    /// 어느 쪽이든 WebRTC는 프록시 밖 UDP를 쓰지 못하게 하고, 페이지에서도 지운다(로컬 IP가 드러나므로).
-    /// </summary>
-    private static Task<CoreWebView2Environment> SharedEnvironment(bool internet)
-    {
-        const string webrtc = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp";
-        if (internet)
-            return _online ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "online"),
-                new CoreWebView2EnvironmentOptions(webrtc));
-        return _offline ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "offline"),
-            new CoreWebView2EnvironmentOptions(
-                "--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback> --host-resolver-rules=\"MAP * ~NOTFOUND\" " + webrtc));
-    }
-
     private async Task StartAsync()
     {
         if (_web.CoreWebView2 != null || _closed) return;
         try
         {
-            await _web.EnsureCoreWebView2Async(await SharedEnvironment(_runtime.Package.Internet));
+            await DardStorage.PrepareAsync(_runtime.Package);
+            await _web.EnsureCoreWebView2Async(await DardStorage.Environment(_runtime.Package.Internet));
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -165,7 +147,10 @@ internal sealed class DardView : Grid
         core.Navigate(PageUrl);
     }
 
-    private string PageUrl => $"https://{_runtime.Package.Host}/{_page}";
+    /// <summary>이 화면이 뜨는 호스트. 설정 화면은 설정하는 카드와 같은 주소라 저장소를 같이 본다.</summary>
+    private string PageHost => _runtime.Package.HostFor(CardId);
+
+    private string PageUrl => $"https://{PageHost}/{_page}";
 
     private void ShowError(string text)
     {
@@ -180,8 +165,8 @@ internal sealed class DardView : Grid
         var uri = new Uri(e.Request.Uri);
         var pkg = _runtime.Package;
         byte[]? body = null;
-        bool own = string.Equals(uri.Host, pkg.Host, StringComparison.OrdinalIgnoreCase);
-        if (uri.Scheme == "https" && own && e.Request.Method == "GET")
+        bool own = pkg.OwnsHost(uri.Host);
+        if (uri.Scheme == "https" && string.Equals(uri.Host, PageHost, StringComparison.OrdinalIgnoreCase) && e.Request.Method == "GET")
         {
             if (uri.AbsolutePath == "/" + DardPackage.CardPage) body = pkg.CardHtml;
             else if (uri.AbsolutePath == "/" + DardPackage.SettingsPage) body = pkg.SettingsHtml;
@@ -266,7 +251,6 @@ internal sealed class DardView : Grid
             card: Object.freeze({
               id: () => info.cardId,
               size: () => Promise.resolve({ width: info.width, height: info.height }),
-              settings: Object.freeze({ get: () => call('settings.get'), set: value => call('settings.set', value) }),
               openSettings: () => call('openSettings'),
               closeSettings: () => call('closeSettings'),
             }),
@@ -294,7 +278,7 @@ internal sealed class DardView : Grid
     private void OnMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         if (!Uri.TryCreate(e.Source, UriKind.Absolute, out var source) ||
-            !string.Equals(source.Host, _runtime.Package.Host, StringComparison.OrdinalIgnoreCase)) return;
+            !string.Equals(source.Host, PageHost, StringComparison.OrdinalIgnoreCase)) return;
         JsonNode? msg;
         try { msg = JsonNode.Parse(e.WebMessageAsJson); }
         catch (JsonException) { return; }
@@ -326,13 +310,6 @@ internal sealed class DardView : Grid
     {
         switch (fn)
         {
-            case "settings.get":
-                return _runtime.GetSettings(CardId);
-            case "settings.set":
-                string json = args?.ToJsonString() ?? "null";
-                if (json.Length > MaxMessage) throw new DardCallException("RangeError", "설정이 너무 커요(64KB까지).");
-                _runtime.SetSettings(CardId, args, from: this);
-                return null;
             case "openSettings":
                 if (IsSettings) throw new DardCallException("Error", "설정 화면에서는 부를 수 없어요.");
                 if (!_runtime.Package.SettingsRatio.HasValue) throw new DardCallException("Error", "이 카드에는 settings.html이 없어요.");

@@ -217,6 +217,7 @@ details[open] summary { margin-bottom: 6px; }
     { "id": "week", "name": "주간 예보", "ratio": [2, 1] }
   ],
   "settings": { "ratio": [3, 4] },  // settings.html의 비율. 없으면 3:4
+  "storage": "shared",              // 브라우저 저장소: "shared"(모든 카드가 하나, 기본) 또는 "card"(카드마다 따로)
   "permissions": {
     "system": ["cpu", "memory", "battery", "network"],
     "notify": true,
@@ -315,14 +316,23 @@ details[open] summary { margin-bottom: 6px; }
 
 <section id="v1perms">
   <h2>1차 권한</h2>
-  <p>첫 구현·배포에서는 권한을 <b>세 가지</b>(알림, 소리·밝기, 네트워크)만 만듭니다. 카드 크기·개수에는 1차에 한도와 권한이 없습니다.</p>
+  <p>첫 구현·배포에서는 권한을 시스템 상태 읽기, 알림, 소리·밝기, 네트워크, 큰 저장 공간만 만듭니다. 카드 크기·개수에는 1차에 한도와 권한이 없습니다.</p>
   <div class="table-wrap"><table>
     <tr><th>색</th><th>화면 이름</th><th>키</th><th>하는 일</th></tr>
     <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>알림 보내기</td><td><code>notify</code></td><td>Windows 알림 띄우기</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>소리·화면 밝기 조절</td><td><code>system.control</code></td><td>시스템 볼륨·음소거, 화면 밝기 읽기/바꾸기</td></tr>
     <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 자유롭게 통신</td><td><code>internet</code></td><td>보통 웹 방식(<code>fetch</code>, 이미지, WebSocket 등)으로 어디와도 통신. 다른 페이지로 이동·프레임·외부 스크립트는 여전히 안 됨</td></tr>
+    <tr><td><span class="dot y"></span>노랑</td><td>큰 저장 공간 (2GB까지)</td><td><code>storage.large</code></td><td>저장소 한도를 128MB에서 2GB로 늘림 (<code>"storage.large": true</code>)</td></tr>
   </table></div>
+  <h3 id="storage">저장소</h3>
+  <ul>
+    <li><b>카드 데이터는 브라우저 저장소에</b>: 카드 설정을 포함한 모든 데이터는 카드가 localStorage·IndexedDB·OPFS에 직접 둡니다. 예전 안의 <code>desk.card.settings</code>(앱의 config.json에 저장)는 없앴습니다 (2026-10-03 결정).</li>
+    <li><b>나누는 방식</b>: 매니페스트 <code>"storage"</code>가 <code>"shared"</code>(기본)면 모든 카드가 <code>https://&lt;id&gt;.card.desk</code> 하나를 같이 쓰고, <code>"card"</code>면 카드마다 <code>https://&lt;카드 id&gt;.&lt;id&gt;.card.desk</code>로 따로 씁니다. 설정 화면은 설정하는 카드와 같은 주소에서 떠서 같은 저장소를 보고, 값을 바꾸면 카드에 표준 <code>storage</code> 이벤트가 옵니다.</li>
+    <li><b>한도</b>: 주소마다 IndexedDB·OPFS·Cache 합쳐 <b>128MB</b>, <code>storage.large</code>면 <b>2GB</b>. 앱의 관리용 화면이 DevTools <code>Storage.overrideQuotaForOrigin</code>으로 겁니다. localStorage는 브라우저가 따로 약 5MB로 묶습니다. 페이지의 <code>navigator.storage.estimate()</code>는 Chromium이 지문 방지로 고정값을 보여 주므로 한도와 다를 수 있습니다.</li>
+    <li><b>옮기기</b>: 업데이트로 <code>internet</code> 권한이나 <code>storage</code> 방식이 바뀌면 저장소 위치(브라우저 데이터 폴더 online/offline, 주소)가 바뀝니다. 앱이 불러오기 전에 옛 주소에서 옮기기 페이지를 열어 저장소를 zip(데이터는 원래 바이트 그대로, 구조는 index.json)으로 받고, 새 주소에서 다시 만듭니다. IndexedDB는 버전·구조·인덱스와 Date·Map·Set·Blob·ArrayBuffer 등을 그대로 옮기고, 옮길 수 없는 값(CryptoKey 등)이 든 레코드는 빼고 몇 개 뺐는지 알립니다. 다 옮긴 뒤에야 옛 저장소를 지우고, 실패하면 옛 저장소는 남겨 둡니다. Cache Storage와 쿠키는 옮기지 않습니다.</li>
+    <li><b>지우기</b>: 앱에서 카드를 지우면 그 카드의 저장소도 지웁니다. 탐색기에서 파일만 지우면 저장소는 남습니다.</li>
+  </ul>
   <h3><code>system</code> 필드 (dard 1 고정)</h3>
   <p class="muted">필드를 나중에 추가하면 <code>dard: 2</code>가 되고, 카드가 새 필드를 쓰려면 다시 승인을 받아야 합니다. 그래야 기존 카드가 몰래 새 정보를 읽는 일이 없습니다.</p>
   <div class="table-wrap"><table>
@@ -375,8 +385,7 @@ details[open] summary { margin-bottom: 6px; }
     <tr><td><code>desk.cards.list()</code></td><td>⚪</td><td>같은 .dard의 카드 목록 (<code>id</code>, <code>name</code>)</td></tr>
     <tr><td><code>desk.card.size()</code></td><td>⚪</td><td>페이지가 보는 화면 크기(CSS 픽셀, 비율로 정해짐)</td></tr>
     <tr><td><code>desk.cards.post(id, msg)</code> / <code>on("message")</code></td><td>⚪</td><td>같은 .dard의 다른 카드와 메시지 주고받기 (JSON)</td></tr>
-    <tr><td><code>desk.card.settings.get/set()</code></td><td>⚪</td><td>카드별 설정(JSON, 64KB까지). 호스트가 config.json에 저장하고, 바뀌면 같은 카드의 다른 화면(카드 ↔ 설정)에 <code>settings</code> 이벤트</td></tr>
-    <tr><td><code>desk.on(name, cb)</code> / <code>off</code></td><td>⚪</td><td>이벤트: <code>settings</code>, <code>message</code>(<code>{from, data}</code>), <code>theme</code></td></tr>
+    <tr><td><code>desk.on(name, cb)</code> / <code>off</code></td><td>⚪</td><td>이벤트: <code>message</code>(<code>{from, data}</code>), <code>theme</code>. 카드 설정은 <a href="#storage">브라우저 저장소</a>에 직접 둡니다</td></tr>
     <tr><td><code>desk.theme()</code> / <code>on("theme")</code></td><td>⚪</td><td>다크/라이트, 강조색, 배율</td></tr>
     <tr><td><code>desk.openUrl(url)</code></td><td>⚪</td><td>기본 브라우저로 열기. 사용자가 누른 직후에만, <code>http(s)</code>만</td></tr>
     <tr><td><code>desk.system.get(fields?)</code></td><td><span class="dot g"></span><code>system</code></td><td>현재 값 한 번 읽기</td></tr>
@@ -400,7 +409,7 @@ details[open] summary { margin-bottom: 6px; }
       <ul>
         <li>HTML/CSS, 애니메이션, SVG, Canvas 2D, WebGL, WebGPU</li>
         <li>Web Worker, <code>OffscreenCanvas</code>, <code>crypto.subtle</code>, <code>Intl</code></li>
-        <li>localStorage, IndexedDB, OPFS (카드 전용, 카드당 50MB)</li>
+        <li>localStorage, IndexedDB, OPFS (카드 전용, 128MB · <code>storage.large</code>면 2GB)</li>
         <li>마우스·키보드·휠·포인터 입력</li>
         <li><code>prefers-color-scheme</code>, <code>prefers-reduced-motion</code></li>
         <li>화면 크기, 배율, 코어 수, <code>navigator.onLine</code></li>

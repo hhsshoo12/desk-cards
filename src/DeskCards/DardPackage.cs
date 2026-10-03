@@ -63,8 +63,36 @@ internal sealed class DardPackage
     /// <summary>외부 네트워크와 자유롭게 통신해도 되는지. 아니면 브라우저의 모든 연결이 막다른 길로 간다.</summary>
     public bool Internet => Permissions.Any(p => p.Key == "internet");
 
-    /// <summary>카드 하나의 가상 호스트. 한 .dard의 카드와 설정 화면은 같은 origin이라 저장소를 같이 쓴다.</summary>
+    /// <summary>카드마다 브라우저 저장소를 따로 쓰는지(매니페스트 "storage": "card"). 아니면 모든 카드가 하나를 같이 쓴다("shared", 기본).</summary>
+    public bool StoragePerCard { get; private init; }
+
+    public const long DefaultQuota = 128L * 1024 * 1024, LargeQuota = 2L * 1024 * 1024 * 1024;
+
+    /// <summary>주소(origin)마다 쓸 수 있는 IndexedDB·OPFS·Cache 용량. localStorage는 브라우저가 따로 약 5MB로 묶는다.</summary>
+    public long Quota => Permissions.Any(p => p.Key == "storage.large") ? LargeQuota : DefaultQuota;
+
+    /// <summary>
+    /// 저장소가 있는 곳. 브라우저 데이터 폴더(online/offline)와 나누는 방식이 같으면 같은 저장소를 본다.
+    /// 업데이트로 이 값이 바뀌면 불러오기 전에 저장소를 옮긴다.
+    /// </summary>
+    public string StorageLocation => (Internet ? "online" : "offline") + "/" + (StoragePerCard ? "card" : "shared");
+
+    /// <summary>.dard의 가상 호스트. 저장소를 같이 쓰면 모든 카드와 설정 화면이 이 주소에서 뜬다.</summary>
     public string Host => Id + ".card.desk";
+
+    /// <summary>카드 하나(와 그 카드의 설정 화면)가 뜨는 호스트. 저장소를 카드마다 나누면 카드 id가 앞에 붙는다.</summary>
+    public string HostFor(string cardId) => StoragePerCard ? cardId + "." + Host : Host;
+
+    /// <summary>이 .dard가 쓰는 모든 origin(저장소 단위).</summary>
+    public IReadOnlyList<string> Origins =>
+        StoragePerCard ? Cards.Select(c => "https://" + HostFor(c.Id)).ToList() : new[] { "https://" + Host };
+
+    /// <summary>카드의 옛 저장소 위치(perCard 방식이었는지에 따라)에서 이 카드가 쓰던 origin.</summary>
+    public string OriginFor(string cardId, bool perCard) => "https://" + (perCard ? cardId + "." + Host : Host);
+
+    /// <summary>이 .dard의 주소인지(다른 카드의 주소 포함).</summary>
+    public bool OwnsHost(string host) =>
+        string.Equals(host, Host, StringComparison.OrdinalIgnoreCase) || host.EndsWith("." + Host, StringComparison.OrdinalIgnoreCase);
 
     public static DardPackage Load(string path)
     {
@@ -125,6 +153,17 @@ internal sealed class DardPackage
         }
         else if (settingsHtml != null) settingsRatio = (3, 4);
 
+        bool perCard = false;
+        if (m.TryGetProperty("storage", out var storageEl))
+        {
+            perCard = (storageEl.ValueKind == JsonValueKind.String ? storageEl.GetString() : null) switch
+            {
+                "shared" => false,
+                "card" => true,
+                _ => throw new DardException("storage는 \"shared\"나 \"card\"로 적어 주세요."),
+            };
+        }
+
         return new DardPackage
         {
             Path = path,
@@ -137,6 +176,7 @@ internal sealed class DardPackage
             SettingsHtml = settingsHtml,
             SettingsRatio = settingsRatio,
             Permissions = ReadPermissions(m),
+            StoragePerCard = perCard,
         };
     }
 
@@ -229,6 +269,9 @@ internal sealed class DardPackage
                     break;
                 case "internet":
                     if (Flag(prop)) list.Add(new DardPermission("internet", "외부 네트워크와 자유롭게 통신", true));
+                    break;
+                case "storage.large":
+                    if (Flag(prop)) list.Add(new DardPermission("storage.large", "큰 저장 공간 (2GB까지)", true));
                     break;
                 default:
                     throw new DardException($"모르는 권한이에요: {prop.Name}");
