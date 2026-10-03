@@ -64,26 +64,7 @@ internal partial class SettingsWindow
         var u = Updater.Instance;
         var text = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 1, 0, 0) };
 
-        var fill = new ColumnDefinition { Width = new GridLength(0, GridUnitType.Star) };
-        var rest = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
-        var track = new Grid { Height = 4, VerticalAlignment = VerticalAlignment.Center };
-        track.ColumnDefinitions.Add(fill);
-        track.ColumnDefinitions.Add(rest);
-        var trackBg = new Border { CornerRadius = new CornerRadius(2) };
-        trackBg.SetResourceReference(Border.BackgroundProperty, "ControlBorder");
-        Grid.SetColumnSpan(trackBg, 2);
-        var bar = new Border { CornerRadius = new CornerRadius(2) };
-        bar.SetResourceReference(Border.BackgroundProperty, "Accent");
-        track.Children.Add(trackBg);
-        track.Children.Add(bar);
-        var percent = new TextBlock { FontSize = 12, MinWidth = 36, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
-        percent.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-        var gauge = new Grid { Width = 260, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 5, 0, 1) };
-        gauge.ColumnDefinitions.Add(new ColumnDefinition());
-        gauge.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(percent, 1);
-        gauge.Children.Add(track);
-        gauge.Children.Add(percent);
+        var (gauge, fill, rest, percent) = UpdateGauge();
 
         var detail = new Grid();
         detail.Children.Add(text);
@@ -167,6 +148,37 @@ internal partial class SettingsWindow
 
         _updateRefresh = Refresh;
         Refresh();
+        return AppCardLayout(detail, button);
+    }
+
+    private static (Grid Gauge, ColumnDefinition Fill, ColumnDefinition Remaining, TextBlock Percent) UpdateGauge()
+    {
+        var fill = new ColumnDefinition { Width = new GridLength(0, GridUnitType.Star) };
+        var rest = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) };
+        var track = new Grid { Height = 4, VerticalAlignment = VerticalAlignment.Center };
+        track.ColumnDefinitions.Add(fill);
+        track.ColumnDefinitions.Add(rest);
+        var trackBg = new Border { CornerRadius = new CornerRadius(2) };
+        trackBg.SetResourceReference(Border.BackgroundProperty, "ControlBorder");
+        Grid.SetColumnSpan(trackBg, 2);
+        var bar = new Border { CornerRadius = new CornerRadius(2) };
+        bar.SetResourceReference(Border.BackgroundProperty, "Accent");
+        track.Children.Add(trackBg);
+        track.Children.Add(bar);
+        var percent = new TextBlock { FontSize = 12, MinWidth = 36, Margin = new Thickness(10, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        percent.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
+        var gauge = new Grid { Width = 260, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 5, 0, 1) };
+        gauge.ColumnDefinitions.Add(new ColumnDefinition());
+        gauge.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(percent, 1);
+        gauge.Children.Add(track);
+        gauge.Children.Add(percent);
+
+        return (gauge, fill, rest, percent);
+    }
+
+    private Border AppCardLayout(Grid detail, Button button)
+    {
         var icon = new Image { Source = LoadIcon(256), Width = 64, Height = 64, Margin = new Thickness(0, 0, 20, 0) };
         RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
         var name = new TextBlock
