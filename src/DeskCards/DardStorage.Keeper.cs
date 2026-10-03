@@ -11,6 +11,16 @@ namespace DeskCards;
 
 internal static partial class DardStorage
 {
+    internal static Stream CopyResponse(Stream source, long length, string? tempDirectory = null)
+    {
+        Stream copy = length > 64L * 1024 * 1024
+            ? new FileStream(Path.Combine(tempDirectory ?? Path.GetTempPath(), "DeskCards-" + Guid.NewGuid().ToString("N") + ".tmp"),
+                FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose)
+            : new MemoryStream();
+        try { source.CopyTo(copy); copy.Position = 0; return copy; }
+        catch { copy.Dispose(); throw; }
+    }
+
     /// <summary>
     /// 환경 하나의 보이지 않는 관리용 화면. 앱이 끝날 때까지 산다.
     /// 저장소를 옮길 때는 그 origin으로 옮기기 페이지를 열고, 페이지가 보내는 zip 조각을 받거나(내보내기) 준다(가져오기).
@@ -192,12 +202,8 @@ internal static partial class DardStorage
             var entry = _zip?.GetEntry(name);
             if (entry == null) return null;
             // 응답 스트림은 브라우저가 따로 읽으므로 zip과 떼어 둔다. 큰 항목은 임시 파일로.
-            var copy = entry.Length > 64L * 1024 * 1024
-                ? (Stream)new FileStream(Path.GetTempFileName(), FileMode.Create, FileAccess.ReadWrite, FileShare.None, 81920, FileOptions.DeleteOnClose)
-                : new MemoryStream();
-            using (var s = entry.Open()) s.CopyTo(copy);
-            copy.Position = 0;
-            return copy;
+            using var source = entry.Open();
+            return CopyResponse(source, entry.Length);
         }
 
         public void Finish(string? error, int skipped = 0)

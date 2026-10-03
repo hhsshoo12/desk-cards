@@ -9,6 +9,19 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision A4: failed large response copy immediately deletes its temporary file", () =>
+        {
+            string temp = Path.Combine(root, "response-temp"); Directory.CreateDirectory(temp);
+            using var broken = new BrokenReadStream();
+            bool failed = false;
+            try { using var unused = DardStorage.CopyResponse(broken, 65L * 1024 * 1024, temp); }
+            catch (IOException) { failed = true; }
+            Check(failed && Directory.GetFiles(temp).Length == 0);
+            using (var input = new MemoryStream(new byte[] { 1, 2, 3 }))
+            using (var copied = DardStorage.CopyResponse(input, 65L * 1024 * 1024, temp))
+                Check(copied.ReadByte() == 1 && Directory.GetFiles(temp).Length == 1);
+            Check(Directory.GetFiles(temp).Length == 0);
+        });
         Test("revision A2: root watcher is replaced after error and stays stopped after shutdown", () =>
         {
             string folder = Path.Combine(root, "watch-recovery"); Directory.CreateDirectory(folder);
@@ -78,5 +91,9 @@ internal static partial class Program
             }
             finally { DardStorage.BrowserLost -= OnLost; AppPaths.WebDataDir = original; }
         });
+    }
+    private sealed class BrokenReadStream : MemoryStream
+    {
+        public override void CopyTo(Stream destination, int bufferSize) { destination.WriteByte(1); throw new IOException("read failed"); }
     }
 }
