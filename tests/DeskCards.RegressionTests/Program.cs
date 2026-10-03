@@ -498,6 +498,7 @@ internal static partial class Program
             }
             finally { mgr.Shutdown(); }
         });
+        DardLeakTests(root);
     }
 
     // ----- 앱 자체 업데이트: 임시 설치 폴더와 가짜 네트워크만 쓴다 -----
@@ -656,6 +657,8 @@ internal static partial class Program
     }
     private static void Test(string name, Action action)
     {
+        // 일부만 돌릴 때: DESKCARDS_TEST_FILTER에 테스트 이름 일부를 넣는다.
+        if (Environment.GetEnvironmentVariable("DESKCARDS_TEST_FILTER") is { Length: > 0 } filter && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) return;
         try { action(); Console.WriteLine("PASS " + name); }
         catch (Exception ex) { _failed++; Console.WriteLine("FAIL " + name + ": " + ex.Message); }
     }

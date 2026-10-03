@@ -91,9 +91,14 @@ internal sealed class DardView : Grid
 
     private static Task<CoreWebView2Environment> SharedEnvironment()
     {
-        // 한 브라우저 프로세스를 모든 카드가 같이 쓴다. WebRTC는 요청 검사와 CSP를 거치지 않으므로 끈다.
+        // 한 브라우저 프로세스를 모든 카드가 같이 쓴다. 카드 파일은 WebResourceRequested가 직접 주므로 브라우저는 네트워크가 필요 없다.
+        // 그래서 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 여므로(회귀 테스트로 확인)
+        // 없는 프록시로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다. WebRTC도 프록시 밖 UDP를 쓰지 못하게 한다.
+        // 외부 통신은 나중에 desk.fetch(C#)로만 한다.
         return _environment ??= CoreWebView2Environment.CreateAsync(null, AppPaths.WebDataDir,
-            new CoreWebView2EnvironmentOptions("--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp"));
+            new CoreWebView2EnvironmentOptions(
+                "--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback> --host-resolver-rules=\"MAP * ~NOTFOUND\" " +
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp"));
     }
 
     private async Task StartAsync()
