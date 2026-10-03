@@ -287,7 +287,7 @@ details[open] summary { margin-bottom: 6px; }
   <h3>카드가 있는 곳</h3>
   <ul>
     <li><b>카드는 언제나 바탕화면 층 또는 카드 바에만 있습니다.</b> 다른 앱 창 위로 올라올 수 없습니다. 그래서 큰 카드도 앱을 가리거나 다른 창을 흉내 낼 수 없습니다.</li>
-    <li>나중에 "항상 위"를 넣더라도 <b>카드끼리 겹칠 때의 순서</b>만 뜻합니다. 바탕화면 층을 벗어나는 권한은 만들지 않습니다.</li>
+    <li>나중에 "항상 위"를 넣더라도 <b>카드끼리 겹칠 때의 순서</b>만 뜻합니다. 바탕화면 층을 벗어나는 권한은 앱이 제목 표시줄을 그리는 전용 자리 하나(<code>topmost</code>, <a href="#later">나중에</a>)뿐입니다.</li>
   </ul>
 </section>
 
@@ -566,6 +566,8 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
     <tr><td><span class="dot r"></span>빨강</td><td>클립보드 읽기</td><td><code>clipboard.read</code></td><td>매번 확인 창</td></tr>
     <tr><td><span class="dot r"></span>빨강</td><td>내 파일 읽기</td><td><code>files.read</code></td><td>파일·폴더 선택 창 = 승인. 고른 폴더는 기억하고 설정에서 취소 가능. 너무 넓은 폴더 경고, 시스템 폴더 거부, <code>accept</code> 형식만 보임</td></tr>
     <tr><td><span class="dot r"></span>빨강</td><td>내 파일 저장</td><td><code>files.write</code></td><td>저장 창 = 승인. 같은 파일은 이번 실행 동안만 다시 저장 가능</td></tr>
+    <tr><td><span class="dot y"></span>노랑</td><td>사용 중 화면 맨 위로 올라오기</td><td><code>topmost</code></td><td>화면 맨 위 전용 자리 <b>하나</b>에 카드 한 장. 제목 표시줄(카드 이름·닫기)은 앱이 그림. 자리가 차 있으면 거절. 카드 바를 닫은 지 10초 안이면 바로 올라오고 횟수를 안 셈, 그 밖에는 올라오면 횟수 1이 되어 1분 뒤나 카드 바를 다시 열 때까지 못 올라옴. 전체 화면 게임·영상·슬라이드 쇼(<code>SHQueryUserNotificationState</code>)와 집중 세션(<code>FocusSessionManager</code>, 패키지 없는 앱에서 되는지 확인 필요) 중에는 안 올라옴. 키보드 초점을 뺏지 않음. 크기는 비율, 최대는 앱이 제한(예: 화면 25%), 위치는 사용자가 끌어서 정하고 기억</td></tr>
+    <tr><td>—</td><td>WebAssembly</td><td>권한 아님</td><td>모든 카드에 허용하되 <b>.dard 안의 <code>.wasm</code>만</b>. 런타임이 패키지 wasm의 SHA-256 목록을 만들고, 주입 스크립트가 <code>WebAssembly.compile·instantiate·instantiateStreaming·Module</code>을 감싸 목록에 없는 바이트는 거절. CSP는 <code>'wasm-unsafe-eval'</code>만 추가(JS <code>eval</code>은 계속 금지). script-hash CSP와 함께 넣음</td></tr>
     <tr><td>⛔</td><td>명령어 실행</td><td><code>shell</code></td><td><span class="tag no">영구 없음</span> API 자체를 만들지 않음</td></tr>
   </table></div>
   <h3>빨강 요청 창 규칙</h3>
@@ -622,12 +624,14 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
   </details>
   <details><summary>WebAssembly를 막은 이유</summary>
     <p>wasm을 허용하면 인터넷에서 받은 바이너리를 실행할 수 있어서 스스로 업데이트 방지가 무너집니다. 게임(Canvas·WebGL)이나 이미지 처리(Canvas·WebGL·순수 JS 라이브러리)는 wasm 없이 충분합니다.</p>
+    <p>나중에 다시 정함: 문제는 wasm 자체가 아니라 <b>밖에서 받은 코드</b>입니다. wasm은 혼자서 네트워크·화면·파일에 닿지 못하고 모두 JS를 거치며, CPU 과사용은 JS로도 됩니다. 그래서 권한으로 묻지 않고(사용자가 판단할 수 없는 항목이라서) 패키지 안 wasm의 해시만 실행되게 합니다. <a href="#later">나중에 할 것</a> 참고.</p>
   </details>
   <details><summary>카드 수를 실행 중 요청이 아니라 매니페스트에 미리 적게 한 이유</summary>
     <p>설치 창에서 본 개수와 실제로 뜨는 개수가 같아야 합니다. 실행 중에 카드를 만들 수 있으면 바탕화면을 카드로 덮을 수 있고, 개수 제한을 따로 감시해야 합니다. 미리 적게 하면 확인할 것이 숫자 하나뿐입니다.</p>
   </details>
   <details><summary>카드를 바탕화면 층·카드 바에만 두는 이유</summary>
     <p>카드는 HTML이라 무엇이든 그릴 수 있습니다. 다른 앱 위로 올라올 수 있으면 로그인 창이나 Windows 대화 상자를 흉내 낼 수 있습니다. 바탕화면 층에만 있으면 큰 카드라도 사용자가 쓰는 앱을 가릴 수 없어서, 나중에 만들 크기 권한도 노랑(민폐)으로 둘 수 있습니다.</p>
+    <p>예외는 <code>topmost</code> 하나입니다. 카드 내용 위에 앱이 그리는 제목 표시줄이 늘 붙고 초점을 뺏지 않으므로 흉내·입력 가로채기가 안 되고, 남는 위험은 "귀찮게 할 수 있음"이라 노랑입니다.</p>
   </details>
   <details><summary>1차에 카드 틀에 맞추고 프레임리스를 미룬 이유</summary>
     <p>폴더 카드가 앱의 중심이라 새 카드도 같은 틀에 있어야 한 앱으로 보입니다. 틀이 같으면 옮기기·가이드·편집 모드·카드 바를 그대로 씁니다. 프레임리스는 투명한 곳의 클릭 통과, 투명 창에서 보이는 컴포지션 WebView, 편집할 때 덧씌울 틀이 따로 필요해서 1차 목표와 상관없는 일이 많습니다.</p>
