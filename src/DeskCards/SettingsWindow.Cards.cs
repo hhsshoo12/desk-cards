@@ -13,7 +13,8 @@ internal partial class SettingsWindow
     private string CardsSignature() =>
         string.Join("|", _mgr.Cards.Select(c =>
             $"{c.Group.Name}/{c.Group.Items.Count}/{c.CurrentLayout.Cols}x{c.CurrentLayout.Rows}/{c.SizePercent}")) + "#" +
-        string.Join("|", _mgr.DardEntries().Select(d => $"{d.Path}/{d.State}/{d.Runtime?.Package.Version}"));
+        string.Join("|", _mgr.DardEntries().Select(d => $"{d.Path}/{d.State}/{d.Runtime?.Package.Version}")) + "#" +
+        string.Join("|", _mgr.DardIssues().Select(i => i.Key + "=" + i.Detail));
 
     /// <summary>카드: 편집 시작, 그리고 폴더 카드 › · 위젯 카드 ›.</summary>
     private void BuildCards()
@@ -25,9 +26,11 @@ internal partial class SettingsWindow
             Button("편집 시작", () => _mgr.BeginEditMode(), accent: true)));
 
         int widgets = _mgr.DardEntries().Count;
+        int issues = _mgr.DardIssues().Count;
         AddRow(Row("", "폴더 카드", $"그룹 {_mgr.Cards.Count}개 · 폴더에 넣은 파일을 아이콘으로 보여 주는 카드",
             null, () => Go(PageKind.FolderCards)));
-        AddRow(Row("", "위젯 카드", $"위젯 {widgets}개 · .dard 파일로 추가하는 카드(시계, 메모 등)",
+        AddRow(Row(issues > 0 ? "\uE7BA" : "", "위젯 카드",
+            (issues > 0 ? $"확인할 것 {issues}개 · " : "") + $"위젯 {widgets}개 · .dard 파일로 추가하는 카드(시계, 메모 등)",
             null, () => Go(PageKind.WidgetCards)));
     }
 
@@ -97,6 +100,8 @@ internal partial class SettingsWindow
             ".dard 파일을 골라 그룹 폴더에 넣어요. 처음 넣는 위젯은 추가할지 한 번 물어봐요. 그룹 폴더에 직접 넣어도 돼요.",
             Button("파일 선택", AddWidgets, accent: true)));
 
+        AddDardIssues();
+
         var list = _mgr.DardEntries();
         Header($"위젯 {list.Count}개");
         if (list.Count == 0)
@@ -116,6 +121,39 @@ internal partial class SettingsWindow
             };
             AddRow(Row(entry.State == DardState.On ? "" : entry.State == DardState.Off ? "" : "",
                 entry.Name, desc, null, () => ShowWidget(path)));
+        }
+    }
+
+    /// <summary>카드 파일과 저장된 데이터가 맞지 않는 곳. 지우기는 되돌릴 수 없으니 한 번 더 묻는다.</summary>
+    private void AddDardIssues()
+    {
+        var issues = _mgr.DardIssues();
+        if (issues.Count == 0) return;
+        Header($"확인할 것 {issues.Count}개");
+        foreach (var issue in issues)
+        {
+            var i = issue;
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+            if (i.Kind == DardIssueKind.Duplicate)
+            {
+                buttons.Children.Add(Button("파일 위치 열기", () => FileOps.Reveal(i.Files[^1])));
+            }
+            else
+            {
+                var clear = Button("데이터 지우기", () =>
+                {
+                    var r = Dialogs.Show("지운 데이터는 되돌릴 수 없어요.", MessageBoxButton.OKCancel, heading: "저장된 데이터를 지울까요?", primary: "지우기");
+                    if (r == MessageBoxResult.OK) _mgr.ResolveDardIssue(i, clear: true);
+                });
+                clear.SetResourceReference(ForegroundProperty, "Danger");
+                buttons.Children.Add(clear);
+                var keep = Button("그대로 두기", () => _mgr.ResolveDardIssue(i, clear: false));
+                keep.Margin = new Thickness(8, 0, 0, 0);
+                buttons.Children.Add(keep);
+            }
+            var row = Row("\uE7BA", i.Title, i.Detail, buttons);
+            row.SetResourceReference(Border.BorderBrushProperty, "Danger");
+            AddRow(row);
         }
     }
 

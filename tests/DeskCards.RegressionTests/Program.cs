@@ -18,6 +18,7 @@ internal static partial class Program
     private static int Main()
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        GroupManager.QuietDardIssues = true; // 경고 확인 창은 그 기능을 보는 테스트에서만 띄운다
         Theme.Apply();
         // Keep the sandbox as diagnostic evidence. Never touch the user's groups/config.
         string root = Path.Combine(Path.GetTempPath(), "DeskCards-regression-" + Guid.NewGuid().ToString("N"));
@@ -512,6 +513,7 @@ internal static partial class Program
         });
         DardLeakTests(root);
         DardStorageTests(root);
+        DardIssueTests(root);
     }
 
     // ----- 앱 자체 업데이트: 임시 설치 폴더와 가짜 네트워크만 쓴다 -----
@@ -673,6 +675,12 @@ internal static partial class Program
         // 일부만 돌릴 때: DESKCARDS_TEST_FILTER에 테스트 이름 일부를 넣는다.
         if (Environment.GetEnvironmentVariable("DESKCARDS_TEST_FILTER") is { Length: > 0 } filter && !name.Contains(filter, StringComparison.OrdinalIgnoreCase)) return;
         try { action(); Console.WriteLine("PASS " + name); }
-        catch (Exception ex) { _failed++; Console.WriteLine("FAIL " + name + ": " + ex.Message); }
+        catch (Exception ex)
+        {
+            _failed++;
+            // 확인(Check) 말고 다른 예외면 어디서 났는지도 적는다.
+            string where = ex.StackTrace?.Split('\n').FirstOrDefault(l => l.Contains("RegressionTests") && l.Contains(":line"))?.Trim() ?? "";
+            Console.WriteLine("FAIL " + name + ": " + ex.Message + (ex.Message.StartsWith("Assertion") ? "" : " " + where));
+        }
     }
 }

@@ -23,6 +23,12 @@ internal sealed class Config
     /// <summary>.dard 저장소가 지금 있는 곳(DardPackage.StorageLocation). 매니페스트 id → "offline/shared" 등. 바뀌면 불러오기 전에 옮긴다.</summary>
     public Dictionary<string, string> DardStorage { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>저장소를 옮기는 중인 .dard(매니페스트 id → 옮겨 갈 위치). 끝나면 지운다. 남아 있으면 지난번에 옮기다 멈춘 것이다.</summary>
+    public Dictionary<string, string> DardMoving { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>"그대로 두기"를 고른 카드 데이터 경고(DardIssue.Key). 다시 알리지 않는다.</summary>
+    public List<string> KeptDardData { get; set; } = new();
+
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
 
@@ -150,6 +156,8 @@ internal sealed class Config
                     foreach (var (id, location) in cfg.DardStorage ?? new())
                         if (!string.IsNullOrEmpty(id) && location is "offline/shared" or "offline/card" or "online/shared" or "online/card") dardStorage[id] = location;
                     cfg.DardStorage = dardStorage;
+                    cfg.DardMoving = new Dictionary<string, string>((cfg.DardMoving ?? new()).Where(p => !string.IsNullOrEmpty(p.Key) && dardStorage.ContainsKey(p.Key)), StringComparer.Ordinal);
+                    cfg.KeptDardData = cfg.KeptDardData?.Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList() ?? new();
                     return cfg;
                 }
             }

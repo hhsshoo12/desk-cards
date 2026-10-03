@@ -83,7 +83,7 @@ internal static partial class Program
                 Check(Eval(mini, "localStorage.getItem('k')") == "null");
 
                 bool cleared = false;
-                DardStorage.ClearAsync(false, pkg.Origins).ContinueWith(_ => cleared = true);
+                OnUi(() => DardStorage.ClearAsync(false, pkg.Origins)).ContinueWith(_ => cleared = true);
                 WaitUntil(() => cleared);
                 Eval(main, "location.reload()");
                 Pump(500);
@@ -114,6 +114,8 @@ internal static partial class Program
                 Check(ready.StartsWith("ok"));
                 Check(cfg.DardStorage["com.test.move"] == "offline/shared");
 
+                // 지난번에 옮기다 앱이 꺼진 것처럼 표시를 남겨 둔다. 이번에 이어서 옮기고 그렇다고 알려야 한다.
+                cfg.DardMoving["com.test.move"] = "online/shared";
                 var dialogs = CloseDialogs(() =>
                 {
                     File.WriteAllBytes(file, Dard(("manifest.json", v2), ("card.html", MoveReader)));
@@ -136,12 +138,20 @@ internal static partial class Program
                     WaitUntilLong(() => false, 1500); // 옮긴 뒤 알림이 뜰 시간
                 });
                 foreach (var d in dialogs) Console.WriteLine("  dialog: " + d);
-                // CryptoKey 레코드 하나는 옮길 수 없어서 빠졌다고 알린다.
-                Check(dialogs.Count == 1 && dialogs[0].Contains("1개"));
+                // 이어서 옮겼다고, 그리고 CryptoKey 레코드 하나는 옮길 수 없어서 빠졌다고 알린다.
+                Check(dialogs.Count == 1 && dialogs[0].Contains("이어서") && dialogs[0].Contains("1개"));
+                Check(!cfg.DardMoving.ContainsKey("com.test.move") && !mgr.DardIssues().Any(i => i.Id == "com.test.move"));
             }
             finally { mgr.Shutdown(); }
         });
     }
+
+    /// <summary>
+    /// 브라우저 객체를 다루는 비동기 작업을 Dispatcher 안에서 시작한다. 콘솔 본문에는 WPF 동기화 컨텍스트가 없어서,
+    /// 그냥 부르면 await 뒤가 다른 스레드에서 이어져 브라우저 객체를 잘못된 스레드에서 건드린다.
+    /// </summary>
+    private static System.Threading.Tasks.Task OnUi(Func<System.Threading.Tasks.Task> work) =>
+        System.Threading.Tasks.TaskExtensions.Unwrap(Dispatcher.CurrentDispatcher.InvokeAsync(work).Task);
 
     /// <summary>OPFS에 mb만큼 써 본다. "wrote" 또는 오류 글자.</summary>
     private static string WriteOpfs(Microsoft.Web.WebView2.Wpf.WebView2 web, int mb)

@@ -331,7 +331,9 @@ details[open] summary { margin-bottom: 6px; }
     <li><b>나누는 방식</b>: 매니페스트 <code>"storage"</code>가 <code>"shared"</code>(기본)면 모든 카드가 <code>https://&lt;id&gt;.card.desk</code> 하나를 같이 쓰고, <code>"card"</code>면 카드마다 <code>https://&lt;카드 id&gt;.&lt;id&gt;.card.desk</code>로 따로 씁니다. 설정 화면은 설정하는 카드와 같은 주소에서 떠서 같은 저장소를 보고, 값을 바꾸면 카드에 표준 <code>storage</code> 이벤트가 옵니다.</li>
     <li><b>한도</b>: 주소마다 IndexedDB·OPFS·Cache 합쳐 <b>128MB</b>, <code>storage.large</code>면 <b>2GB</b>. 앱의 관리용 화면이 DevTools <code>Storage.overrideQuotaForOrigin</code>으로 겁니다. localStorage는 브라우저가 따로 약 5MB로 묶습니다. 페이지의 <code>navigator.storage.estimate()</code>는 Chromium이 지문 방지로 고정값을 보여 주므로 한도와 다를 수 있습니다.</li>
     <li><b>옮기기</b>: 업데이트로 <code>internet</code> 권한이나 <code>storage</code> 방식이 바뀌면 저장소 위치(브라우저 데이터 폴더 online/offline, 주소)가 바뀝니다. 앱이 불러오기 전에 옛 주소에서 옮기기 페이지를 열어 저장소를 zip(데이터는 원래 바이트 그대로, 구조는 index.json)으로 받고, 새 주소에서 다시 만듭니다. IndexedDB는 버전·구조·인덱스와 Date·Map·Set·Blob·ArrayBuffer 등을 그대로 옮기고, 옮길 수 없는 값(CryptoKey 등)이 든 레코드는 빼고 몇 개 뺐는지 알립니다. 다 옮긴 뒤에야 옛 저장소를 지우고, 실패하면 옛 저장소는 남겨 둡니다. Cache Storage와 쿠키는 옮기지 않습니다.</li>
-    <li><b>지우기</b>: 앱에서 카드를 지우면 그 카드의 저장소도 지웁니다. 탐색기에서 파일만 지우면 저장소는 남습니다.</li>
+    <li><b>지우기</b>: 앱에서 카드를 지우면 그 카드의 저장소도 지웁니다. 탐색기에서 파일만 지우면 저장소는 남고, 아래 경고로 알립니다.</li>
+    <li><b>저장소 목록</b>: 어느 origin에 어느 카드(id)의 데이터가 있는지 브라우저 데이터 폴더(<code>online</code>/<code>offline</code>) 안의 <code>desk-origins.json</code>에 적습니다. 앱 설정 파일과 따로 두어, 설정 파일이 날아가거나 되돌려져도 "어디에 무슨 데이터가 있나"는 남습니다.</li>
+    <li><b>불일치 경고</b> (2026-10-03): 카드 파일을 맞출 때마다 저장소 목록과 카드 파일을 대조합니다. ① 카드 파일 없이 데이터만 남음, ② 카드가 지금 쓰지 않는 예전 저장소가 남음(옮기기 실패 등), ③ 같은 id의 카드 파일이 여럿. 처음 보는 것은 확인 창으로 한 번 알리고, 설정 › 카드 › 위젯 카드 위쪽에 용량과 함께 계속 보여 줍니다. [데이터 지우기](한 번 더 확인) 또는 [그대로 두기](다시 알리지 않음). 데이터는 저절로 지우지 않습니다. ④ 옮기다 앱이 꺼지면 표시(<code>DardMoving</code>)가 남아 있다가, 다음에 카드를 띄울 때 처음부터 다시 옮기고 그렇다고 알립니다(옛 저장소는 다 옮긴 뒤에야 지우므로 다시 해도 안전).</li>
   </ul>
   <h3><code>system</code> 필드 (dard 1 고정)</h3>
   <p class="muted">필드를 나중에 추가하면 <code>dard: 2</code>가 되고, 카드가 새 필드를 쓰려면 다시 승인을 받아야 합니다. 그래야 기존 카드가 몰래 새 정보를 읽는 일이 없습니다.</p>

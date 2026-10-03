@@ -113,16 +113,81 @@ internal static class DardStorage
     public static async Task PrepareAsync(DardPackage pkg)
     {
         var keeper = await KeeperFor(pkg.Internet);
+        UpdateIndex(pkg.Internet, index => { foreach (string origin in pkg.Origins) index[origin] = pkg.Id; });
         foreach (string origin in pkg.Origins)
             await keeper.Cdp("Storage.overrideQuotaForOrigin", new { origin, quotaSize = pkg.Quota });
     }
 
-    /// <summary>origin들의 저장소를 모두 지운다(카드를 지울 때).</summary>
+    /// <summary>origin들의 저장소를 모두 지운다(카드를 지울 때). 저장소 목록에서도 뺀다.</summary>
     public static async Task ClearAsync(bool internet, IEnumerable<string> origins)
     {
         var keeper = await KeeperFor(internet);
-        foreach (string origin in origins)
+        var list = origins.ToList();
+        foreach (string origin in list)
             await keeper.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
+        UpdateIndex(internet, index => list.ForEach(o => index.Remove(o)));
+    }
+
+    /// <summary>origin이 쓰는 용량(IndexedDB·OPFS·Cache, 바이트). 알 수 없으면 null.</summary>
+    public static async Task<long?> UsageAsync(bool internet, string origin)
+    {
+        try
+        {
+            var keeper = await KeeperFor(internet);
+            using var doc = JsonDocument.Parse(await keeper.Cdp("Storage.getUsageAndQuota", new { origin }));
+            return (long)doc.RootElement.GetProperty("usage").GetDouble();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or KeyNotFoundException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            return null;
+        }
+    }
+
+    // ----- 저장소 목록: 데이터가 있을 수 있는 origin → 매니페스트 id -----
+    // 앱 설정 파일과 따로, 브라우저 데이터 폴더 안에 둔다. 설정 파일이 날아가거나 되돌려져도 "어디에 무슨 데이터가 있나"는 남는다.
+
+    private static readonly object _indexLock = new();
+
+    private static string IndexPath(bool internet) => Path.Combine(AppPaths.WebDataDir, internet ? "online" : "offline", "desk-origins.json");
+
+    /// <summary>환경 하나의 저장소 목록(origin → 매니페스트 id).</summary>
+    public static Dictionary<string, string> Recorded(bool internet)
+    {
+        lock (_indexLock)
+        {
+            try
+            {
+                string path = IndexPath(internet);
+                if (!File.Exists(path)) return new(StringComparer.OrdinalIgnoreCase);
+                var read = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path));
+                return new Dictionary<string, string>(read ?? new(), StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                return new(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    private static void UpdateIndex(bool internet, Action<Dictionary<string, string>> change)
+    {
+        lock (_indexLock)
+        {
+            var index = Recorded(internet);
+            change(index);
+            string path = IndexPath(internet);
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                string temp = path + ".tmp";
+                File.WriteAllText(temp, JsonSerializer.Serialize(index, new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(temp, path, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                System.Diagnostics.Debug.WriteLine("저장소 목록을 쓰지 못함: " + ex.Message);
+            }
+        }
     }
 
     /// <summary>저장 위치 이름("online/shared" 등)을 환경·방식으로.</summary>
@@ -159,8 +224,10 @@ internal static class DardStorage
                 File.Delete(temp);
             }
             var keep = sameEnv ? pairs.Select(p => p.To).ToHashSet() : new HashSet<string>();
-            foreach (string src in pairs.Select(p => p.From).Distinct().Where(o => !keep.Contains(o)))
+            var cleared = pairs.Select(p => p.From).Distinct().Where(o => !keep.Contains(o)).ToList();
+            foreach (string src in cleared)
                 await from.Cdp("Storage.clearDataForOrigin", new { origin = src, storageTypes = "all" });
+            UpdateIndex(fromNet, index => cleared.ForEach(o => index.Remove(o)));
             return skipped;
         }
         finally
@@ -205,10 +272,7 @@ internal static class DardStorage
             return new Keeper(host, controller);
         }
 
-        public async Task Cdp(string method, object args)
-        {
-            await Core.CallDevToolsProtocolMethodAsync(method, JsonSerializer.Serialize(args));
-        }
+        public Task<string> Cdp(string method, object args) => Core.CallDevToolsProtocolMethodAsync(method, JsonSerializer.Serialize(args));
 
         /// <summary>origin에서 옮기기 페이지를 열고 끝날 때까지 기다린다. 1분 동안 아무 소식이 없으면 실패로 본다. 건너뛴 레코드 수를 돌려준다.</summary>
         public async Task<int> RunAsync(string origin, string mode, string zipPath)
@@ -267,8 +331,7 @@ internal static class DardStorage
                             : Text(404, "");
                         return;
                     case "/__desk/done" when e.Request.Method == "POST":
-                        using (var reader = new StreamReader(e.Request.Content ?? Stream.Null))
-                            job.Finish(null, int.TryParse(reader.ReadToEnd(), out int n) ? n : 0);
+                        job.Finish(null, int.TryParse(query["skipped"], out int n) ? n : 0);
                         e.Response = Text(200, "");
                         return;
                     case "/__desk/fail" when e.Request.Method == "POST":

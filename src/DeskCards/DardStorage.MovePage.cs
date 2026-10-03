@@ -121,7 +121,7 @@ internal static class MovePage
           }
 
           await put('index.json', json(index));
-          await fetch('/__desk/done', { method: 'POST', body: String(index.skipped) });
+          await fetch('/__desk/done?skipped=' + index.skipped, { method: 'POST' });
         })().catch(fail);
         """;
 
