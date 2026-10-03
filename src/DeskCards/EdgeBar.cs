@@ -40,7 +40,7 @@ internal static class EdgeBar
         ApplyHotkey();
         mgr.Changed += ApplyHotkey;
         _timer = CreatePollingTimer(Tick);
-        _timer.Start();
+        SyncPolling();
     }
 
     internal static DispatcherTimer CreatePollingTimer(Action tick)
@@ -63,6 +63,7 @@ internal static class EdgeBar
             _bar = new BarWindow(_mgr, screen, edge);
             _bar.Open();
             _bar.BeginEdit();
+            SyncPolling();
             return;
         }
     }
@@ -78,6 +79,8 @@ internal static class EdgeBar
         _bar?.Close();
         _gauge = null;
         _bar = null;
+        _mgr = null;
+        _timer = null;
     }
 
     // ----- 조합키 등록 -----
@@ -85,6 +88,7 @@ internal static class EdgeBar
     /// <summary>설정(켜기·조합)에 맞게 단축키를 등록하거나 푼다. 바뀐 게 없으면 그대로 둔다.</summary>
     private static void ApplyHotkey()
     {
+        SyncPolling();
         if (_mgr == null || _hotkeyWindow == null) return;
         string want = _mgr.BarEnabled && !_suspended ? string.Join(",", _mgr.BarKeys) : "";
         if (want == _registeredFor) return;
@@ -96,6 +100,15 @@ internal static class EdgeBar
         var (mods, key) = KeyCombo.ToHotkey(_mgr.BarKeys);
         const uint MOD_NOREPEAT = 0x4000;
         HotkeyRegistered = RegisterHotKey(_hotkeyWindow.Handle, HotkeyId, mods | MOD_NOREPEAT, key);
+    }
+
+    private static void SyncPolling()
+    {
+        if (_timer == null) return;
+        // 이미 열린 바는 닫힘 감지가 끝날 때까지 폴링한다. 비활성화 중 게이지는 즉시 치운다.
+        if (_mgr is { IsShuttingDown: false } && (_mgr.BarEnabled || _bar is { IsGone: false })) _timer.Start();
+        else { Reset(); _armed = true; _timer.Stop(); }
+        if (_mgr is { BarEnabled: false }) Reset();
     }
 
     private static void Unregister()
@@ -146,7 +159,7 @@ internal static class EdgeBar
         if (_mgr == null || _mgr.IsShuttingDown) return;
         if (_bar != null)
         {
-            if (_bar.IsGone) _bar = null;
+            if (_bar.IsGone) { _bar = null; SyncPolling(); }
             else { _bar.CheckLeave(); return; }
         }
 

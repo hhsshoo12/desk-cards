@@ -9,6 +9,34 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision A5: queued settings entry points do nothing after manager shutdown", () =>
+        {
+            var mgr = new GroupManager(Path.Combine(root, "settings-shutdown"), Config.Load(Path.Combine(root, "settings-shutdown.json")));
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            {
+                SettingsWindow.Open(mgr); SettingsWindow.OpenWidget(mgr, "missing.dard");
+                SettingsWindow.OpenWidgetCards(mgr); SettingsWindow.OpenBar(mgr); SettingsWindow.OpenGeneral(mgr);
+            });
+            mgr.Shutdown(); Pump(50);
+            Check(!System.Windows.Application.Current.Windows.OfType<SettingsWindow>().Any());
+        });
+        Test("revision A6: disabled bar stops idle polling and reenabling restarts it", () =>
+        {
+            var cfg = Config.Load(Path.Combine(root, "bar-poll.json")); cfg.BarEnabled = false;
+            var mgr = new GroupManager(Path.Combine(root, "bar-poll"), cfg);
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var timer = EdgeBar.CreatePollingTimer(() => { });
+            typeof(EdgeBar).GetField("_mgr", flags)!.SetValue(null, mgr);
+            typeof(EdgeBar).GetField("_timer", flags)!.SetValue(null, timer);
+            var sync = typeof(EdgeBar).GetMethod("ApplyHotkey", flags)!;
+            try
+            {
+                timer.Start(); sync.Invoke(null, null); Check(!timer.IsEnabled);
+                cfg.BarEnabled = true; sync.Invoke(null, null); Check(timer.IsEnabled);
+                cfg.BarEnabled = false; sync.Invoke(null, null); Check(!timer.IsEnabled);
+            }
+            finally { EdgeBar.Stop(); mgr.Shutdown(); }
+        });
         Test("revision A4: failed large response copy immediately deletes its temporary file", () =>
         {
             string temp = Path.Combine(root, "response-temp"); Directory.CreateDirectory(temp);

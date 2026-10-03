@@ -121,6 +121,7 @@ internal partial class SettingsWindow : Window
     /// <summary>설정 창을 띄운다. 카드를 주면 그 카드의 설정 페이지로 연다.</summary>
     public static void Open(GroupManager mgr, CardWindow? card = null)
     {
+        if (!CanOpen(mgr)) return;
         bool fresh = _win == null;
         _win ??= new SettingsWindow(mgr);
         if (card != null) _win.ShowCard(card);
@@ -131,6 +132,7 @@ internal partial class SettingsWindow : Window
     /// <summary>설정 창을 위젯 카드(.dard) 페이지로 연다.</summary>
     public static void OpenWidget(GroupManager mgr, string path)
     {
+        if (!CanOpen(mgr)) return;
         bool fresh = _win == null;
         _win ??= new SettingsWindow(mgr);
         _win.GoTo(PageKind.Widget, _win._card, path);
@@ -141,6 +143,7 @@ internal partial class SettingsWindow : Window
     /// <summary>설정 창을 위젯 카드 페이지로 연다(카드 데이터 경고에서).</summary>
     public static void OpenWidgetCards(GroupManager mgr)
     {
+        if (!CanOpen(mgr)) return;
         Open(mgr);
         _win!.Go(PageKind.WidgetCards);
     }
@@ -148,6 +151,7 @@ internal partial class SettingsWindow : Window
     /// <summary>설정 창을 카드 바 페이지로 연다(카드 바의 설정 버튼에서).</summary>
     public static void OpenBar(GroupManager mgr)
     {
+        if (!CanOpen(mgr)) return;
         Open(mgr);
         _win!.Go(PageKind.Bar);
     }
@@ -155,6 +159,7 @@ internal partial class SettingsWindow : Window
     /// <summary>설정 창을 일반 페이지로 연다(붙이기 안내 말풍선에서).</summary>
     public static void OpenGeneral(GroupManager mgr)
     {
+        if (!CanOpen(mgr)) return;
         Open(mgr);
         _win!.Go(PageKind.General);
         // 실험 설정은 페이지 맨 아래에 있다.
@@ -162,8 +167,11 @@ internal partial class SettingsWindow : Window
         _win.Dispatcher.BeginInvoke(() => _win?.PageScroller.ScrollToEnd(), System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
+    private static bool CanOpen(GroupManager mgr) => !mgr.IsShuttingDown && Application.Current is { } app && !app.Dispatcher.HasShutdownStarted;
+
     private void Reveal(GroupManager mgr)
     {
+        if (!CanOpen(mgr)) return;
         _hiddenForEdit = false;
         Topmost = mgr.Editing; // 편집 막대에서 열면 어두운 막 위에 뜬다.
         if (!IsVisible)
