@@ -221,11 +221,11 @@ details[open] summary { margin-bottom: 6px; }
     "system": ["cpu", "memory", "battery", "network"],
     "notify": true,
     "system.control": ["volume"],
-    "internet": ["api.openweathermap.org"]
+    "internet": true
   }
 }</pre>
   <ul>
-    <li><b>와일드카드 금지</b>: <code>internet</code>에는 도메인을 정확히 적습니다. <code>*.example.com</code>은 거부합니다.</li>
+    <li><b><code>internet</code>은 있다/없다만</b>: <code>true</code>나 <code>false</code>로 적고, 도메인 목록은 받지 않습니다(2026-10-03 결정). 없으면 브라우저의 모든 연결이 막다른 길로 가고, 있으면 어디와도 자유롭게 통신합니다.</li>
     <li><b>적은 항목만 쓸 수 있음</b>: <code>system</code>에 <code>cpu</code>만 적었으면 메모리는 읽을 수 없습니다. 설치 창 풍선에도 적은 항목만 나옵니다.</li>
   </ul>
 </section>
@@ -321,7 +321,7 @@ details[open] summary { margin-bottom: 6px; }
     <tr><td><span class="dot g"></span>초록</td><td>시스템 상태 읽기</td><td><code>system</code></td><td>CPU·GPU 사용량, 메모리, 배터리, 저장 공간, 켜진 시간, 네트워크 간단 상태(연결 여부·유선/무선·속도)</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>알림 보내기</td><td><code>notify</code></td><td>Windows 알림 띄우기</td></tr>
     <tr><td><span class="dot y"></span>노랑</td><td>소리·화면 밝기 조절</td><td><code>system.control</code></td><td>시스템 볼륨·음소거, 화면 밝기 읽기/바꾸기</td></tr>
-    <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 연결</td><td><code>internet</code></td><td>매니페스트에 적힌 도메인과만 통신</td></tr>
+    <tr><td><span class="dot o"></span>주황</td><td>외부 네트워크와 자유롭게 통신</td><td><code>internet</code></td><td>보통 웹 방식(<code>fetch</code>, 이미지, WebSocket 등)으로 어디와도 통신. 다른 페이지로 이동·프레임·외부 스크립트는 여전히 안 됨</td></tr>
   </table></div>
   <h3><code>system</code> 필드 (dard 1 고정)</h3>
   <p class="muted">필드를 나중에 추가하면 <code>dard: 2</code>가 되고, 카드가 새 필드를 쓰려면 다시 승인을 받아야 합니다. 그래야 기존 카드가 몰래 새 정보를 읽는 일이 없습니다.</p>
@@ -355,8 +355,7 @@ details[open] summary { margin-bottom: 6px; }
       <label><input type="checkbox" id="pVolume"> 소리 조절</label>
       <label><input type="checkbox" id="pBright"> 화면 밝기 조절</label>
       <div class="grp">🟠 주황</div>
-      <label><input type="checkbox" id="pInternet" checked> 외부 네트워크와 연결</label>
-      <label style="padding-left:24px"><input type="text" id="domains" value="api.openweathermap.org" style="width:100%;font:inherit;font-size:13px;padding:3px 6px;border:1px solid var(--border);border-radius:5px;background:var(--panel);color:var(--text)"></label>
+      <label><input type="checkbox" id="pInternet" checked> 외부 네트워크와 자유롭게 통신</label>
     </div>
     <div>
       <div class="dialog" id="dialog"></div>
@@ -385,11 +384,10 @@ details[open] summary { margin-bottom: 6px; }
     <tr><td><code>desk.notify({title, body})</code></td><td><span class="dot y"></span><code>notify</code></td><td>Windows 알림. 알림 이름은 카드 이름으로 고정</td></tr>
     <tr><td><code>desk.volume.get/set(n)</code>, <code>mute(bool)</code></td><td><span class="dot y"></span><code>system.control</code></td><td>시스템 볼륨 0~100</td></tr>
     <tr><td><code>desk.brightness.get/set(n)</code></td><td><span class="dot y"></span><code>system.control</code></td><td>화면 밝기 0~100 (지원하는 모니터만)</td></tr>
-    <tr><td><code>desk.fetch(url, init)</code></td><td><span class="dot o"></span><code>internet</code></td><td>호스트가 대신 요청. 적힌 도메인·<code>https</code>만. 쿠키 없음</td></tr>
   </table></div>
   <div class="callout">
-    <b>왜 그냥 <code>fetch</code>가 아니라 <code>desk.fetch</code>인가요?</b><br>
-    카드 origin이 <code>https://…card.desk</code>라서 대부분의 외부 API가 CORS로 막힙니다. 호스트가 대신 요청하면 CORS 문제가 없고, 도메인 검사와 횟수 제한도 한곳에서 할 수 있습니다. 브라우저 기본 <code>fetch</code>는 CSP <code>connect-src</code>로 같은 도메인만 허용해 두고, 되면 써도 됩니다.
+    <b>통신은 <code>desk</code> API가 아니라 보통 웹 방식으로</b><br>
+    <code>internet</code> 권한이 있으면 <code>fetch</code>·XHR·WebSocket·이미지 등 브라우저 기능을 그대로 씁니다(예전 안의 <code>desk.fetch</code>는 없앴습니다). 카드 origin이 <code>https://…card.desk</code>라서 CORS를 허용하지 않는 API는 일반 웹 페이지처럼 막힙니다.
   </div>
 </section>
 
@@ -423,7 +421,8 @@ details[open] summary { margin-bottom: 6px; }
         <li>전체 화면, 포인터 잠금</li>
         <li>페이지 이동, 새 창, 다운로드, 서비스 워커</li>
         <li>우클릭 메뉴, 개발자 도구, 확대/축소, 자동 완성 (개발자 모드에서만 켬)</li>
-        <li><b>WebRTC</b>, WebAssembly, 외부 리소스 전부</li>
+        <li><b>WebRTC</b>, WebAssembly, 외부 스크립트</li>
+        <li>외부 리소스 전부 (<code>internet</code> 권한이 없을 때)</li>
       </ul>
     </div>
   </div>
@@ -432,11 +431,13 @@ details[open] summary { margin-bottom: 6px; }
     <li><b>권한 요청</b>: <code>PermissionRequested</code>에서 전부 거부</li>
     <li><b>모달 창</b>: <code>ScriptDialogOpening</code>에서 막음</li>
     <li><b>이동·새 창·다운로드</b>: <code>NavigationStarting</code>, <code>NewWindowRequested</code>, <code>DownloadStarting</code>에서 취소</li>
-    <li><b>외부 리소스</b>: <code>WebResourceRequested</code>로 모든 요청을 가로채서 카드 자신 외에는 거부</li>
+    <li><b>외부 리소스</b>: <code>WebResourceRequested</code>로 모든 요청을 가로챈다. 카드 자신의 주소는 파일 두 장만, 다른 문서로 가는 요청(이동·프레임)은 늘 거부, 그 밖의 요청은 <code>internet</code> 권한이 있을 때만 내보낸다</li>
+    <li><b>네트워크 자체</b>: 권한 있는 카드와 없는 카드는 브라우저 프로세스(데이터 폴더 <code>online</code>/<code>offline</code>)를 따로 쓴다. 없는 쪽은 모든 연결을 없는 프록시(<code>127.0.0.1:9</code>, 루프백 예외 없음)로 보내고 이름 풀이도 전부 실패시킨다</li>
   </ul>
   <div class="callout warn">
     <b>네트워크 옆길 주의</b><br>
-    WebRTC는 요청 가로채기와 CSP를 <b>둘 다</b> 거치지 않고, 로컬 IP까지 알려 줍니다. <code>internet</code> 권한이 없는 카드도 밖과 통신할 수 있게 되므로 반드시 끕니다 (실행 인자 + 주입 스크립트로 <code>RTCPeerConnection</code> 제거). WebSocket과 DNS 미리 가져오기도 CSP·설정으로 막습니다. 구현 후 실제로 새지 않는지 테스트 카드로 확인해야 합니다.
+    WebRTC는 요청 가로채기와 CSP를 <b>둘 다</b> 거치지 않고, 로컬 IP까지 알려 줍니다. <code>internet</code> 권한이 없는 카드도 밖과 통신할 수 있게 되므로 반드시 끕니다 (실행 인자 + 주입 스크립트로 <code>RTCPeerConnection</code> 제거). WebSocket과 DNS 미리 가져오기도 CSP·설정으로 막습니다.<br><br>
+    <b>테스트로 확인한 것 (2026-10-03)</b>: 회귀 테스트(<code>DardLeakTests.cs</code>)가 루프백 수신기를 두고 30여 가지 옆길로 닿아 봅니다. CSP와 요청 가로채기만 있을 때는 <code>preconnect</code>·iframe·폼·meta refresh·<code>location</code> 이동이 요청 검사 전에 TCP 연결을 열었습니다. 그래서 위의 막다른 프록시를 넣었습니다. 또 <code>internet</code> 권한이 있으면 <code>location</code> 이동 요청은 <code>NavigationStarting</code>에서 취소해도 실제로 나가서, 문서 요청은 가로채기에서 끊습니다. iframe 안의 <code>RTCPeerConnection</code>은 주입 스크립트가 프레임에도 들어가서 꺼낼 수 없었습니다.
   </div>
   <p>그 밖에 카드는 <b>배경 타이머 절전을 끕니다</b>. 바탕화면 카드는 늘 "보이지 않는 창" 취급을 받아서, 끄지 않으면 시계가 멈춥니다.</p>
 </section>
@@ -456,7 +457,7 @@ style-src 'unsafe-inline';
 img-src data: blob:;
 media-src data: blob:;
 font-src data:;
-connect-src &lt;internet에 적힌 도메인&gt;;
+connect-src 'none';   (internet 권한이 있으면 *, img·media·font·style에도 * 추가)
 worker-src blob:;
 base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
   <div class="callout">
@@ -674,14 +675,11 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
       .map(function (c) { return c.getAttribute("data-sys"); });
     var notify = $("pNotify").checked, vol = $("pVolume").checked, bright = $("pBright").checked;
     var internet = $("pInternet").checked;
-    var domains = $("domains").value.split(/[\s,]+/).filter(Boolean);
-    $("domains").disabled = !internet;
 
     var counted = [], info = [];
-    if (internet) counted.push(row("외부 네트워크와 연결", icon("o", "!",
-      "이 카드는 인터넷으로 데이터를 주고받을 수 있어요.<br><br>카드가 볼 수 있는 정보를 밖으로 보낼 수도 있어요." +
-      '<div class="lim">연결하는 곳:<ul>' + (domains.length ? domains.map(function (d) { return "<li>" + esc(d) + "</li>"; }).join("") : "<li>(없음)</li>") +
-      "</ul>1분에 60번까지 요청할 수 있어요.</div>")));
+    if (internet) counted.push(row("외부 네트워크와 자유롭게 통신", icon("o", "!",
+      "이 카드는 인터넷의 어느 주소와도 데이터를 주고받을 수 있어요.<br><br>카드가 볼 수 있는 정보를 밖으로 보낼 수도 있어요." +
+      '<div class="lim">다른 페이지로 이동하거나 인터넷에서 코드를 받아 실행할 수는 없어요.</div>')));
     if (notify) counted.push(row("알림 보내기", icon("y", "!",
       "이 카드는 Windows 알림을 띄울 수 있어요.<br><br>알림을 너무 자주 보내면 방해가 될 수 있어요." +
       '<div class="lim">1분에 3개까지로 제한돼요.</div>')));
@@ -708,7 +706,7 @@ base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none';</pre>
     if (notify) perms.notify = true;
     var ctl = []; if (vol) ctl.push("volume"); if (bright) ctl.push("brightness");
     if (ctl.length) perms["system.control"] = ctl;
-    if (internet) perms.internet = domains;
+    if (internet) perms.internet = true;
     var cards = [{ id: "now", name: "지금 날씨", ratio: [1, 1] }, { id: "week", name: "주간 예보", ratio: [2, 1] }];
     $("manifestOut").textContent = JSON.stringify({ dard: 1, id: "com.example.weather", name: "날씨", version: "1.0.0",
       cards: cards, permissions: perms }, null, 2);

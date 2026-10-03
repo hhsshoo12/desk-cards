@@ -203,7 +203,7 @@ internal sealed class DardApproval
 {
     public string Hash { get; set; } = "";
     public bool Allowed { get; set; }
-    /// <summary>승인할 때 보여 준 권한 목록.</summary>
+    /// <summary>승인한 권한 키(DardPermission.Key).</summary>
     public List<string> Permissions { get; set; } = new();
 
     public DardApproval Normalized() => new()

@@ -20,6 +20,12 @@ internal sealed class DardException : Exception
 internal sealed record DardCardInfo(string Id, string Name, double RatioW, double RatioH);
 
 /// <summary>
+/// 권한 하나. Key는 승인 기록에 남는 값(예: internet, notify, system:cpu)이고 Label은 화면에 보여 줄 이름이다.
+/// Works가 false면 이 버전의 앱에는 아직 그 기능이 없다.
+/// </summary>
+internal sealed record DardPermission(string Key, string Label, bool Works);
+
+/// <summary>
 /// .dard 카드 패키지(확장자만 바꾼 zip). manifest.json, card.html, (있으면) settings.html만 들어 있다.
 /// 디스크에 풀지 않고 매번 메모리에서 연다. 크기는 풀었을 때 기준 32MB까지.
 /// </summary>
@@ -52,8 +58,10 @@ internal sealed class DardPackage
     public byte[]? SettingsHtml { get; private init; }
     /// <summary>설정 화면 비율. settings.html이 없으면 null.</summary>
     public (double W, double H)? SettingsRatio { get; private init; }
-    /// <summary>설치 창에 보여 줄 권한(뭉뚱그린 이름 + 범위).</summary>
-    public IReadOnlyList<string> Permissions { get; private init; } = Array.Empty<string>();
+    public IReadOnlyList<DardPermission> Permissions { get; private init; } = Array.Empty<DardPermission>();
+
+    /// <summary>외부 네트워크와 자유롭게 통신해도 되는지. 아니면 브라우저의 모든 연결이 막다른 길로 간다.</summary>
+    public bool Internet => Permissions.Any(p => p.Key == "internet");
 
     /// <summary>카드 하나의 가상 호스트. 한 .dard의 카드와 설정 화면은 같은 origin이라 저장소를 같이 쓴다.</summary>
     public string Host => Id + ".card.desk";
@@ -196,10 +204,10 @@ internal sealed class DardPackage
         return (w, h);
     }
 
-    /// <summary>설치 창에 보여 줄 권한 목록. 모르는 권한이 있으면 거부한다.</summary>
-    private static IReadOnlyList<string> ReadPermissions(JsonElement m)
+    /// <summary>매니페스트의 권한 목록. 모르는 권한이 있으면 거부한다.</summary>
+    private static IReadOnlyList<DardPermission> ReadPermissions(JsonElement m)
     {
-        var list = new List<string>();
+        var list = new List<DardPermission>();
         if (!m.TryGetProperty("permissions", out var p)) return list;
         if (p.ValueKind != JsonValueKind.Object) throw new DardException("permissions는 객체여야 해요.");
         foreach (var prop in p.EnumerateObject())
@@ -207,21 +215,20 @@ internal sealed class DardPackage
             switch (prop.Name)
             {
                 case "system":
-                    list.Add("시스템 상태 읽기 (" + string.Join(", ", Strings(prop.Value, prop.Name, SystemFields)) + ")");
+                    var fields = Strings(prop.Value, prop.Name, SystemFields).Distinct().OrderBy(f => Array.IndexOf(SystemFields, f)).ToList();
+                    string all = string.Join(", ", fields);
+                    list.AddRange(fields.Select(f => new DardPermission("system:" + f, $"시스템 상태 읽기 ({all})", false)));
                     break;
                 case "notify":
-                    if (prop.Value.ValueKind != JsonValueKind.True && prop.Value.ValueKind != JsonValueKind.False)
-                        throw new DardException("notify는 true나 false로 적어 주세요.");
-                    if (prop.Value.GetBoolean()) list.Add("알림 보내기");
+                    if (Flag(prop)) list.Add(new DardPermission("notify", "알림 보내기", false));
                     break;
                 case "system.control":
-                    list.Add("소리·화면 밝기 조절 (" + string.Join(", ", Strings(prop.Value, prop.Name, ControlFields)) + ")");
+                    var controls = Strings(prop.Value, prop.Name, ControlFields).Distinct().OrderBy(f => Array.IndexOf(ControlFields, f)).ToList();
+                    string both = string.Join(", ", controls);
+                    list.AddRange(controls.Select(f => new DardPermission("system.control:" + f, $"소리·화면 밝기 조절 ({both})", false)));
                     break;
                 case "internet":
-                    var domains = Strings(prop.Value, prop.Name, null);
-                    if (domains.Any(d => d.Contains('*') || d.Contains('/') || d.Contains(':')))
-                        throw new DardException("internet에는 도메인만 정확히 적어 주세요(와일드카드·주소 안 됨).");
-                    list.Add("외부 네트워크와 연결 (" + string.Join(", ", domains) + ")");
+                    if (Flag(prop)) list.Add(new DardPermission("internet", "외부 네트워크와 자유롭게 통신", true));
                     break;
                 default:
                     throw new DardException($"모르는 권한이에요: {prop.Name}");
@@ -229,6 +236,16 @@ internal sealed class DardPackage
         }
         return list;
     }
+
+    private static bool Flag(JsonProperty prop)
+    {
+        if (prop.Value.ValueKind != JsonValueKind.True && prop.Value.ValueKind != JsonValueKind.False)
+            throw new DardException($"{prop.Name}은 true나 false로 적어 주세요.");
+        return prop.Value.GetBoolean();
+    }
+
+    /// <summary>화면에 보여 줄 권한 이름(같은 묶음은 한 줄로).</summary>
+    public IEnumerable<DardPermission> PermissionLines => Permissions.DistinctBy(p => p.Label);
 
     private static List<string> Strings(JsonElement v, string key, string[]? allowed)
     {

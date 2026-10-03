@@ -30,7 +30,7 @@ internal sealed class DardView : Grid
     /// <summary>사용자가 누른 직후에만 되는 일(브라우저 열기, 설정 열기)의 허용 시간.</summary>
     private const int GestureMs = 1500;
 
-    private static Task<CoreWebView2Environment>? _environment;
+    private static Task<CoreWebView2Environment>? _offline, _online;
 
     private readonly DardRuntime _runtime;
     private readonly WebView2 _web;
@@ -89,16 +89,21 @@ internal sealed class DardView : Grid
         if (_web.CoreWebView2 != null) _web.ZoomFactor = _zoom;
     }
 
-    private static Task<CoreWebView2Environment> SharedEnvironment()
+    /// <summary>
+    /// internet 권한이 있는 카드와 없는 카드는 브라우저 프로세스를 따로 쓴다(실행 인자는 데이터 폴더마다 하나라서 폴더도 따로).
+    /// 권한이 없으면 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 열기 때문에(회귀 테스트로 확인)
+    /// 모든 연결을 없는 프록시로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다.
+    /// 어느 쪽이든 WebRTC는 프록시 밖 UDP를 쓰지 못하게 하고, 페이지에서도 지운다(로컬 IP가 드러나므로).
+    /// </summary>
+    private static Task<CoreWebView2Environment> SharedEnvironment(bool internet)
     {
-        // 한 브라우저 프로세스를 모든 카드가 같이 쓴다. 카드 파일은 WebResourceRequested가 직접 주므로 브라우저는 네트워크가 필요 없다.
-        // 그래서 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 여므로(회귀 테스트로 확인)
-        // 없는 프록시로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다. WebRTC도 프록시 밖 UDP를 쓰지 못하게 한다.
-        // 외부 통신은 나중에 desk.fetch(C#)로만 한다.
-        return _environment ??= CoreWebView2Environment.CreateAsync(null, AppPaths.WebDataDir,
+        const string webrtc = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp";
+        if (internet)
+            return _online ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "online"),
+                new CoreWebView2EnvironmentOptions(webrtc));
+        return _offline ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "offline"),
             new CoreWebView2EnvironmentOptions(
-                "--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback> --host-resolver-rules=\"MAP * ~NOTFOUND\" " +
-                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp"));
+                "--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback> --host-resolver-rules=\"MAP * ~NOTFOUND\" " + webrtc));
     }
 
     private async Task StartAsync()
@@ -106,7 +111,7 @@ internal sealed class DardView : Grid
         if (_web.CoreWebView2 != null || _closed) return;
         try
         {
-            await _web.EnsureCoreWebView2Async(await SharedEnvironment());
+            await _web.EnsureCoreWebView2Async(await SharedEnvironment(_runtime.Package.Internet));
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -140,7 +145,7 @@ internal sealed class DardView : Grid
         s.AreDevToolsEnabled = false;
 #endif
 
-        // 카드 파일 두 장 말고는 아무 데도 요청하지 못한다(외부 네트워크 권한은 아직 없다).
+        // 카드 자신의 주소는 파일 두 장만 준다. 다른 주소는 internet 권한이 있을 때만 그대로 내보낸다.
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += OnResourceRequested;
         core.NavigationStarting += (_, e) => { if (e.Uri != PageUrl) e.Cancel = true; };
@@ -175,19 +180,25 @@ internal sealed class DardView : Grid
         var uri = new Uri(e.Request.Uri);
         var pkg = _runtime.Package;
         byte[]? body = null;
-        if (uri.Scheme == "https" && string.Equals(uri.Host, pkg.Host, StringComparison.OrdinalIgnoreCase) && e.Request.Method == "GET")
+        bool own = string.Equals(uri.Host, pkg.Host, StringComparison.OrdinalIgnoreCase);
+        if (uri.Scheme == "https" && own && e.Request.Method == "GET")
         {
             if (uri.AbsolutePath == "/" + DardPackage.CardPage) body = pkg.CardHtml;
             else if (uri.AbsolutePath == "/" + DardPackage.SettingsPage) body = pkg.SettingsHtml;
         }
         if (body == null)
         {
-            e.Response = env.CreateWebResourceResponse(null, 403, "Forbidden", "");
+            // 응답을 정하지 않으면 브라우저가 그대로 요청한다. 다른 문서로 가는 요청(이동·프레임)은 권한이 있어도 막는다:
+            // NavigationStarting에서 취소해도 요청은 이미 나가므로(회귀 테스트로 확인) 여기서 끊는다.
+            if (!pkg.Internet || own || e.ResourceContext == CoreWebView2WebResourceContext.Document)
+                e.Response = env.CreateWebResourceResponse(null, 403, "Forbidden", "");
             return;
         }
-        // 스크립트·스타일은 페이지 안에 있는 것만, 이미지·글꼴·소리는 data:/blob:만. 연결·폼·프레임·플러그인·wasm은 막는다.
-        const string csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
-            "img-src data: blob:; font-src data:; media-src data: blob:; connect-src 'none'; " +
+        // 스크립트는 언제나 페이지 안에 있는 것만(승인한 뒤에 코드가 바뀌지 않게). 폼·프레임·플러그인·wasm은 막는다.
+        // internet 권한이 없으면 이미지·글꼴·소리도 data:/blob:만, 연결은 없다. 있으면 데이터는 어디서든 받는다.
+        string net = pkg.Internet ? " *" : "";
+        string csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'" + net + "; " +
+            $"img-src data: blob:{net}; font-src data:{net}; media-src data: blob:{net}; connect-src {(pkg.Internet ? "*" : "'none'")}; " +
             "base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'";
         e.Response = env.CreateWebResourceResponse(new MemoryStream(body), 200, "OK",
             "Content-Type: text/html; charset=utf-8\r\nContent-Security-Policy: " + csp + "\r\nCache-Control: no-store");

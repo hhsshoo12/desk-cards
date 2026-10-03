@@ -20,41 +20,59 @@ internal static partial class Program
     {
         Test(".dard without internet permission cannot reach the network", () =>
         {
-            using var sink = new LeakSink();
-            string html = LeakCard.Replace("__TCP__", sink.TcpPort.ToString()).Replace("__UDP__", sink.UdpPort.ToString())
-                .Replace("__ONLY__", Environment.GetEnvironmentVariable("DESKCARDS_LEAK_ONLY") ?? ""); // 한 길만 시험할 때(진단용)
-            string groups = Path.Combine(root, "dard-leak");
-            Directory.CreateDirectory(Path.Combine(groups, "그룹"));
-            string file = Path.Combine(groups, "leak.dard");
-            File.WriteAllBytes(file, Dard(("manifest.json", LeakManifest), ("card.html", html)));
-            var cfg = Config.Load(Path.Combine(root, "dard-leak.json"));
-            cfg.Dards["com.test.leak"] = new DardApproval { Hash = DardPackage.Load(file).Hash, Allowed = true };
-            var mgr = new GroupManager(groups, cfg);
-            try
-            {
-                mgr.Start();
-                var card = mgr.AllCards.OfType<DardWindow>().Single();
-                var web = Visuals<DardView>(card).Single().Children.OfType<Microsoft.Web.WebView2.Wpf.WebView2>().Single();
-                WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");
-                string Report()
-                {
-                    var t = web.ExecuteScriptAsync("JSON.stringify(window.__leak || null)");
-                    WaitUntil(() => t.IsCompleted);
-                    return t.GetAwaiter().GetResult();
-                }
-                WaitUntil(() => Report().Contains("done"));
-                // WebRTC 후보 모으기와 미리 연결은 비동기라 조금 더 기다린다.
-                Pump(6000);
-                Console.WriteLine("  page: " + System.Text.Json.JsonSerializer.Deserialize<string>(Report()));
-                foreach (var hit in sink.Hits) Console.WriteLine("  LEAK " + hit);
-                Check(sink.Hits.IsEmpty);
-            }
-            finally { mgr.Shutdown(); }
+            var hits = RunLeakCard(root, "dard-leak", internet: false);
+            foreach (var hit in hits) Console.WriteLine("  LEAK " + hit);
+            Check(hits.Length == 0);
+        });
+        Test(".dard with internet permission reaches the network but still cannot navigate away", () =>
+        {
+            // 같은 카드에 internet 권한만 준다. 수신기가 실제로 잡는다는 것도 함께 확인된다.
+            var hits = RunLeakCard(root, "dard-online", internet: true);
+            foreach (var hit in hits) Console.WriteLine("  hit " + hit);
+            Check(hits.Contains("tcp GET /fetch HTTP/1.1") && hits.Contains("tcp GET /img HTTP/1.1"));
+            Check(!hits.Any(h => h.Contains("/script") || h.Contains("/location") || h.Contains("/form") || h.Contains("/frame-src") || h.Contains("/open")));
         });
     }
 
+    /// <summary>테스트 카드를 띄우고 수신기에 닿은 것을 돌려준다.</summary>
+    private static string[] RunLeakCard(string root, string name, bool internet)
+    {
+        using var sink = new LeakSink();
+        string html = LeakCard.Replace("__TCP__", sink.TcpPort.ToString()).Replace("__UDP__", sink.UdpPort.ToString())
+            .Replace("__ONLY__", Environment.GetEnvironmentVariable("DESKCARDS_LEAK_ONLY") ?? ""); // 한 길만 시험할 때(진단용)
+        string manifest = LeakManifest.Replace("__PERMS__", internet ? """, "permissions": { "internet": true }""" : "");
+        string groups = Path.Combine(root, name);
+        Directory.CreateDirectory(Path.Combine(groups, "그룹"));
+        string file = Path.Combine(groups, "leak.dard");
+        File.WriteAllBytes(file, Dard(("manifest.json", manifest), ("card.html", html)));
+        var pkg = DardPackage.Load(file);
+        Check(pkg.Internet == internet);
+        var cfg = Config.Load(Path.Combine(root, name + ".json"));
+        cfg.Dards["com.test.leak"] = new DardApproval { Hash = pkg.Hash, Allowed = true, Permissions = pkg.Permissions.Select(p => p.Key).ToList() };
+        var mgr = new GroupManager(groups, cfg);
+        try
+        {
+            mgr.Start();
+            var card = mgr.AllCards.OfType<DardWindow>().Single();
+            var web = Visuals<DardView>(card).Single().Children.OfType<Microsoft.Web.WebView2.Wpf.WebView2>().Single();
+            WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");
+            string Report()
+            {
+                var t = web.ExecuteScriptAsync("JSON.stringify(window.__leak || null)");
+                WaitUntil(() => t.IsCompleted);
+                return t.GetAwaiter().GetResult();
+            }
+            WaitUntil(() => Report().Contains("done"));
+            // WebRTC 후보 모으기와 미리 연결은 비동기라 조금 더 기다린다.
+            Pump(6000);
+            Console.WriteLine("  page: " + System.Text.Json.JsonSerializer.Deserialize<string>(Report()));
+            return sink.Hits.ToArray();
+        }
+        finally { mgr.Shutdown(); }
+    }
+
     private const string LeakManifest = """
-        { "dard": 1, "id": "com.test.leak", "name": "leak", "version": "1.0.0", "cards": [ { "id": "main", "ratio": [1, 1] } ] }
+        { "dard": 1, "id": "com.test.leak", "name": "leak", "version": "1.0.0", "cards": [ { "id": "main", "ratio": [1, 1] } ]__PERMS__ }
         """;
 
     /// <summary>경로 이름이 곧 어느 길로 샜는지다(수신기 기록에 그대로 찍힌다).</summary>

@@ -172,8 +172,8 @@ internal partial class SettingsWindow
             Header("권한");
             if (pkg.Permissions.Count == 0)
                 AddRow(Row("", "요구하는 권한 없음", "이 위젯은 화면만 그려요.", null));
-            foreach (var permission in pkg.Permissions)
-                AddRow(Row("", permission, "이 버전의 Desk Cards에는 아직 권한 기능이 없어서 동작하지 않아요.", null));
+            foreach (var permission in pkg.PermissionLines)
+                AddRow(Row("", permission.Label, permission.Works ? null : "이 버전의 Desk Cards에는 아직 이 기능이 없어서 동작하지 않아요.", null));
 
             Header("정보");
             AddRow(Row("", "버전", pkg.Version, null));

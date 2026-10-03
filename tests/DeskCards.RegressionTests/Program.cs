@@ -435,8 +435,12 @@ internal static partial class Program
             Check(Rejected(Dard(("manifest.json", ClockManifest), ("card.html", new string('a', 33 * 1024 * 1024)))));
             Check(Rejected(new byte[] { 1, 2, 3 }));
             var perms = DardPackage.Parse(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
-                "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"cpu\"], \"internet\": [\"api.example.com\"] },")), ("card.html", "")), "x.dard");
-            Check(perms.Permissions.Count == 2);
+                "\"version\": \"1.0.0\", \"permissions\": { \"system\": [\"memory\", \"cpu\"], \"internet\": true },")), ("card.html", "")), "x.dard");
+            Check(perms.Permissions.Select(p => p.Key).SequenceEqual(new[] { "system:cpu", "system:memory", "internet" }) && perms.Internet);
+            Check(perms.PermissionLines.Select(p => p.Label).SequenceEqual(new[] { "시스템 상태 읽기 (cpu, memory)", "외부 네트워크와 자유롭게 통신" }));
+            // internet은 있다/없다만 받는다(예전의 도메인 목록은 거부).
+            Check(Rejected(Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
+                "\"version\": \"1.0.0\", \"permissions\": { \"internet\": [\"api.example.com\"] },")), ("card.html", ""))));
         });
         Test("approved .dard cards load, follow file changes and unload when removed", () =>
         {

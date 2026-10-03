@@ -126,10 +126,10 @@ internal sealed partial class GroupManager
         if (!_cfg.Dards.TryGetValue(pkg.Id, out var a)) return null;
         if (a.Hash == pkg.Hash) return a.Allowed;
         // 새 버전인데 권한이 같거나 줄었으면 그대로 승인한다.
-        if (a.Allowed && pkg.Permissions.All(p => a.Permissions.Contains(p)))
+        if (a.Allowed && pkg.Permissions.All(p => a.Permissions.Contains(p.Key)))
         {
             a.Hash = pkg.Hash;
-            a.Permissions = pkg.Permissions.ToList();
+            a.Permissions = pkg.Permissions.Select(p => p.Key).ToList();
             _cfg.Save();
             return true;
         }
@@ -160,7 +160,7 @@ internal sealed partial class GroupManager
             _dardAsking = null;
         }
         if (_shuttingDown) return;
-        _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = answer == MessageBoxResult.OK, Permissions = pkg.Permissions.ToList() };
+        _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = answer == MessageBoxResult.OK, Permissions = pkg.Permissions.Select(p => p.Key).ToList() };
         _cfg.Save();
         _dardSkipped.Remove(pkg.Path);
         Reconcile();
@@ -172,8 +172,7 @@ internal sealed partial class GroupManager
         string head = $"{Path.GetFileName(pkg.Path)} · {pkg.Version} · 카드 {pkg.Cards.Count}장";
         string perms = pkg.Permissions.Count == 0
             ? "이 카드는 권한을 요구하지 않아요."
-            : "요구하는 권한:\n" + string.Join("\n", pkg.Permissions.Select(p => "· " + p)) +
-              "\n\n이 버전의 Desk Cards에는 아직 권한 기능이 없어서, 위 기능은 동작하지 않아요.";
+            : "요구하는 권한:\n" + string.Join("\n", pkg.PermissionLines.Select(p => "· " + p.Label + (p.Works ? "" : " (아직 동작하지 않음)")));
         return head + "\n\n" + perms + "\n\n추가하지 않으면 이 파일은 다시 묻지 않고 꺼 둬요. 파일을 치웠다가 다시 넣으면 다시 물어요.";
     }
 
@@ -237,7 +236,7 @@ internal sealed partial class GroupManager
         {
             if (!_dards.TryGetValue(path, out var runtime)) return;
             var pkg = runtime.Package;
-            _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = false, Permissions = pkg.Permissions.ToList() };
+            _cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = false, Permissions = pkg.Permissions.Select(p => p.Key).ToList() };
             _cfg.Save();
             UnloadDard(path);
             if (StampOf(path) is { } stamp) _dardSkipped[path] = stamp;
