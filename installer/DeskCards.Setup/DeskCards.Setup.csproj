@@ -16,6 +16,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/Shared/StartupState.cs" Link="StartupState.cs" />
+    <Compile Include="../../src/Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.IO.Compression" />
     <Reference Include="System.IO.Compression.FileSystem" />

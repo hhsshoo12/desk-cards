@@ -147,6 +147,39 @@ internal static class FileOps
         else File.Move(source, destination);
     }
 
+    internal static void MoveContentsAndDelete(string folder, string destination)
+    {
+        var moved = new System.Collections.Generic.List<(string From, string To)>();
+        static void Move(string from, string to)
+        {
+            // 폴더는 병합/부분 복사 없이 옮긴다. 다른 볼륨이면 원본을 보존한 채 실패한다.
+            if (Directory.Exists(from)) Directory.Move(from, to);
+            else File.Move(from, to);
+        }
+        try
+        {
+            foreach (string path in Directory.GetFileSystemEntries(folder))
+            {
+                string target = Unique(destination, Path.GetFileName(path));
+                Move(path, target);
+                moved.Add((path, target));
+            }
+            Directory.Delete(folder, recursive: false);
+        }
+        catch (Exception failure)
+        {
+            var errors = new System.Collections.Generic.List<Exception> { failure };
+            for (int i = moved.Count - 1; i >= 0; i--)
+            {
+                var item = moved[i];
+                try { Move(item.To, item.From); }
+                catch (Exception ex) { errors.Add(new IOException($"'{item.To}' 항목을 '{item.From}'(으)로 되돌리지 못했어요. 이동된 위치에 보존했어요.", ex)); }
+            }
+            if (errors.Count > 1) throw new AggregateException("일부 항목을 원래 자리로 되돌리지 못했어요.", errors);
+            throw;
+        }
+    }
+
     public static void Recycle(string path)
     {
         try
@@ -181,6 +214,7 @@ internal static class FileOps
         string dest = Path.Combine(folder, name);
         if (!File.Exists(dest) && !Directory.Exists(dest)) return dest;
         string stem = Path.GetFileNameWithoutExtension(name), ext = Path.GetExtension(name);
+        if (stem.Length == 0) { stem = name; ext = ""; }
         for (int i = 2; ; i++)
         {
             dest = Path.Combine(folder, $"{stem} ({i}){ext}");

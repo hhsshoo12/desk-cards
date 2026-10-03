@@ -50,6 +50,8 @@ internal static partial class DardStorage
         const string webrtc = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp";
         path = Path.GetFullPath(path);
         if (_environments.TryGetValue(path, out var cached) && !cached.IsFaulted) return cached;
+        // 잘못된 저장 경로는 브라우저 시작 전에 I/O 오류로 돌려준다.
+        Directory.CreateDirectory(path);
         var endpoint = internet ? DardProxy.Instance.EndPoint : DeadEnd.Instance.EndPoint;
         return _environments[path] = CoreWebView2Environment.CreateAsync(null, path,
             new CoreWebView2EnvironmentOptions(

@@ -214,6 +214,7 @@ internal partial class ExpandedWindow : Window
     private Border MakeTile(ShellEntry entry)
     {
         var img = new Image { Source = entry.Icon, Width = 40, Height = 40, Margin = new Thickness(0, 14, 0, 0) };
+        img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = entry });
         RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
         var text = new TextBlock
         {

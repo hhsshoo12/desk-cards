@@ -39,9 +39,15 @@ internal static class EdgeBar
         _hotkeyWindow.AddHook(HotkeyHook);
         ApplyHotkey();
         mgr.Changed += ApplyHotkey;
-        _timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
-        _timer.Tick += (_, _) => Tick();
+        _timer = CreatePollingTimer(Tick);
         _timer.Start();
+    }
+
+    internal static DispatcherTimer CreatePollingTimer(Action tick)
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(40) };
+        timer.Tick += (_, _) => tick();
+        return timer;
     }
 
     /// <summary>카드 바 편집: 바를 열고(이미 열려 있으면 그대로) 편집을 시작한다. 주 디스플레이의 바를 먼저 쓴다.</summary>

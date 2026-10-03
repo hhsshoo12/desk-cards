@@ -21,6 +21,7 @@ using Microsoft.Win32;
 internal static class Program
 {
     private static int _passed, _failed;
+    private static DeskCards.Testing.TestSession? _session;
     [STAThread]
     private static int Main(string[] args)
     {
@@ -32,6 +33,8 @@ internal static class Program
             using var preview = new Fixture();
             var window = preview.Window(); window.Closed += (_, _) => app.Shutdown(); app.Run(window); return 0;
         }
+        using var session = DeskCards.Testing.TestSession.Start("설치기 회귀 테스트");
+        _session = session;
         Test("own tile and legacy executable match exactly", f =>
         {
             Check(StartTraces.OnlyOurTiles(Tiles("W~" + f.Env.AppExe.ToUpperInvariant()), f.Env.InstallDir));
@@ -47,6 +50,27 @@ internal static class Program
                 Check(!StartTraces.OnlyOurTiles(value, f.Env.InstallDir));
             string single = new JavaScriptSerializer().Serialize(new { tileId = "W~" + f.Env.AppExe });
             Check(StartTraces.OnlyOurTiles(Encoding.Unicode.GetBytes(single + "\0"), f.Env.InstallDir));
+        });
+        Test("report 06: setup update synchronizes version metadata", f =>
+        {
+            f.Existing(); File.WriteAllText(Path.Combine(f.Env.InstallDir, "version.txt"), "0.1.0");
+            f.Install(); Check(File.ReadAllText(Path.Combine(f.Env.InstallDir, "version.txt")).Trim() == "0.2.0");
+        });
+        Test("report 07: uninstall removes owned metadata and empty directory", f =>
+        {
+            f.Install(); f.Engine.Uninstall(false, _ => { }); Check(!Directory.Exists(f.Env.InstallDir));
+        });
+        Test("report 06: failed setup restores executable and version together", f =>
+        {
+            f.Existing(); string version = Path.Combine(f.Env.InstallDir, "version.txt"); File.WriteAllText(version, "0.1.0");
+            f.Shortcuts.Fail = true; Throws<SetupFailure>(() => f.Install());
+            Check(File.ReadAllText(version) == "0.1.0" && File.ReadAllText(f.Env.AppExe) == "old app");
+        });
+        Test("report 07: uninstall preserves unrelated files", f =>
+        {
+            f.Install(); string keep = Path.Combine(f.Env.InstallDir, "my-notes.txt"); File.WriteAllText(keep, "mine");
+            f.Engine.Uninstall(false, _ => { }); Check(File.ReadAllText(keep) == "mine");
+            Check(!File.Exists(Path.Combine(f.Env.InstallDir, "version.txt")));
         });
         Test("BOM version is accepted", f => { f.Package(bom: true); f.Install(); Check(f.Registry.InstalledVersion == "0.2.0"); });
         Test("stop timeout is reported with two five-second waits", f =>
@@ -252,6 +276,7 @@ internal static class Program
             Capture(window, Path.Combine(f.Root, "wizard.png")); window.Close();
         });
         Console.WriteLine($"Passed: {_passed}; Failed: {_failed}");
+        session.Dispose();
         app.Shutdown(); return _failed == 0 ? 0 : 1;
     }
 
@@ -277,8 +302,9 @@ internal static class Program
     internal static T Throws<T>(Action action) where T : Exception { try { action(); } catch (T ex) { return ex; } throw new Exception("Expected " + typeof(T).Name); }
     private static void Test(string name, Action<Fixture> test)
     {
-        try { using var fixture = new Fixture(); test(fixture); Console.WriteLine("PASS " + name); _passed++; }
-        catch (Exception ex) { Console.WriteLine("FAIL " + name + "\n" + ex); _failed++; }
+        if (Environment.GetEnvironmentVariable("DESKCARDS_TEST_FILTER") is { Length: > 0 } filter && name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) < 0) return;
+        try { using var fixture = new Fixture(); test(fixture); Console.WriteLine("PASS " + name); _passed++; _session?.Complete(true); }
+        catch (Exception ex) { Console.WriteLine("FAIL " + name + "\n" + ex); _failed++; _session?.Complete(false); }
     }
 
     private sealed class Fixture : IDisposable

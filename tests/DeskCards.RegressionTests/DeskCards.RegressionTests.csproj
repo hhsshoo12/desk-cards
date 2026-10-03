@@ -8,6 +8,7 @@
     <ApplicationManifest>../../src/DeskCards/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/TestSession.cs" Link="TestSession.cs" />
     <ProjectReference Include="../../src/DeskCards/DeskCards.csproj" />
   </ItemGroup>
 </Project>

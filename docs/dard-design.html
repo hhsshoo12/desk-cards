@@ -456,15 +456,16 @@ details[open] summary { margin-bottom: 6px; }
 
 <section id="integrity">
   <h2>스스로 업데이트 방지</h2>
-  <p>카드가 인터넷에서 코드를 받아 실행하면 설치 때 본 카드와 다른 카드가 됩니다. 다음 네 가지로 막습니다.</p>
+  <p>카드가 인터넷에서 코드를 받아 실행하면 설치 때 본 카드와 다른 카드가 됩니다. 다음 네 가지로 코드 교체와 문자열 실행 경로를 제한합니다. 승인된 코드 자체의 모든 동작이 안전함을 보증하는 것은 아닙니다.</p>
   <ol>
     <li><b>CSP</b>: <code>eval</code>, <code>new Function</code>, 문자열 타이머, 외부 스크립트, <code>javascript:</code> URL, WebAssembly 금지</li>
-    <li><b>스크립트 해시</b>: 설치할 때 card.html 안의 모든 <code>&lt;script&gt;</code> 해시를 계산해서 <code>script-src 'sha256-…'</code>로 고정</li>
+    <li><b>스크립트 해시</b>: 승인한 card.html·settings.html을 불러올 때 각 문서의 인라인 <code>&lt;script&gt;</code> 본문 해시를 계산해서 <code>script-src 'sha256-…'</code>로 고정. <code>onclick</code> 같은 속성 핸들러는 막으며 스크립트 안에서 <code>addEventListener</code>를 사용</li>
     <li><b>풀어 두지 않음</b>: .dard를 디스크에 풀지 않고 매번 메모리에서 열기 때문에, 몰래 고칠 풀린 파일이 없음</li>
     <li><b>불러올 때 해시 확인</b>: 승인할 때의 .dard 해시와 다르면 켜지 않고 설치 창을 다시 띄움</li>
   </ol>
 <pre>default-src 'none';
 script-src 'sha256-…' 'sha256-…';
+script-src-attr 'none';
 style-src 'unsafe-inline';
 img-src data: blob:;
 media-src data: blob:;

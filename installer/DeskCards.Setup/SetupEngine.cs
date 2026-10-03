@@ -26,6 +26,9 @@ internal sealed class SetupEngine
         string stage = Path.Combine(temp, "stage"), old = _env.AppExe + ".old";
         string step = "설치 준비";
         bool backedUp = false, replaced = false, createdDirectory = false;
+        string versionPath = Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name);
+        byte[]? oldVersion = null;
+        bool versionReplaced = false;
         void Step(string value) { step = value; _log.Write(value); status(value); }
         try
         {
@@ -53,11 +56,14 @@ internal sealed class SetupEngine
             }
             else
             {
+                if (File.Exists(versionPath)) oldVersion = File.ReadAllBytes(versionPath);
                 // 앱이 스스로 업데이트하고 남긴 .old가 있으면 먼저 치운다.
                 DeleteFile(old);
                 if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); backedUp = true; }
                 replaced = true;
                 File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
+                Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, release.Version));
+                versionReplaced = true;
             }
             DeleteFile(Path.Combine(_env.InstallDir, "DeskFolders.exe"));
             Step("제거기 복사");
@@ -87,6 +93,11 @@ internal sealed class SetupEngine
                 if (backedUp) { File.Delete(_env.AppExe); File.Move(old, _env.AppExe); _log.Write("기존 앱 복구"); }
                 else if (createdDirectory) { SetupEnvironment.DeleteTree(_env.InstallDir, Path.GetDirectoryName(_env.InstallDir)!); }
                 else if (replaced) File.Delete(_env.AppExe);
+                if (versionReplaced)
+                {
+                    if (oldVersion != null) Shared.InstalledVersionFile.Write(_env.InstallDir, oldVersion);
+                    else File.Delete(versionPath);
+                }
             }
             catch (Exception rollback)
             {
@@ -132,7 +143,7 @@ internal sealed class SetupEngine
             Step("바로가기 삭제"); DeleteFile(_env.MenuLink); DeleteFile(_env.DesktopLink);
             Step("자동 실행 해제"); Registration.RemoveStartup();
             Step("앱 파일 삭제");
-            foreach (string name in new[] { "DeskCards.exe", "DeskCards.exe.old", "DeskFolders.exe", "uninstall.exe" }) DeleteFile(Path.Combine(_env.InstallDir, name));
+            foreach (string name in new[] { "DeskCards.exe", "DeskCards.exe.old", "DeskFolders.exe", "uninstall.exe", Shared.InstalledVersionFile.Name }) DeleteFile(Path.Combine(_env.InstallDir, name));
             // 앱 자체 업데이트가 받아 둔 파일(update\)
             SetupEnvironment.DeleteTree(Path.Combine(_env.InstallDir, "update"), _env.InstallDir);
             Step("설치된 앱 등록 삭제"); Registration.Delete(Registration.UninstallKey);

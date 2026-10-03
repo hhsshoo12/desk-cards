@@ -8,7 +8,7 @@ using System.Windows.Media.Imaging;
 namespace DeskCards;
 
 /// <summary>셸에서 파일/바로가기의 고해상도 아이콘을 가져온다.</summary>
-internal static class ShellIcons
+internal static partial class ShellIcons
 {
     private const int SIIGBF_BIGGERSIZEOK = 0x1;
     private const int SIIGBF_ICONONLY = 0x4;
@@ -31,7 +31,7 @@ internal static class ShellIcons
         string path, IntPtr pbc, [In, MarshalAs(UnmanagedType.LPStruct)] Guid riid,
         [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
 
-    public static ImageSource? Get(string path)
+    private static ImageSource? Get(string path)
     {
         long stamp = SafeStamp(path);
         if (Cache.TryGetValue(path, out var cached) && cached.Stamp == stamp) return cached.Image;

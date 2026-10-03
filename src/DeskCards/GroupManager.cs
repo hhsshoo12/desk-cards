@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,7 +16,7 @@ internal sealed partial class GroupManager
     private readonly DispatcherTimer _debounce;
     private FileSystemWatcher? _rootWatcher;
     private DispatcherTimer? _dpiCheck;
-    private readonly List<DispatcherTimer> _retries = new();
+    private DispatcherTimer? _desktopRetry;
     private bool _shuttingDown;
 
     public GroupManager(string? root = null, Config? config = null)
@@ -538,18 +538,23 @@ internal sealed partial class GroupManager
         {
             UnloadDard(dard.Runtime.Package.Path);
         }
-        var retry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        ScheduleDesktopRecovery();
+        RaiseChanged();
+    }
+
+    private void ScheduleDesktopRecovery()
+    {
+        if (_desktopRetry != null || _shuttingDown) return;
+        var retry = _desktopRetry = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         retry.Tick += (_, _) =>
         {
             if (_shuttingDown) { retry.Stop(); return; }
             if (Native.FindWindow("Progman", null) == IntPtr.Zero) return;
             retry.Stop();
-            _retries.Remove(retry);
+            _desktopRetry = null;
             Reconcile();
         };
-        _retries.Add(retry);
         retry.Start();
-        RaiseChanged();
     }
 
     private void RemoveCard(string name)
@@ -659,12 +664,10 @@ internal sealed partial class GroupManager
             var r = Dialogs.Show($"안에 있는 항목 {entries.Length}개는 바탕화면으로 옮겨져요.",
                 MessageBoxButton.OKCancel, heading: $"'{g.Name}' 그룹을 삭제할까요?", primary: "삭제");
             if (r != MessageBoxResult.OK) return false;
-            foreach (var path in entries)
-                if (!FileOps.MoveTo(path, FileOps.UserDesktop)) return false;
         }
         try
         {
-            Directory.Delete(g.Folder, recursive: false);
+            FileOps.MoveContentsAndDelete(g.Folder, FileOps.UserDesktop);
         }
         catch (Exception ex)
         {
@@ -688,8 +691,8 @@ internal sealed partial class GroupManager
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _debounce.Stop();
         _dpiCheck?.Stop();
-        foreach (var retry in _retries) retry.Stop();
-        _retries.Clear();
+        _desktopRetry?.Stop();
+        _desktopRetry = null;
         EndEditMode();
         _rootWatcher?.Dispose();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);

@@ -152,6 +152,7 @@ internal sealed class CardView : Grid
         for (int i = 0; i < direct; i++)
         {
             var img = new Image { Source = items[i].Icon, Width = _iconSize, Height = _iconSize };
+            img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = items[i] });
             RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
             _cells.Children.Add(MakeCell(img, items[i], items[i].Name));
         }
@@ -163,6 +164,7 @@ internal sealed class CardView : Grid
             foreach (var e in items.Skip(direct).Take(4))
             {
                 var img = new Image { Source = e.Icon, Width = mini, Height = mini, Margin = new Thickness(2) };
+                img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = e });
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 grid.Children.Add(img);
             }

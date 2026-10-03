@@ -236,9 +236,9 @@ internal static partial class Program
     {
         private readonly HwndSource _host;
         private readonly CoreWebView2Controller _controller;
-        private CoreWebView2 Core => _controller.CoreWebView2;
+        public CoreWebView2 Core => _controller.CoreWebView2;
         private HiddenPage(HwndSource host, CoreWebView2Controller controller) { _host = host; _controller = controller; }
-        public static async Task<HiddenPage> Open(CoreWebView2Environment env, string origin)
+        public static async Task<HiddenPage> Open(CoreWebView2Environment env, string origin, string html = "<!doctype html><p>test", string headers = "", bool interceptAll = true)
         {
             var host = new HwndSource(new HwndSourceParameters("hidden storage test") { Width = 1, Height = 1, WindowStyle = unchecked((int)0x80000000) });
             try
@@ -247,8 +247,12 @@ internal static partial class Program
                 controller.IsVisible = false;
                 var page = new HiddenPage(host, controller);
                 page.Core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-                page.Core.WebResourceRequested += (_, e) => e.Response = env.CreateWebResourceResponse(
-                    new MemoryStream(Encoding.UTF8.GetBytes("<!doctype html><p>test")), 200, "OK", "Content-Type: text/html; charset=utf-8");
+                page.Core.WebResourceRequested += (_, e) =>
+                {
+                    if (interceptAll || e.Request.Uri.StartsWith(origin + "/", StringComparison.Ordinal))
+                        e.Response = env.CreateWebResourceResponse(new MemoryStream(Encoding.UTF8.GetBytes(html)), 200, "OK",
+                            "Content-Type: text/html; charset=utf-8\r\n" + headers);
+                };
                 var done = new TaskCompletionSource<bool>();
                 page.Core.NavigationCompleted += (_, e) => done.TrySetResult(e.IsSuccess);
                 page.Core.Navigate(origin + "/card.html");

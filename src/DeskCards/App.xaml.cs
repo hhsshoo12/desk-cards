@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -106,7 +106,8 @@ public partial class App : Application
     /// <summary>새 버전 exe를 띄우고 이 프로세스는 끝낸다. 새 버전은 이 프로세스가 끝나길 기다렸다가 켜진다.</summary>
     private void RelaunchInto(string exe)
     {
-        Process.Start(new ProcessStartInfo(exe, $"--updated-from {Environment.ProcessId}")
+        using var current = Process.GetCurrentProcess();
+        Process.Start(new ProcessStartInfo(exe, $"--updated-from {Environment.ProcessId} --updated-start {current.StartTime.ToUniversalTime().Ticks}")
         {
             UseShellExecute = false,
             WorkingDirectory = Path.GetDirectoryName(exe),
@@ -117,14 +118,22 @@ public partial class App : Application
     private static void WaitForUpdatedFrom(string[] args)
     {
         int i = Array.IndexOf(args, "--updated-from");
-        if (i < 0 || i + 1 >= args.Length || !int.TryParse(args[i + 1], out int pid)) return;
+        if (i < 0 || i + 1 >= args.Length || !int.TryParse(args[i + 1], out int pid) || pid == Environment.ProcessId) return;
         try
         {
             using var old = Process.GetProcessById(pid);
+            // 예전 버전은 PID만 보낸다. 최소한 실행 파일이 같은 앱인지 확인한다(.old로 바뀐 경우 포함).
+            string? path = old.MainModule?.FileName;
+            string? currentPath = Environment.ProcessPath;
+            if (path == null || currentPath == null ||
+                (!path.Equals(currentPath, StringComparison.OrdinalIgnoreCase) && !path.Equals(currentPath + ".old", StringComparison.OrdinalIgnoreCase))) return;
+            int start = Array.IndexOf(args, "--updated-start");
+            if (start >= 0 && (start + 1 >= args.Length || !long.TryParse(args[start + 1], out long ticks) || old.StartTime.ToUniversalTime().Ticks != ticks)) return;
             old.WaitForExit(15000);
         }
         catch (ArgumentException) { } // 이미 끝났다
         catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { } // 다른 사용자/권한의 프로세스는 기다리지 않는다.
     }
 
     protected override void OnExit(ExitEventArgs e)

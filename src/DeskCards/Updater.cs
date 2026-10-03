@@ -112,12 +112,20 @@ internal static class UpdatePackage
     {
         string staged = Path.Combine(StageDir(installDir, version), ExeName);
         if (!File.Exists(staged)) return false;
+        byte[] metadata = Shared.InstalledVersionFile.Read(StageDir(installDir, version), version);
         string exe = Path.Combine(installDir, ExeName), old = OldExe(installDir);
         if (File.Exists(old)) File.Delete(old);
         File.Move(exe, old);
-        try { File.Move(staged, exe); }
+        bool moved = false;
+        try
+        {
+            File.Move(staged, exe);
+            moved = true;
+            Shared.InstalledVersionFile.Write(installDir, metadata);
+        }
         catch
         {
+            if (moved) File.Move(exe, staged);
             File.Move(old, exe);
             throw;
         }

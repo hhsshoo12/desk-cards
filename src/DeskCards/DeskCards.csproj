@@ -18,8 +18,10 @@
 
   <ItemGroup>
     <Compile Include="../Shared/StartupState.cs" Link="StartupState.cs" />
+    <Compile Include="../Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />
     <InternalsVisibleTo Include="DeskCards.RegressionTests" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+    <PackageReference Include="AngleSharp" Version="1.8.3" />
     <!-- 설정 창의 앱 아이콘 -->
     <Resource Include="app.ico" />
   </ItemGroup>

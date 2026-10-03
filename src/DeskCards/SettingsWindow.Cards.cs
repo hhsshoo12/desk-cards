@@ -55,6 +55,7 @@ internal partial class SettingsWindow
             if (c.Group.Items.Count > 0)
             {
                 var img = new Image { Source = c.Group.Items[0].Icon, Width = 24, Height = 24 };
+                img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = c.Group.Items[0] });
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
                 icon = img;
             }

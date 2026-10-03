@@ -181,12 +181,17 @@ internal sealed class DardView : Grid
         }
         // 스크립트는 언제나 페이지 안에 있는 것만(승인한 뒤에 코드가 바뀌지 않게). 폼·프레임·플러그인·wasm은 막는다.
         // internet 권한이 없으면 이미지·글꼴·소리도 data:/blob:만, 연결은 없다. 있으면 데이터는 어디서든 받는다.
-        string net = pkg.Internet ? " *" : "";
-        string csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'" + net + "; " +
-            $"img-src data: blob:{net}; font-src data:{net}; media-src data: blob:{net}; connect-src {(pkg.Internet ? "*" : "'none'")}; " +
-            "base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'";
         e.Response = env.CreateWebResourceResponse(new MemoryStream(body), 200, "OK",
-            "Content-Type: text/html; charset=utf-8\r\nContent-Security-Policy: " + csp + "\r\nCache-Control: no-store");
+            "Content-Type: text/html; charset=utf-8\r\nContent-Security-Policy: " + ContentPolicy(body, pkg.Internet) + "\r\nCache-Control: no-store");
+    }
+
+    internal static string ContentPolicy(byte[] html, bool internet)
+    {
+        string net = internet ? " *" : "";
+        string csp = "default-src 'none'; script-src " + DardScriptPolicy.Hashes(html) + "; script-src-attr 'none'; style-src 'unsafe-inline'" + net + "; " +
+            $"img-src data: blob:{net}; font-src data:{net}; media-src data: blob:{net}; connect-src {(internet ? "*" : "'none'")}; " +
+            "base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; worker-src 'none'";
+        return csp;
     }
 
     // ----- desk 라이브러리 -----
@@ -279,19 +284,24 @@ internal sealed class DardView : Grid
     {
         if (!Uri.TryCreate(e.Source, UriKind.Absolute, out var source) ||
             !string.Equals(source.Host, PageHost, StringComparison.OrdinalIgnoreCase)) return;
+        ReceiveMessage(e.WebMessageAsJson);
+    }
+
+    internal void ReceiveMessage(string json)
+    {
         JsonNode? msg;
-        try { msg = JsonNode.Parse(e.WebMessageAsJson); }
+        try { msg = JsonNode.Parse(json); }
         catch (JsonException) { return; }
-        if (msg is JsonObject { } m && (string?)m["t"] == "menu")
+        if (msg is JsonObject { } m && Text(m["t"]) == "menu")
         {
             if (!IsSettings && IsGesture()) MenuRequested?.Invoke();
             return;
         }
-        if (msg is not JsonObject o || (string?)o["t"] != "call" || o["id"] is not JsonValue idValue || !idValue.TryGetValue(out int id)) return;
-        string fn = (string?)o["fn"] ?? "";
+        if (msg is not JsonObject o || Text(o["t"]) != "call" || o["id"] is not JsonValue idValue || !idValue.TryGetValue(out int id)) return;
         JsonNode? args = o["args"];
         try
         {
+            string fn = Text(o["fn"]) ?? throw new DardCallException("TypeError", "기능 이름은 문자열이어야 해요.");
             Reply(id, Handle(fn, args));
         }
         catch (DardCallException ex)
@@ -299,6 +309,8 @@ internal sealed class DardView : Grid
             Post(new JsonObject { ["t"] = "reply", ["id"] = id, ["ok"] = false, ["name"] = ex.Kind, ["error"] = ex.Message });
         }
     }
+
+    private static string? Text(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var text) ? text : null;
 
     private sealed class DardCallException : Exception
     {
@@ -321,14 +333,15 @@ internal sealed class DardView : Grid
                 CloseRequested?.Invoke();
                 return null;
             case "cards.post":
-                string to = (string?)args?["to"] ?? "";
+                if (args is not JsonObject || Text(args["to"]) is not { } to)
+                    throw new DardCallException("TypeError", "메시지 대상은 문자열이어야 해요.");
                 string data = args?["data"]?.ToJsonString() ?? "null";
                 if (data.Length > MaxMessage) throw new DardCallException("RangeError", "메시지가 너무 커요(64KB까지).");
                 if (!_runtime.Deliver(CardId, to, args?["data"]?.DeepClone()))
                     throw new DardCallException("Error", $"'{to}' 카드가 없어요.");
                 return null;
             case "openUrl":
-                string url = args?.GetValue<string>() ?? "";
+                string url = Text(args) ?? throw new DardCallException("TypeError", "주소는 문자열이어야 해요.");
                 if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || (u.Scheme != "https" && u.Scheme != "http"))
                     throw new DardCallException("Error", "http(s) 주소만 열 수 있어요.");
                 RequireGesture();

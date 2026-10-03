@@ -75,9 +75,7 @@ internal sealed class DardProxy
             await Reply(clientStream, "200 Connection Established");
             using var upstreamStream = new NetworkStream(upstream, ownsSocket: true);
             upstream = null;
-            var a = clientStream.CopyToAsync(upstreamStream);
-            var b = upstreamStream.CopyToAsync(clientStream);
-            await Task.WhenAny(a, b);
+            await RelayAsync(clientStream, upstreamStream, TimeSpan.FromMinutes(2));
         }
         catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
         {
@@ -87,6 +85,29 @@ internal sealed class DardProxy
         {
             upstream?.Dispose();
         }
+    }
+
+    internal static async Task RelayAsync(Stream client, Stream upstream, TimeSpan idle)
+    {
+        using var lifetime = new CancellationTokenSource(idle);
+        async Task Copy(Stream from, Stream to)
+        {
+            var buffer = new byte[16384];
+            int count;
+            while ((count = await from.ReadAsync(buffer, lifetime.Token).ConfigureAwait(false)) != 0)
+            {
+                lifetime.CancelAfter(idle);
+                await to.WriteAsync(buffer.AsMemory(0, count), lifetime.Token).ConfigureAwait(false);
+                lifetime.CancelAfter(idle);
+            }
+        }
+        var a = Copy(client, upstream);
+        var b = Copy(upstream, client);
+        await Task.WhenAny(a, b).ConfigureAwait(false);
+        // EOF/오류/유휴 만료 중 하나면 반대 방향도 끝내고, 두 작업의 예외를 모두 관찰한다.
+        lifetime.Cancel();
+        try { await Task.WhenAll(a, b).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
     }
 
     /// <summary>요청 머리를 읽어 CONNECT 대상(호스트:포트)을 돌려준다. CONNECT가 아니면 null.</summary>

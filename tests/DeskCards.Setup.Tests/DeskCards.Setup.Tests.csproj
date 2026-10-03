@@ -10,6 +10,9 @@
     <ApplicationManifest>../../src/DeskCards/app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Shared/TestSession.cs" Link="TestSession.cs" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="Microsoft.CSharp" />
     <None Update="fixtures/releases.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../installer/DeskCards.Setup/DeskCards.Setup.csproj" />
     <Reference Include="System.IO.Compression" />
