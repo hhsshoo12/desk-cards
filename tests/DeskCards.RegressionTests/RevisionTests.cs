@@ -9,6 +9,45 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision A2: root watcher is replaced after error and stays stopped after shutdown", () =>
+        {
+            string folder = Path.Combine(root, "watch-recovery"); Directory.CreateDirectory(folder);
+            var mgr = new GroupManager(folder, Config.Load(Path.Combine(root, "watch.json")));
+            var field = typeof(GroupManager).GetField("_rootWatcher", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var start = typeof(GroupManager).GetMethod("StartRootWatch", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var error = typeof(GroupManager).GetMethod("OnRootWatchError", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            try
+            {
+                start.Invoke(mgr, null); var before = field.GetValue(mgr);
+                error.Invoke(mgr, null); Pump(50);
+                var after = (FileSystemWatcher)field.GetValue(mgr)!;
+                Check(!ReferenceEquals(before, after) && after.EnableRaisingEvents);
+                bool seen = false; after.Created += (_, _) => seen = true;
+                File.WriteAllText(Path.Combine(folder, "check.txt"), "test");
+                WaitUntil(() => seen); Check(seen);
+                mgr.Shutdown(); error.Invoke(mgr, null); Pump(50);
+                Check(ReferenceEquals(after, field.GetValue(mgr)));
+            }
+            finally { mgr.Shutdown(); }
+        });
+        Test("revision A3: double rename failure remains hidden and recovers its data on startup", () =>
+        {
+            string folder = Path.Combine(root, "rename-recovery"), source = Path.Combine(folder, "docs");
+            Directory.CreateDirectory(source); File.WriteAllText(Path.Combine(source, "kept.txt"), "kept");
+            int calls = 0;
+            try { GroupManager.RenameCaseOnly(source, Path.Combine(folder, "Docs"), (a, b) => { if (++calls > 1) throw new IOException("locked"); Directory.Move(a, b); }); }
+            catch (IOException) { }
+            var mgr = new GroupManager(folder, Config.Load(Path.Combine(root, "rename.json")));
+            try
+            {
+                var list = typeof(GroupManager).GetMethod("ListGroupFolders", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                Check(((System.Collections.Generic.List<string>)list.Invoke(mgr, null)!).Count == 0);
+                typeof(GroupManager).GetMethod("RecoverRenamedGroups", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(mgr, null);
+                Check(File.ReadAllText(Path.Combine(folder, "복구된 그룹", "kept.txt")) == "kept");
+                Check(Directory.GetDirectories(folder).Length == 1);
+            }
+            finally { mgr.Shutdown(); }
+        });
         RecoveryTest("revision A1: isolated browser crash invalidates environment and keeper once", async () =>
         {
             string original = AppPaths.WebDataDir;
@@ -23,7 +62,7 @@ internal static partial class Program
                 await DardStorage.PrepareAsync(pkg);
                 var env = await DardStorage.Environment(false);
                 var page = await HiddenPage.Open(env, pkg.Origins[0]);
-                await page.Eval("localStorage.setItem('survives','yes')");
+                await page.Async("const r=await navigator.storage.getDirectory();const h=await r.getFileHandle('saved',{create:true});const w=await h.createWritable();await w.write('yes');await w.close();return true;");
                 uint pid = page.Core.BrowserProcessId;
                 Check(env.UserDataFolder.StartsWith(profile, StringComparison.OrdinalIgnoreCase));
                 using (var browser = System.Diagnostics.Process.GetProcessById((int)pid)) browser.Kill();
@@ -34,7 +73,7 @@ internal static partial class Program
                 Check(!ReferenceEquals(env, replacement));
                 await DardStorage.PrepareAsync(pkg); // 죽은 keeper를 재사용하면 실패한다.
                 using var restored = await HiddenPage.Open(replacement, pkg.Origins[0]);
-                Check(await restored.Eval("localStorage.getItem('survives')") == "\"yes\"");
+                Check(await restored.Async("const r=await navigator.storage.getDirectory();return await (await (await r.getFileHandle('saved')).getFile()).text();") == "\"yes\"");
                 Check(restored.Core.BrowserProcessId != pid);
             }
             finally { DardStorage.BrowserLost -= OnLost; AppPaths.WebDataDir = original; }

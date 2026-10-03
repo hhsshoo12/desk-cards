@@ -15,6 +15,7 @@ internal sealed partial class GroupManager
     private readonly Dictionary<string, CardWindow> _cards = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _debounce;
     private FileSystemWatcher? _rootWatcher;
+    private DispatcherTimer? _rootWatchRetry;
     private DispatcherTimer? _dpiCheck;
     private DispatcherTimer? _desktopRetry;
     private bool _shuttingDown;
@@ -351,22 +352,11 @@ internal sealed partial class GroupManager
         SmartGuides.Enabled = _cfg.ShowGuides;
         SmartGuides.Flush = _cfg.FlushSnap;
         Directory.CreateDirectory(Root);
+        RecoverRenamedGroups();
         if (ListGroupFolders() is { Count: 0 }) Directory.CreateDirectory(FileOps.Unique(Root, "새 그룹"));
         Reconcile();
 
-        // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
-        _rootWatcher = new FileSystemWatcher(Root)
-        {
-            NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
-            IncludeSubdirectories = false,
-        };
-        FileSystemEventHandler h = (_, _) => Bump();
-        _rootWatcher.Created += h;
-        _rootWatcher.Deleted += h;
-        _rootWatcher.Changed += h;
-        _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
-        _rootWatcher.Error += (_, _) => Bump();
-        _rootWatcher.EnableRaisingEvents = true;
+        StartRootWatch();
 
         // Windows 배율이 바뀌었는데 알림을 못 받은 카드는 새 배율로 다시 만든다.
         _dpiCheck = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
@@ -378,6 +368,51 @@ internal sealed partial class GroupManager
         _dpiCheck.Start();
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
+
+    private void StartRootWatch()
+    {
+        if (_shuttingDown) return;
+        _rootWatcher?.Dispose();
+        _rootWatcher = null;
+        try
+        {
+        // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
+        _rootWatcher = new FileSystemWatcher(Root)
+        {
+            NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = false,
+        };
+        FileSystemEventHandler h = (_, _) => Bump();
+        _rootWatcher.Created += h;
+        _rootWatcher.Deleted += h;
+        _rootWatcher.Changed += h;
+        _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
+        _rootWatcher.Error += (_, _) => OnRootWatchError();
+        _rootWatcher.EnableRaisingEvents = true;
+        _rootWatchRetry?.Stop();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _rootWatcher?.Dispose();
+            _rootWatcher = null;
+            _rootWatchRetry ??= CreateRootWatchRetry();
+            _rootWatchRetry.Start();
+        }
+    }
+
+    private DispatcherTimer CreateRootWatchRetry()
+    {
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) => { StartRootWatch(); Bump(); };
+        return timer;
+    }
+
+    private void OnRootWatchError() => _debounce.Dispatcher.BeginInvoke(() =>
+    {
+        if (_shuttingDown) return;
+        StartRootWatch();
+        Bump();
+    });
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _debounce.Dispatcher.BeginInvoke(() =>
     {
@@ -394,6 +429,7 @@ internal sealed partial class GroupManager
     private void OnFolderRenamed(RenamedEventArgs e)
     {
         if (_shuttingDown) return;
+        if (Path.GetFileName(e.FullPath).StartsWith(".rename-", StringComparison.OrdinalIgnoreCase)) { Bump(); return; }
         string oldName = Path.GetFileName(e.OldFullPath), name = Path.GetFileName(e.FullPath);
         if (_cards.TryGetValue(oldName, out var card) &&
             string.Equals(card.Group.Folder, e.OldFullPath, StringComparison.Ordinal) && Directory.Exists(e.FullPath))
@@ -459,12 +495,22 @@ internal sealed partial class GroupManager
         try
         {
             return Directory.EnumerateDirectories(Root)
+                .Where(d => !Path.GetFileName(d).StartsWith(".rename-", StringComparison.OrdinalIgnoreCase))
                 .Where(d => (File.GetAttributes(d) & (FileAttributes.Hidden | FileAttributes.System)) == 0)
                 .ToList();
         }
         catch
         {
             return null; // 읽기 실패를 빈 폴더로 취급하면 정상 카드까지 모두 닫힌다.
+        }
+    }
+
+    private void RecoverRenamedGroups()
+    {
+        foreach (string folder in Directory.EnumerateDirectories(Root).Where(d => Path.GetFileName(d).StartsWith(".rename-", StringComparison.OrdinalIgnoreCase)))
+        {
+            try { Directory.Move(folder, FileOps.Unique(Root, "복구된 그룹")); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { System.Diagnostics.Trace.TraceError("그룹 복구 보류: {0}: {1}", folder, ex); }
         }
     }
 
@@ -614,14 +660,7 @@ internal sealed partial class GroupManager
         {
             if (caseOnly)
             {
-                string tmp = FileOps.Unique(Root, ".rename-" + Guid.NewGuid().ToString("N"));
-                Directory.Move(card.Group.Folder, tmp);
-                try { Directory.Move(tmp, dest); }
-                catch
-                {
-                    Directory.Move(tmp, card.Group.Folder);
-                    throw;
-                }
+                RenameCaseOnly(card.Group.Folder, dest);
             }
             else
             {
@@ -639,6 +678,19 @@ internal sealed partial class GroupManager
         RaiseChanged();
         EditChanged?.Invoke();
         return true;
+    }
+
+    internal static void RenameCaseOnly(string source, string destination, Action<string, string>? move = null)
+    {
+        move ??= Directory.Move;
+        string temp = Path.Combine(Path.GetDirectoryName(source)!, ".rename-" + Guid.NewGuid().ToString("N"));
+        move(source, temp);
+        try { move(temp, destination); }
+        catch
+        {
+            move(temp, source);
+            throw;
+        }
     }
 
     /// <summary>편집 막대의 삭제: 폴더 카드는 그룹을, .dard 카드는 카드 파일을 지운다.</summary>
@@ -697,6 +749,7 @@ internal sealed partial class GroupManager
         _desktopRetry = null;
         EndEditMode();
         _rootWatcher?.Dispose();
+        _rootWatchRetry?.Stop();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);
         foreach (var path in _dards.Keys.ToList()) UnloadDard(path);
     }
