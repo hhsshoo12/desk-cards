@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -25,7 +27,7 @@ internal static class DardStorage
 
     /// <summary>
     /// 권한이 없으면 네트워크를 통째로 막는다: 이동·미리 연결은 요청 검사 전에 소켓부터 열기 때문에(회귀 테스트로 확인)
-    /// 모든 연결을 없는 프록시로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다.
+    /// 모든 연결을 앱이 쥐고 있는 막다른 길(<see cref="DeadEnd"/>)로 보내고(루프백도 예외 없이), 이름 풀이도 전부 실패시킨다.
     /// 어느 쪽이든 WebRTC는 프록시 밖 UDP를 쓰지 못하게 하고, 페이지에서도 지운다(로컬 IP가 드러나므로).
     /// 실행 인자는 데이터 폴더마다 하나라서 폴더도 따로 쓴다.
     /// </summary>
@@ -35,9 +37,77 @@ internal static class DardStorage
         if (internet)
             return _online ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "online"),
                 new CoreWebView2EnvironmentOptions(webrtc));
-        return _offline ??= CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "offline"),
-            new CoreWebView2EnvironmentOptions(
-                "--proxy-server=http://127.0.0.1:9 --proxy-bypass-list=<-loopback> --host-resolver-rules=\"MAP * ~NOTFOUND\" " + webrtc));
+        return _offline ??= CreateOffline();
+
+        static Task<CoreWebView2Environment> CreateOffline()
+        {
+            var deadEnd = DeadEnd.Instance; // 못 열면 예외(카드에 오류로 보인다). 막다른 길 없이 띄우지 않는다.
+            return CoreWebView2Environment.CreateAsync(null, Path.Combine(AppPaths.WebDataDir, "offline"),
+                new CoreWebView2EnvironmentOptions(
+                    $"--proxy-server=http://{deadEnd.EndPoint} --proxy-bypass-list=<-loopback> " +
+                    $"--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE {deadEnd.EndPoint.Address}\" " + webrtc));
+        }
+    }
+
+    /// <summary>
+    /// internet 권한 없는 카드의 연결이 가는 곳. 127.255.255.1~32 중 하나에 빈 포트를 앱이 독점으로 열어 쥐고 있고,
+    /// 들어오는 연결은 받자마자 끊는다. 다른 프로그램이 같은 주소·포트를 가로챌 수 없고, 카드는 기다리지 않고 바로 실패한다.
+    /// 127 대역은 전부 이 PC 자신(루프백)이라 바깥으로는 아무것도 나가지 않는다.
+    /// </summary>
+    internal sealed class DeadEnd
+    {
+        private static DeadEnd? _instance;
+        private readonly Socket _socket;
+        private int _hits;
+
+        private DeadEnd(Socket socket)
+        {
+            _socket = socket;
+            _ = Task.Run(AcceptLoop);
+        }
+
+        public static DeadEnd Instance => _instance ??= Open();
+
+        public IPEndPoint EndPoint => (IPEndPoint)_socket.LocalEndPoint!;
+
+        /// <summary>지금까지 막은 연결 수(권한 없는 카드가 밖으로 나가려 한 횟수).</summary>
+        public int Hits => Volatile.Read(ref _hits);
+
+        private static DeadEnd Open()
+        {
+            for (int n = 1; n <= 32; n++)
+            {
+                var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { ExclusiveAddressUse = true };
+                try
+                {
+                    socket.Bind(new IPEndPoint(IPAddress.Parse($"127.255.255.{n}"), 0));
+                    socket.Listen(64);
+                    return new DeadEnd(socket);
+                }
+                catch (SocketException)
+                {
+                    socket.Dispose();
+                }
+            }
+            throw new IOException("카드의 네트워크를 막을 자리(127.255.255.1~32)를 열지 못했어요.");
+        }
+
+        private async Task AcceptLoop()
+        {
+            while (true)
+            {
+                Socket client;
+                try { client = await _socket.AcceptAsync(); }
+                catch (Exception ex) when (ex is SocketException or ObjectDisposedException) { return; }
+                Interlocked.Increment(ref _hits);
+                try
+                {
+                    client.LingerState = new LingerOption(true, 0); // 바로 끊는다(RST)
+                    client.Close();
+                }
+                catch (SocketException) { }
+            }
+        }
     }
 
     private static Task<Keeper> KeeperFor(bool internet)

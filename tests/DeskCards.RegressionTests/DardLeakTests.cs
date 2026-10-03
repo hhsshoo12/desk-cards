@@ -20,9 +20,14 @@ internal static partial class Program
     {
         Test(".dard without internet permission cannot reach the network", () =>
         {
+            ProbeDeadEnd();
             var hits = RunLeakCard(root, "dard-leak", internet: false);
             foreach (var hit in hits) Console.WriteLine("  LEAK " + hit);
             Check(hits.Length == 0);
+            // 나가려던 연결은 앱이 쥔 막다른 길(127.255.255.1~32)에서 끊겼다.
+            var deadEnd = DardStorage.DeadEnd.Instance;
+            Console.WriteLine($"  dead end {deadEnd.EndPoint}: {deadEnd.Hits} blocked");
+            Check(deadEnd.EndPoint.Address.ToString().StartsWith("127.255.255.") && deadEnd.Hits > 0);
         });
         Test(".dard with internet permission reaches the network but still cannot navigate away", () =>
         {
@@ -32,6 +37,34 @@ internal static partial class Program
             Check(hits.Contains("tcp GET /fetch HTTP/1.1") && hits.Contains("tcp GET /img HTTP/1.1"));
             Check(!hits.Any(h => h.Contains("/script") || h.Contains("/location") || h.Contains("/form") || h.Contains("/frame-src") || h.Contains("/open")));
         });
+    }
+
+    /// <summary>권한 없는 환경에서 앱이 직접(CSP·가로채기 없이) 바깥 주소로 이동시켜 봐도 실패하고, 연결은 막다른 길로 가는지 본다.</summary>
+    private static void ProbeDeadEnd()
+    {
+        var host = new System.Windows.Interop.HwndSource(new System.Windows.Interop.HwndSourceParameters("probe") { Width = 1, Height = 1, WindowStyle = unchecked((int)0x80000000) });
+        var envTask = DardStorage.Environment(false);
+        WaitUntil(() => envTask.IsCompleted);
+        var ctlTask = envTask.Result.CreateCoreWebView2ControllerAsync(host.Handle);
+        WaitUntil(() => ctlTask.IsCompleted);
+        var core = ctlTask.Result.CoreWebView2;
+        foreach (string url in new[] { "http://example.com/", "https://example.com/", "http://127.0.0.1:1/", "http://192.168.0.1/" })
+        {
+            int before = DardStorage.DeadEnd.Instance.Hits;
+            string? status = null;
+            core.NavigationCompleted += Done;
+            core.Navigate(url);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (status == null && sw.ElapsedMilliseconds < 15000) Pump(50);
+            core.NavigationCompleted -= Done;
+            int blocked = DardStorage.DeadEnd.Instance.Hits - before;
+            Console.WriteLine($"  probe {url}: {status} dead-end +{blocked}");
+            Check(status != null && status != "ok");
+            if (!url.Contains("127.0.0.1")) Check(blocked > 0); // 루프백 주소는 이름 풀이 단계에서 이미 실패한다
+            void Done(object? s, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e) => status = e.IsSuccess ? "ok" : e.WebErrorStatus.ToString();
+        }
+        ctlTask.Result.Close();
+        host.Dispose();
     }
 
     /// <summary>테스트 카드를 띄우고 수신기에 닿은 것을 돌려준다.</summary>

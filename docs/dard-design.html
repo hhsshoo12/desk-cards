@@ -441,7 +441,7 @@ details[open] summary { margin-bottom: 6px; }
     <li><b>모달 창</b>: <code>ScriptDialogOpening</code>에서 막음</li>
     <li><b>이동·새 창·다운로드</b>: <code>NavigationStarting</code>, <code>NewWindowRequested</code>, <code>DownloadStarting</code>에서 취소</li>
     <li><b>외부 리소스</b>: <code>WebResourceRequested</code>로 모든 요청을 가로챈다. 카드 자신의 주소는 파일 두 장만, 다른 문서로 가는 요청(이동·프레임)은 늘 거부, 그 밖의 요청은 <code>internet</code> 권한이 있을 때만 내보낸다</li>
-    <li><b>네트워크 자체</b>: 권한 있는 카드와 없는 카드는 브라우저 프로세스(데이터 폴더 <code>online</code>/<code>offline</code>)를 따로 쓴다. 없는 쪽은 모든 연결을 없는 프록시(<code>127.0.0.1:9</code>, 루프백 예외 없음)로 보내고 이름 풀이도 전부 실패시킨다</li>
+    <li><b>네트워크 자체</b>: 권한 있는 카드와 없는 카드는 브라우저 프로세스(데이터 폴더 <code>online</code>/<code>offline</code>)를 따로 쓴다. 없는 쪽은 모든 연결을 앱이 쥔 막다른 길로 보내고(루프백 예외 없음) 이름 풀이도 전부 실패시킨다. 막다른 길은 앱이 켜질 때 <code>127.255.255.1</code>~<code>32</code> 중 하나에 빈 포트를 독점으로 열어 둔 소켓으로, 들어온 연결을 받자마자 끊는다(다른 프로그램이 가로챌 수 없고, 127 대역은 이 PC 자신이라 밖으로 나가지 않음). 이름 풀이 차단 규칙은 이 주소만 빼야 프록시에 닿는다(빼지 않으면 프록시 주소까지 풀이에 실패한다 — 테스트로 확인)</li>
   </ul>
   <div class="callout warn">
     <b>네트워크 옆길 주의</b><br>
