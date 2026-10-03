@@ -9,6 +9,29 @@ internal static partial class Program
 {
     private static void RevisionTests(string root)
     {
+        Test("revision B1: secondary monitor saved position round trips through a primary-DPI startup", () =>
+        {
+            // HWND 전 위치 복원은 시스템 DPI를 사용한다. 주 100%, 보조 150%의 계산을 고정해 재현한다.
+            var physical = new Native.RECT { Left = 2400, Top = 300, Right = 2700, Bottom = 600 };
+            var saved = DeskCard.StoragePoint(physical);
+            var restored = saved; // HWND 생성 뒤 SetWindowPos는 물리 좌표를 그대로 받는다.
+            Check(restored.X == physical.Left && restored.Y == physical.Top);
+            foreach (double scale in new[] { 1.0, 1.25, 1.5, 2.0 })
+            foreach (int origin in new[] { -2560, 1920 })
+            {
+                var work = new System.Windows.Rect(origin, -300, 2560, 1440);
+                var card = new Native.RECT { Left = origin + 400, Top = 0, Right = origin + 700, Bottom = 300 };
+                foreach (bool centered in new[] { true, false })
+                {
+                    var p = PixelPlacement.Beside(card, work, new System.Windows.Size(400, 300), scale, centered);
+                    Check(work.Contains(new System.Windows.Rect(p, new System.Windows.Size(400 * scale, 300 * scale))));
+                    if (!centered) Check(p.X == card.Right + 8 * scale);
+                }
+            }
+            string path = Path.Combine(root, "old-dip.json");
+            File.WriteAllText(path, "{\"Positions\":{\"old\":[1600,200]}}");
+            Check(Config.Load(path).Positions.Count == 0);
+        });
         Test("revision A10: enumerated directory attributes preserve dotted folder names", () =>
         {
             string folder = Path.Combine(root, "entry-attributes"); Directory.CreateDirectory(Path.Combine(folder, "folder.ext"));
@@ -17,7 +40,7 @@ internal static partial class Program
             Check(group.Items.Any(e => e.Name == "folder.ext") && group.Items.Any(e => e.Name == "file"));
             using var cancelled = new System.Threading.CancellationTokenSource(); cancelled.Cancel();
             var gone = new ShellEntry(Path.Combine(folder, "gone.ext"), cancelled.Token, isDirectory: true);
-            Check(gone.Name == "gone.ext"); // 存在確認に依存しない列挙時点の属性
+            Check(gone.Name == "gone.ext"); // 현재 존재 여부 대신 열거 시점의 속성을 쓴다.
         });
         RecoveryTest("revision A8: nested template scripts run when cloned and foreign scripts remain blocked", async () =>
         {

@@ -264,25 +264,19 @@ internal partial class ExpandedWindow : Window
 
     private void PlaceNearCard()
     {
+        if (Hwnd.Of(this) == IntPtr.Zero) return;
         if (_place != null)
         {
             var p = _place(new Size(Width, Height));
-            Left = p.X;
-            Top = p.Y;
+            double scale = Native.MonitorScaleOf(Hwnd.Of(_anchor ?? _card));
+            PixelPlacement.Move(this, new Point(p.X * scale, p.Y * scale));
             return;
         }
         // 카드 가운데를 기준으로 펼치고, 모니터 작업 영역 안으로 맞춘다.
-        var dpi = VisualTreeHelper.GetDpi(_card);
         var wa = System.Windows.Forms.Screen.FromHandle(Hwnd.Of(_card)).WorkingArea;
-        double waL = wa.Left / dpi.DpiScaleX, waT = wa.Top / dpi.DpiScaleY;
-        double waR = wa.Right / dpi.DpiScaleX, waB = wa.Bottom / dpi.DpiScaleY;
-
-        var position = _card.ActualPosition;
-        double cx = position.X + _card.Width / 2;
-        double cy = position.Y + 8 + 88;
-        double left = cx - Width / 2, top = cy - Height / 2;
-        Left = Math.Max(waL + 8, Math.Min(left, waR - Width - 8));
-        Top = Math.Max(waT + 8, Math.Min(top, waB - Height - 8));
+        if (Native.GetWindowRect(Hwnd.Of(_card), out var rect))
+            PixelPlacement.Move(this, PixelPlacement.Beside(rect, new Rect(wa.X, wa.Y, wa.Width, wa.Height),
+                new Size(Width, Height), Native.MonitorScaleOf(Hwnd.Of(_card)), centered: true));
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -291,6 +285,7 @@ internal partial class ExpandedWindow : Window
         Hwnd.RemoveSysMenu(hwnd);
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
+        PlaceNearCard();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

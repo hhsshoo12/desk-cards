@@ -33,7 +33,7 @@ internal static partial class Program
         Test("null position entries are discarded", () =>
         {
             string path = Path.Combine(root, "null-position.json");
-            File.WriteAllText(path, """{"Positions":{"bad":null,"good":[12,34]},"ScaleVersion":2}""");
+            File.WriteAllText(path, """{"PositionsPx":{"bad":null,"good":[12,34]},"ScaleVersion":2}""");
             var cfg = Config.Load(path);
             Check(!cfg.Positions.ContainsKey("bad") && cfg.Positions["good"][0] == 12);
         });
@@ -47,7 +47,7 @@ internal static partial class Program
         Test("case-colliding keys preserve unrelated settings", () =>
         {
             string path = Path.Combine(root, "case.json");
-            File.WriteAllText(path, """{"Positions":{"Test":[1,2],"test":[3,4]},"ShowGuides":false}""");
+            File.WriteAllText(path, """{"PositionsPx":{"Test":[1,2],"test":[3,4]},"ShowGuides":false}""");
             var cfg = Config.Load(path);
             Check(!cfg.ShowGuides && cfg.Positions.Count == 1);
         });

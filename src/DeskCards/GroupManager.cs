@@ -463,12 +463,11 @@ internal sealed partial class GroupManager
 
     private void RecreateCard(DeskCard card)
     {
-        // 화면상 왼쪽 위(픽셀)는 그대로 두고 새 배율 기준 DIP로 저장한 뒤 다시 띄운다.
+        // 화면상 왼쪽 위(물리 픽셀)를 그대로 저장한 뒤 다시 띄운다.
         var hwnd = Hwnd.Of(card);
         if (Native.GetWindowRect(hwnd, out var r))
         {
-            double ns = Native.MonitorScaleOf(hwnd);
-            _cfg.Positions[card.Key] = new[] { r.Left / ns, r.Top / ns };
+            _cfg.Positions[card.Key] = new[] { (double)r.Left, r.Top };
             _cfg.Save();
         }
         if (card is DardWindow dard)
@@ -549,14 +548,12 @@ internal sealed partial class GroupManager
     {
         if (_cfg.Positions.TryGetValue(card.Key, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
         {
-            card.Left = pos[0];
-            card.Top = pos[1];
+            card.RestorePosition(new Point(pos[0], pos[1]));
         }
         else
         {
             var p = NextFreeSlot(baseSize);
-            card.Left = p.X;
-            card.Top = p.Y;
+            card.RestorePosition(p);
             _cfg.Positions[card.Key] = new[] { p.X, p.Y };
             _cfg.Save();
         }
@@ -622,7 +619,7 @@ internal sealed partial class GroupManager
 
     public void SavePosition(DeskCard card)
     {
-        var p = card.ActualPosition;
+        var p = card.PhysicalPosition;
         _cfg.Positions[card.Key] = new[] { p.X, p.Y };
         _cfg.Save();
     }
@@ -755,9 +752,8 @@ internal sealed partial class GroupManager
 
     private static bool IsOnScreen(double x, double y)
     {
-        var vs = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
-            SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
-        return vs.Contains(new Point(x + 40, y + 40));
+        return System.Windows.Forms.Screen.AllScreens.Any(s => new Rect(s.WorkingArea.X, s.WorkingArea.Y,
+            s.WorkingArea.Width, s.WorkingArea.Height).Contains(new Point(x + 40, y + 40)));
     }
 
     /// <summary>
@@ -768,7 +764,8 @@ internal sealed partial class GroupManager
     private Point NextFreeSlot(Size? baseSize = null)
     {
         var wa = SystemParameters.WorkArea;
-        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => new Rect(c.ActualPosition, new Size(c.Width, c.FootprintHeight))).ToList();
+        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => c.Footprint)
+            .Select(r => new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)).ToList();
 
         double s = Native.PrimaryScale();
         double k = _cfg.DefaultZoom * ZoomFactor(s);
@@ -782,11 +779,11 @@ internal sealed partial class GroupManager
             for (int j = 0; j <= ny; j += 2)
             {
                 var (px, py) = DesktopGrid.CellAt(waPx, wPx, hPx, i, j);
-                var r = new Rect(px / s, py / s, wPx / s, hPx / s);
+                var r = new Rect(px, py, wPx, hPx);
                 var probe = new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
                 if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
             }
         }
-        return new Point(wa.Left + 40, wa.Top + 40); // 빈 자리가 없으면 겹쳐서라도 보이게
+        return new Point((wa.Left + 40) * s, (wa.Top + 40) * s); // 빈 자리가 없으면 겹쳐서라도 보이게
     }
 }

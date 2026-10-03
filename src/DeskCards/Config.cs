@@ -9,6 +9,7 @@ namespace DeskCards;
 /// <summary>그룹 카드 위치를 %APPDATA%\DeskCards\config.json에 저장한다. 그룹 내용 자체는 실제 폴더가 원본이다.</summary>
 internal sealed class Config
 {
+    [System.Text.Json.Serialization.JsonPropertyName("PositionsPx")]
     public Dictionary<string, double[]> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>

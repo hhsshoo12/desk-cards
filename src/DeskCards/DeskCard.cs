@@ -29,6 +29,7 @@ internal abstract class DeskCard : Window
     private readonly Thumb _grip;
     private bool _pending, _editing, _selected, _dropTarget, _invalid, _ownZ;
     private double _appliedScale = 1;
+    private Point? _restorePosition;
     private bool _closed;
     private Native.POINT _moveCursorStart;
     private Native.RECT _moveWindowStart;
@@ -433,6 +434,7 @@ internal abstract class DeskCard : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         var hwnd = Handle;
+        if (_restorePosition is { } position) PixelPlacement.Move(this, position);
         Hwnd.RemoveSysMenu(hwnd);
         if (Activatable) Hwnd.MakeTool(hwnd);
         else Hwnd.MakeNoActivateTool(hwnd);
@@ -671,6 +673,16 @@ internal abstract class DeskCard : Window
             var dpi = VisualTreeHelper.GetDpi(this);
             return new Point(r.Left / dpi.DpiScaleX, r.Top / dpi.DpiScaleY);
         }
+    }
+
+    internal static Point StoragePoint(Native.RECT rect) => new(rect.Left, rect.Top);
+
+    internal Point PhysicalPosition => Native.GetWindowRect(Handle, out var rect) ? StoragePoint(rect) : _restorePosition ?? default;
+
+    internal void RestorePosition(Point point)
+    {
+        _restorePosition = point;
+        if (Handle != IntPtr.Zero) PixelPlacement.Move(this, point);
     }
 
     private void OnThemeChanged() => Dispatcher.BeginInvoke(() =>

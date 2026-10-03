@@ -94,6 +94,7 @@ internal sealed class DardSettingsWindow : Window
             Hwnd.RemoveSysMenu(hwnd);
             Hwnd.MakeTool(hwnd);
             Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+            Place();
         };
         Loaded += (_, _) => _view.FocusPage();
         Deactivated += (_, _) => SafeClose();
@@ -120,20 +121,17 @@ internal sealed class DardSettingsWindow : Window
     /// <summary>카드 오른쪽에(자리가 없으면 왼쪽에), 위쪽을 맞춰 띄운다. 작업 영역 밖으로 나가지 않는다.</summary>
     private void Place()
     {
+        if (Hwnd.Of(this) == IntPtr.Zero) return;
         var wa = SystemParameters.WorkArea;
         if (_anchor == null || Hwnd.Of(_anchor) == IntPtr.Zero || !Native.GetWindowRect(Hwnd.Of(_anchor), out var r))
         {
-            Left = wa.Left + (wa.Width - Width) / 2;
-            Top = wa.Top + (wa.Height - Height) / 2;
+            double primary = Native.PrimaryScale();
+            PixelPlacement.Move(this, new Point((wa.Left + (wa.Width - Width) / 2) * primary, (wa.Top + (wa.Height - Height) / 2) * primary));
             return;
         }
         double s = Native.MonitorScaleOf(Hwnd.Of(_anchor));
         var screen = System.Windows.Forms.Screen.FromHandle(Hwnd.Of(_anchor)).WorkingArea;
-        double l = screen.Left / s, t = screen.Top / s, rr = screen.Right / s, bb = screen.Bottom / s;
-        double cardL = r.Left / s, cardR = r.Right / s, cardT = r.Top / s;
-        double x = cardR + Gap + Width <= rr ? cardR + Gap : cardL - Gap - Width;
-        Left = Math.Clamp(x, l + Gap, Math.Max(l + Gap, rr - Gap - Width));
-        Top = Math.Clamp(cardT, t + Gap, Math.Max(t + Gap, bb - Gap - Height));
+        PixelPlacement.Move(this, PixelPlacement.Beside(r, new Rect(screen.X, screen.Y, screen.Width, screen.Height), new Size(Width, Height), s, centered: false));
     }
 
     private static ControlTemplate CloseTemplate()
