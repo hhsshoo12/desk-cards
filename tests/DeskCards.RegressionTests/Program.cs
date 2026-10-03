@@ -30,6 +30,22 @@ internal static partial class Program
         Console.WriteLine("Sandbox: " + root);
         ReportTests(root);
         RevisionTests(root);
+        ConfigurationTests(root);
+        BarSettingsTests(root, app);
+        ConfigurationRecoveryTests(root);
+        GroupFileTests(root);
+        CardWindowTests(root, app);
+        SettingsLifecycleTests(root, app);
+        DwmCardTests(root);
+        DardTests(root, app);
+        UpdateTests(root);
+        Console.WriteLine($"Failures: {_failed}");
+        session.Dispose();
+        app.Shutdown();
+        return _failed == 0 ? 0 : 1;
+    }
+    private static void ConfigurationTests(string root)
+    {
         Test("null position entries are discarded", () =>
         {
             string path = Path.Combine(root, "null-position.json");
@@ -70,6 +86,10 @@ internal static partial class Program
                 && !KeyCombo.IsValid(new[] { KeyCombo.Ctrl, 0x41, 0x42 }) && KeyCombo.ToHotkey(cfg.BarKeys) == (0x5u, 0x44u) && cfg.BarSize == 33
                 && cfg.BarDelay == 2000 && !cfg.ShowGuides && cfg.BarEnabled);
         });
+    }
+
+    private static void BarSettingsTests(string root, Application app)
+    {
         Test("card bar edge is chosen per display", () =>
         {
             string path = Path.Combine(root, "bar-edges.json");
@@ -111,6 +131,10 @@ internal static partial class Program
             Check(shown && held && !band.IsVisible);
             band.Close();
         });
+    }
+
+    private static void ConfigurationRecoveryTests(string root)
+    {
         Test("non-finite zoom is normalized", () => Check(double.IsFinite(new CardLayout { Zoom = double.NaN }.Normalized().Zoom)));
         Test("saved backup recovers interrupted configuration", () =>
         {
@@ -122,6 +146,10 @@ internal static partial class Program
             File.WriteAllText(path, "{interrupted");
             Check(!Config.Load(path).ShowGuides);
         });
+    }
+
+    private static void GroupFileTests(string root)
+    {
         Test("ancestor directory drop is rejected", () =>
         {
             string folder = Path.Combine(root, "drop-target");
@@ -196,6 +224,10 @@ internal static partial class Program
             Pump(400);
             Check(changes == 0);
         });
+    }
+
+    private static void CardWindowTests(string root, Application app)
+    {
         Test("grid expansion stays inside monitor work area", () =>
         {
             var cfg = Config.Load(Path.Combine(root, "screen.json"));
@@ -306,6 +338,10 @@ internal static partial class Program
             }
             finally { mgr.Shutdown(); }
         });
+    }
+
+    private static void SettingsLifecycleTests(string root, Application app)
+    {
         Test("settings, edit bar, and expanded window lifecycle", () =>
         {
             var cfg = Config.Load(Path.Combine(root, "windows.json"));
@@ -392,14 +428,8 @@ internal static partial class Program
             }
             finally { mgr.Shutdown(); }
         });
-        DwmCardTests(root);
-        DardTests(root, app);
-        UpdateTests(root);
-        Console.WriteLine($"Failures: {_failed}");
-        session.Dispose();
-        app.Shutdown();
-        return _failed == 0 ? 0 : 1;
     }
+
     // ----- .dard 카드: 임시 루트와 임시 브라우저 데이터만 쓴다 -----
 
     private const string ClockManifest = """
