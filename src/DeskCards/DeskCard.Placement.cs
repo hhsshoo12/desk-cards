@@ -104,7 +104,7 @@ internal abstract partial class DeskCard
 
     /// <summary>
     /// 실제 창 위치(DIP). SetWindowPos나 끌기로 옮긴 직후에는 WPF의 Left/Top이 늦게 갱신될 수 있어
-    /// 저장할 때는 이 값을 쓴다.
+    /// DIP를 쓰는 UI 계산용이며, 설정 저장에는 PhysicalPosition을 쓴다.
     /// </summary>
     public Point ActualPosition
     {

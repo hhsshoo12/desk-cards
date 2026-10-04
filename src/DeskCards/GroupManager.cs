@@ -77,20 +77,20 @@ internal sealed partial class GroupManager
         _rootWatcher = null;
         try
         {
-        // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
-        _rootWatcher = new FileSystemWatcher(Root)
-        {
-            NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
-            IncludeSubdirectories = false,
-        };
-        FileSystemEventHandler h = (_, _) => Bump();
-        _rootWatcher.Created += h;
-        _rootWatcher.Deleted += h;
-        _rootWatcher.Changed += h;
-        _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
-        _rootWatcher.Error += (_, _) => OnRootWatchError();
-        _rootWatcher.EnableRaisingEvents = true;
-        _rootWatchRetry?.Stop();
+            // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
+            _rootWatcher = new FileSystemWatcher(Root)
+            {
+                NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
+                IncludeSubdirectories = false,
+            };
+            FileSystemEventHandler h = (_, _) => Bump();
+            _rootWatcher.Created += h;
+            _rootWatcher.Deleted += h;
+            _rootWatcher.Changed += h;
+            _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
+            _rootWatcher.Error += (_, _) => OnRootWatchError();
+            _rootWatcher.EnableRaisingEvents = true;
+            _rootWatchRetry?.Stop();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
