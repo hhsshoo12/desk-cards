@@ -1,6 +1,6 @@
 <Project>
   <!-- 앱과 설치기(제거기)가 함께 쓰는 버전. 릴리스 태그는 app-v<이 버전>. -->
   <PropertyGroup>
-    <Version>0.4.3</Version>
+    <Version>0.4.4</Version>
   </PropertyGroup>
 </Project>
