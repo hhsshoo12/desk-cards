@@ -51,7 +51,7 @@ public partial class App : Application
         {
             // 바꿔 끼우지 못하면 지금 버전으로 켠다. 설정의 [앱 재시작]으로 다시 시도할 수 있다.
         }
-        if (host.Installed && cfg.PendingUpdate == null) UpdatePackage.Cleanup(host.InstallDir);
+        if (host.Installed && cfg.PendingUpdate == null) UpdatePackage.Cleanup(host.InstallDir, Updater.RunningVersion);
 
         Theme.Apply();
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;

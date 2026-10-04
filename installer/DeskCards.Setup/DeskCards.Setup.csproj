@@ -10,7 +10,7 @@
     <ApplicationIcon>../../src/DeskCards/app.ico</ApplicationIcon>
     <AssemblyName>DeskCards-Setup</AssemblyName>
     <RootNamespace>DeskCards.Setup</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.2.2</Version>
     <Product>Desk Cards 설치기</Product>
     <Company>hhsshoo12</Company>
   </PropertyGroup>

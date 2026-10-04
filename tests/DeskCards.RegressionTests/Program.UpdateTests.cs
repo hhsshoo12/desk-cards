@@ -110,8 +110,41 @@ internal static partial class Program
             string exe = Path.Combine(f.Install, "DeskCards.exe");
             Check(File.ReadAllText(exe) == "new app" && File.ReadAllText(exe + ".old") == "old app");
             Check(f.Relaunched == exe && f.Registered == new Version(0, 2, 10) && cfg.PendingUpdate == null);
-            UpdatePackage.Cleanup(f.Install);
+            UpdatePackage.Cleanup(f.Install, new Version(0, 2, 10));
             Check(!File.Exists(exe + ".old") && !Directory.Exists(Path.Combine(f.Install, "update")));
+        });
+        Test("pending update also replaces the uninstaller shipped with the app", () =>
+        {
+            var f = UpdateSandbox(root, "upd-uninstall", extra: "uninstall.exe");
+            string uninstaller = Path.Combine(f.Install, "uninstall.exe");
+            File.WriteAllText(uninstaller, "old uninstaller");
+            var cfg = Config.Load(Path.Combine(root, "upd-uninstall", "config.json"));
+            Downloaded(f, cfg);
+            Check(Updater.ApplyPending(cfg, f.Host(), new Version(0, 2, 1)));
+            Check(File.ReadAllText(uninstaller) == "x" && !File.Exists(uninstaller + ".new"));
+        });
+        Test("locked uninstaller keeps the old one and still applies the app update", () =>
+        {
+            var f = UpdateSandbox(root, "upd-uninstall-locked", extra: "uninstall.exe");
+            string uninstaller = Path.Combine(f.Install, "uninstall.exe");
+            File.WriteAllText(uninstaller, "old uninstaller");
+            var cfg = Config.Load(Path.Combine(root, "upd-uninstall-locked", "config.json"));
+            Downloaded(f, cfg);
+            using (new FileStream(uninstaller, FileMode.Open, FileAccess.Read, FileShare.None))
+                Check(Updater.ApplyPending(cfg, f.Host(), new Version(0, 2, 1)));
+            Check(File.ReadAllText(Path.Combine(f.Install, "DeskCards.exe")) == "new app");
+            Check(File.ReadAllText(uninstaller) == "old uninstaller" && !File.Exists(uninstaller + ".new"));
+        });
+        Test("new version replaces the uninstaller on first start when the old updater did not", () =>
+        {
+            // 제거기를 모르는 옛 버전이 exe만 바꿔 끼우고 새 버전을 띄운 상황.
+            var f = UpdateSandbox(root, "upd-uninstall-first-start", extra: "uninstall.exe");
+            string uninstaller = Path.Combine(f.Install, "uninstall.exe");
+            File.WriteAllText(uninstaller, "old uninstaller");
+            var cfg = Config.Load(Path.Combine(root, "upd-uninstall-first-start", "config.json"));
+            Downloaded(f, cfg);
+            UpdatePackage.Cleanup(f.Install, new Version(0, 2, 10));
+            Check(File.ReadAllText(uninstaller) == "x" && !Directory.Exists(Path.Combine(f.Install, "update")));
         });
         Test("pending update not newer than running version is discarded", () =>
         {

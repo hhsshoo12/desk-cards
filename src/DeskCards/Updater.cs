@@ -27,6 +27,7 @@ internal static class UpdatePackage
     public const string ZipName = "DeskCards-win-x64.zip";
     public const string HashName = ZipName + ".sha256";
     public const string ExeName = "DeskCards.exe";
+    public const string UninstallerName = "uninstall.exe";
     public const long DownloadLimit = 300L * 1024 * 1024;
     private const long ExpandedLimit = 1024L * 1024 * 1024;
 
@@ -106,6 +107,7 @@ internal static class UpdatePackage
 
     /// <summary>
     /// 받아 둔 버전으로 바꿔 끼운다. DeskCards.exe → DeskCards.exe.old, update\&lt;버전&gt;\DeskCards.exe → DeskCards.exe.
+    /// 받아 둔 제거기(uninstall.exe)가 있으면 그것도 바꾼다.
     /// 받아 둔 파일이 없으면 false. 옮기다 실패하면 원래 exe를 되돌리고 예외를 던진다.
     /// </summary>
     public static bool Apply(string installDir, Version version)
@@ -129,12 +131,38 @@ internal static class UpdatePackage
             File.Move(old, exe);
             throw;
         }
+        ReplaceUninstaller(installDir, StageDir(installDir, version));
         return true;
     }
 
-    /// <summary>바꿔 끼운 뒤 남은 .old와 update 폴더를 지운다. 못 지우면 다음에 다시 시도한다.</summary>
-    public static void Cleanup(string installDir)
+    /// <summary>
+    /// 받아 둔 버전에 제거기가 있으면 같이 바꾼다. 제거기가 앱과 같은 버전이어야 새 버전이 만든 파일까지 지운다.
+    /// 제거기를 바꾸지 못해도(실행 중 등) 앱 업데이트는 그대로 두고 이전 제거기를 쓴다.
+    /// </summary>
+    private static void ReplaceUninstaller(string installDir, string stage)
     {
+        string staged = Path.Combine(stage, UninstallerName);
+        if (!File.Exists(staged)) return;
+        string target = Path.Combine(installDir, UninstallerName), next = target + ".new";
+        try
+        {
+            File.Copy(staged, next, overwrite: true);
+            if (File.Exists(target)) File.Replace(next, target, null);
+            else File.Move(next, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            try { File.Delete(next); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    /// <summary>
+    /// 바꿔 끼운 뒤 새 버전이 켜질 때. 받아 둔 제거기를 한 번 더 바꾼 뒤(바꿔 끼운 옛 버전이 제거기를 모르는 경우),
+    /// 남은 .old와 update 폴더를 지운다. 못 지우면 다음에 다시 시도한다.
+    /// </summary>
+    public static void Cleanup(string installDir, Version current)
+    {
+        ReplaceUninstaller(installDir, StageDir(installDir, current));
         try { File.Delete(OldExe(installDir)); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         DeleteStage(installDir);
     }

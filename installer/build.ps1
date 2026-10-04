@@ -22,7 +22,16 @@ function Remove-BuildTemporary([string]$path) {
     if (Test-Path -LiteralPath $absolute) { Remove-Item -LiteralPath $absolute -Recurse -Force }
 }
 
+function Build-Setup {
+    # .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드한다.
+    dotnet build $setupProject -c Release -warnaserror -p:DebugType=none -p:AutomaticallyUseReferenceAssemblyPackages=true | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw '설치기 빌드 실패' }
+    return (Join-Path $PSScriptRoot 'DeskCards.Setup\bin\Release\net48\DeskCards-Setup.exe')
+}
+
 if ($buildApp) {
+    # 앱 zip에 제거기(설치기 exe)를 같이 넣는다. 앱이 스스로 업데이트할 때 제거기도 같은 버전으로 바뀐다.
+    $setupBuilt = Build-Setup
     New-Item -ItemType Directory -Path $appOutput -Force | Out-Null
     $publishDir = Join-Path $dist ('publish-' + [guid]::NewGuid().ToString('N'))
     $zipStage = Join-Path $dist ('zip-' + [guid]::NewGuid().ToString('N'))
@@ -33,6 +42,7 @@ if ($buildApp) {
         if ($LASTEXITCODE -ne 0) { throw '앱 게시 실패' }
         New-Item -ItemType Directory -Path $zipStage | Out-Null
         Copy-Item -LiteralPath (Join-Path $publishDir 'DeskCards.exe') -Destination $zipStage
+        Copy-Item -LiteralPath $setupBuilt -Destination (Join-Path $zipStage 'uninstall.exe')
         [IO.File]::WriteAllText((Join-Path $zipStage 'version.txt'), $appVersion, [Text.UTF8Encoding]::new($false))
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zipPath = Join-Path $appOutput 'DeskCards-win-x64.zip'
@@ -49,11 +59,10 @@ if ($buildApp) {
 }
 
 if ($buildInstaller) {
-    dotnet build $setupProject -c Release -warnaserror -p:DebugType=none
-    if ($LASTEXITCODE -ne 0) { throw '설치기 빌드 실패 (.NET Framework 4.8 Developer Pack 필요)' }
+    $setupBuilt = Build-Setup
     New-Item -ItemType Directory -Path $setupOutput -Force | Out-Null
     $setupExe = Join-Path $setupOutput 'DeskCards-Setup.exe'
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'DeskCards.Setup\bin\Release\net48\DeskCards-Setup.exe') -Destination $setupExe -Force
+    Copy-Item -LiteralPath $setupBuilt -Destination $setupExe -Force
     $length = (Get-Item -LiteralPath $setupExe).Length
     if ($length -gt 1MB) { throw "설치기가 1MB를 넘습니다: $length bytes" }
     Write-Host "설치기: $setupExe ($length bytes)"
