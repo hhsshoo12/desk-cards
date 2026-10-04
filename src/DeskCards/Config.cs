@@ -226,7 +226,7 @@ internal sealed class BarItem
     public BarItem Clone() => new() { Group = Group, X = X, Y = Y, W = W };
 }
 
-/// <summary>.dard 한 종류(매니페스트 id)의 승인. 해시가 바뀌면 다시 묻는다(권한이 같거나 줄었으면 그대로 승인).</summary>
+/// <summary>.dard 한 종류(매니페스트 id)의 승인. 파일의 SHA-256이 승인할 때와 다르면 권한과 상관없이 다시 묻는다.</summary>
 internal sealed class DardApproval
 {
     public string Hash { get; set; } = "";

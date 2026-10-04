@@ -100,12 +100,13 @@ internal static partial class Program
                 // 설정 화면은 카드와 같은 주소라 같은 저장소를 본다(카드 설정은 localStorage로).
                 Check(Eval(WebOf(app.Windows.OfType<DardSettingsWindow>().Single()), "localStorage.getItem('clock')") == "\"h12\"");
 
-                // 권한이 같은 새 버전은 다시 묻지 않고 바꿔 띄운다(설정 창은 닫힌다).
-                File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest), ("card.html", "<p>2"), ("settings.html", "<p>s")));
-                Pump(900);
-                var reloaded = mgr.AllCards.OfType<DardWindow>().ToList();
-                Check(reloaded.Count == 2 && !reloaded.Contains(main) && cfg.Dards["com.test.clock"].Hash == DardPackage.Load(file).Hash);
-                Check(!app.Windows.OfType<DardSettingsWindow>().Any());
+                // 승인한 뒤 파일이 바뀌면 권한이 같아도 다시 묻고, 답하기 전에는 띄우지 않는다(설정 창도 닫힌다).
+                File.WriteAllBytes(file, Dard(("manifest.json", ClockManifest.Replace("\"version\": \"1.0.0\",",
+                    "\"version\": \"1.0.0\", \"permissions\": { \"internet\": true },")), ("card.html", "<p>2"), ("settings.html", "<p>s")));
+                var asked = CloseDialogs(() => Pump(1500)); // 닫으면 [계속 사용]을 누르지 않은 것과 같다.
+                Check(asked.Any(t => t.Contains("카드 파일이 바뀌었어요") && t.Contains("새로 요구하는 권한: 인터넷과 통신")));
+                Check(!mgr.AllCards.OfType<DardWindow>().Any() && !app.Windows.OfType<DardSettingsWindow>().Any());
+                Check(cfg.Dards["com.test.clock"] is { Allowed: false } changed && changed.Hash == DardPackage.Load(file).Hash);
 
                 File.Delete(file);
                 Pump(900);

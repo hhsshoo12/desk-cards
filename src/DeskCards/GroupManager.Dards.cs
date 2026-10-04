@@ -179,21 +179,12 @@ internal sealed partial class GroupManager
         }
     }
 
-    /// <summary>승인했으면 true, 거절했으면 false, 아직 모르면(처음 보거나 권한이 늘었으면) null.</summary>
-    private bool? Approval(DardPackage pkg)
-    {
-        if (!_cfg.Dards.TryGetValue(pkg.Id, out var a)) return null;
-        if (a.Hash == pkg.Hash) return a.Allowed;
-        // 새 버전인데 권한이 같거나 줄었으면 그대로 승인한다.
-        if (a.Allowed && pkg.Permissions.All(p => a.Permissions.Contains(p.Key)))
-        {
-            a.Hash = pkg.Hash;
-            a.Permissions = pkg.Permissions.Select(p => p.Key).ToList();
-            _cfg.Save();
-            return true;
-        }
-        return null;
-    }
+    /// <summary>
+    /// 승인했으면 true, 거절했으면 false, 아직 모르면(처음 보거나 승인한 뒤 파일이 바뀌었으면) null.
+    /// 파일의 SHA-256이 승인할 때와 한 바이트라도 다르면 권한과 상관없이 다시 묻는다(업데이트로 보지 않는다).
+    /// </summary>
+    private bool? Approval(DardPackage pkg) =>
+        _cfg.Dards.TryGetValue(pkg.Id, out var a) && a.Hash == pkg.Hash ? a.Allowed : null;
 
     private void AskDard(DardPackage pkg)
     {
@@ -211,7 +202,11 @@ internal sealed partial class GroupManager
         MessageBoxResult answer;
         try
         {
-            answer = Dialogs.Show(InstallText(pkg), MessageBoxButton.OKCancel, heading: $"'{pkg.Name}' 카드를 추가할까요?", primary: "추가");
+            // 승인했던 카드인데 파일이 바뀌었으면, 바뀐 것을 먼저 알린다.
+            answer = _cfg.Dards.TryGetValue(pkg.Id, out var before) && before.Allowed
+                ? Dialogs.Show(ChangedText(pkg, before) + "\n\n" + InstallText(pkg), MessageBoxButton.OKCancel,
+                    heading: $"'{pkg.Name}' 카드 파일이 바뀌었어요", primary: "계속 사용")
+                : Dialogs.Show(InstallText(pkg), MessageBoxButton.OKCancel, heading: $"'{pkg.Name}' 카드를 추가할까요?", primary: "추가");
         }
         finally
         {
@@ -224,6 +219,14 @@ internal sealed partial class GroupManager
         _dardSkipped.Remove(pkg.Path);
         Reconcile();
         if (_dardPrompts.Count > 0) _debounce.Dispatcher.BeginInvoke(NextDardPrompt);
+    }
+
+    /// <summary>승인한 뒤 파일이 바뀌었을 때의 안내. 권한이 늘었으면 그것도 알린다.</summary>
+    private static string ChangedText(DardPackage pkg, DardApproval before)
+    {
+        string text = "승인한 뒤에 카드 파일의 내용이 바뀌었어요. 직접 바꾸거나 새로 받은 파일이 아니라면 사용하지 마세요.";
+        var added = pkg.Permissions.Where(p => !before.Permissions.Contains(p.Key)).Select(p => p.Label).Distinct().ToList();
+        return added.Count == 0 ? text : text + "\n\n새로 요구하는 권한: " + string.Join(", ", added);
     }
 
     private static string InstallText(DardPackage pkg)

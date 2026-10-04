@@ -116,9 +116,12 @@ internal static partial class Program
 
                 // 지난번에 옮기다 앱이 꺼진 것처럼 표시를 남겨 둔다. 이번에 이어서 옮기고 그렇다고 알려야 한다.
                 cfg.DardMoving["com.test.move"] = "online/v2/shared";
+                // 바뀐 파일은 다시 묻는다. 사용자가 [계속 사용]을 누른 것처럼 새 파일의 해시로 승인해 둔다.
+                byte[] v2File = Dard(("manifest.json", v2), ("card.html", MoveReader));
+                cfg.Dards["com.test.move"] = new DardApproval { Hash = DardPackage.Parse(v2File, file).Hash, Allowed = true, Permissions = new() { "internet" } };
                 var dialogs = CloseDialogs(() =>
                 {
-                    File.WriteAllBytes(file, Dard(("manifest.json", v2), ("card.html", MoveReader)));
+                    File.WriteAllBytes(file, v2File);
                     WaitUntilLong(() => cfg.DardStorage["com.test.move"] == "online/v2/shared" && mgr.AllCards.OfType<DardWindow>().Any(), 60000);
                     web = WebOf(mgr.AllCards.OfType<DardWindow>().Single());
                     string got = WaitFor(web, "__got");
