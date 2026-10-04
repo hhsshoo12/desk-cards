@@ -32,18 +32,11 @@ internal sealed class TestSession : IDisposable
         {
             try
             {
-                // ToggleDesktop은 두 번째 호출에서 창을 되살릴 수 있으므로 항상 내리는 명령을 쓴다.
+                // 시작은 항상 최소화하고, 안내 창이 닫히면 같은 STA에서 그 최소화를 되돌린다.
                 var type = Type.GetTypeFromProgID("Shell.Application") ?? throw new InvalidOperationException("Windows Shell을 찾지 못했어요.");
                 dynamic shell = Activator.CreateInstance(type)!;
-                try { shell.MinimizeAll(); }
+                try { RunWithDesktop(() => shell.MinimizeAll(), () => ShowStatus(suite), () => shell.UndoMinimizeALL()); }
                 finally { Marshal.FinalReleaseComObject(shell); }
-                Thread.Sleep(350); // 셸 애니메이션 뒤 안내 창을 띄운다.
-                _window = new StatusWindow(suite);
-                EventHandler? rendered = null;
-                rendered = (_, _) => { _window.ContentRendered -= rendered; _ready.Set(); };
-                _window.ContentRendered += rendered;
-                _window.Show();
-                Dispatcher.Run();
             }
             catch (Exception ex)
             {
@@ -59,6 +52,33 @@ internal sealed class TestSession : IDisposable
     }
 
     public static TestSession Start(string suite) => new TestSession(suite);
+
+    internal static void RunWithDesktop(Action minimize, Action run, Action restore)
+    {
+        minimize();
+        try { run(); }
+        finally { restore(); }
+    }
+
+    private void ShowStatus(string suite)
+    {
+        try
+        {
+            Thread.Sleep(350); // 셸 애니메이션 뒤 안내 창을 띄운다.
+            _window = new StatusWindow(suite);
+            EventHandler? rendered = null;
+            rendered = (_, _) => { _window.ContentRendered -= rendered; _ready.Set(); };
+            _window.ContentRendered += rendered;
+            _window.Show();
+            Dispatcher.Run();
+        }
+        catch
+        {
+            // 안내 창 생성 실패도 원래 앱 창을 복원하기 전에 정리한다.
+            try { _window?.Finish(); } catch { }
+            throw;
+        }
+    }
 
     public void Complete(bool passed)
     {

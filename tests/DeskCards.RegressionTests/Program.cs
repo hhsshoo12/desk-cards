@@ -28,6 +28,7 @@ internal static partial class Program
         Directory.CreateDirectory(root);
         AppPaths.WebDataDir = Path.Combine(root, "webview2");
         Console.WriteLine("Sandbox: " + root);
+        TestSessionTests();
         ReportTests(root);
         RevisionTests(root);
         ConfigurationTests(root);
