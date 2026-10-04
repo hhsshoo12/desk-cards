@@ -167,7 +167,7 @@ internal static partial class Program
             var cfg = Config.Load(Path.Combine(root, "duplicate-delete.json"));
             cfg.Dards[pkg.Id] = new DardApproval { Hash = pkg.Hash, Allowed = true };
             cfg.DardStorage[pkg.Id] = pkg.StorageLocation;
-            cfg.Positions[$"dard:{pkg.Id}/main"] = new[] { 1.0, 2.0 };
+            cfg.PositionsPx[$"dard:{pkg.Id}/main"] = new[] { 1.0, 2.0 };
             // 루트가 아직 없으면 Reconcile은 창을 만들지 않는다. 파일 정리 로직만 실제로 실행한다.
             var mgr = new GroupManager(groups, cfg);
             try
@@ -177,7 +177,7 @@ internal static partial class Program
                 string first = Path.Combine(groups, "first.dard"), second = Path.Combine(groups, "second.dard");
                 ids[first] = pkg.Id; ids[second] = pkg.Id;
                 typeof(GroupManager).GetMethod("RemoveDardFileState", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(mgr, new object[] { first });
-                Check(cfg.Dards.ContainsKey(pkg.Id) && cfg.Positions.ContainsKey($"dard:{pkg.Id}/main"));
+                Check(cfg.Dards.ContainsKey(pkg.Id) && cfg.PositionsPx.ContainsKey($"dard:{pkg.Id}/main"));
                 Check(await page.Eval("localStorage.getItem('kept')") == "\"yes\"");
                 // 재삽입된 카드에 이전에 생성한 orphan 경고를 적용해도 데이터를 지우지 않는다.
                 var stale = new DardIssue("orphan:offline:" + pkg.Id, DardIssueKind.Orphan, pkg.Id, false,

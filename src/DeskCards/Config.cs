@@ -9,8 +9,7 @@ namespace DeskCards;
 /// <summary>그룹 카드 위치를 %APPDATA%\DeskCards\config.json에 저장한다. 그룹 내용 자체는 실제 폴더가 원본이다.</summary>
 internal sealed class Config
 {
-    [System.Text.Json.Serialization.JsonPropertyName("PositionsPx")]
-    public Dictionary<string, double[]> Positions { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, double[]> PositionsPx { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
     public Dictionary<string, CardLayout> Layouts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -135,9 +134,9 @@ internal sealed class Config
     private static void Normalize(Config cfg)
     {
         var positions = new Dictionary<string, double[]>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, p) in cfg.Positions ?? new())
+        foreach (var (name, p) in cfg.PositionsPx ?? new())
             if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
-        cfg.Positions = positions;
+        cfg.PositionsPx = positions;
         var layouts = new Dictionary<string, CardLayout>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, layout) in cfg.Layouts ?? new())
             if (layout != null) layouts[name] = layout.Normalized();

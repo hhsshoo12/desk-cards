@@ -106,7 +106,7 @@ internal abstract partial class DeskCard : Window
     /// <summary>카드 내용이 들어가는 칸. 크기·배율은 LayoutFor가 정한다.</summary>
     protected Grid Layout { get; }
 
-    /// <summary>위치·모양을 저장하는 이름(config.json의 Positions·Layouts 키).</summary>
+    /// <summary>위치·모양을 저장하는 이름(config.json의 PositionsPx·Layouts 키).</summary>
     public abstract string Key { get; }
 
     /// <summary>편집 막대 등에 보여 주는 카드 이름.</summary>

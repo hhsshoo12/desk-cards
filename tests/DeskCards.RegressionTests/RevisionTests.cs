@@ -30,7 +30,7 @@ internal static partial class Program
             }
             string path = Path.Combine(root, "old-dip.json");
             File.WriteAllText(path, "{\"Positions\":{\"old\":[1600,200]}}");
-            Check(Config.Load(path).Positions.Count == 0);
+            Check(Config.Load(path).PositionsPx.Count == 0);
         });
         Test("revision A10: enumerated directory attributes preserve dotted folder names", () =>
         {

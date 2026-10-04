@@ -137,9 +137,9 @@ internal sealed partial class GroupManager
             case DardIssueKind.Orphan:
                 // 카드 파일이 없으니 이 카드의 기록(승인·위치·모양)도 같이 정리한다.
                 _cfg.Dards.Remove(issue.Id);
-                foreach (string key in _cfg.Positions.Keys.Concat(_cfg.Layouts.Keys).Where(k => k.StartsWith($"dard:{issue.Id}/", StringComparison.Ordinal)).ToList())
+                foreach (string key in _cfg.PositionsPx.Keys.Concat(_cfg.Layouts.Keys).Where(k => k.StartsWith($"dard:{issue.Id}/", StringComparison.Ordinal)).ToList())
                 {
-                    _cfg.Positions.Remove(key);
+                    _cfg.PositionsPx.Remove(key);
                     _cfg.Layouts.Remove(key);
                 }
                 ForgetDardData(issue.Id);

@@ -39,7 +39,7 @@ internal sealed partial class GroupManager
     {
         _cards.Remove(oldName);
         _cards[newName] = card;
-        if (_cfg.Positions.Remove(oldName, out var position)) _cfg.Positions[newName] = position;
+        if (_cfg.PositionsPx.Remove(oldName, out var position)) _cfg.PositionsPx[newName] = position;
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
         RenameInBar(oldName, newName);
@@ -169,7 +169,7 @@ internal sealed partial class GroupManager
             Dialogs.Show(ex.Message, heading: "폴더를 지우지 못했어요");
             return false;
         }
-        _cfg.Positions.Remove(g.Name);
+        _cfg.PositionsPx.Remove(g.Name);
         _cfg.Layouts.Remove(g.Name);
         _cfg.Orders.Remove(g.Name);
         RemoveFromBar(g.Name);

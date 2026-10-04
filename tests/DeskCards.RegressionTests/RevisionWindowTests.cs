@@ -16,7 +16,7 @@ internal static partial class Program
             var area = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
             var expected = new Point(area.Left + 80, area.Top + 80);
             var cfg = Config.Load(configPath);
-            cfg.Positions["position"] = new[] { expected.X, expected.Y };
+            cfg.PositionsPx["position"] = new[] { expected.X, expected.Y };
             cfg.Save();
             for (int run = 0; run < 2; run++)
             {
@@ -25,7 +25,7 @@ internal static partial class Program
                 {
                     mgr.Start(); Pump(100);
                     Check(mgr.Cards.Single().PhysicalPosition == expected);
-                    Check(Config.Load(configPath).Positions["position"].SequenceEqual(new[] { expected.X, expected.Y }));
+                    Check(Config.Load(configPath).PositionsPx["position"].SequenceEqual(new[] { expected.X, expected.Y }));
                 }
                 finally { mgr.Shutdown(); }
             }

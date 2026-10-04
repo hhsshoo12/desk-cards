@@ -89,7 +89,7 @@ internal static partial class Program
                 mgr.ResolveDardIssue(orphan, clear: true);
                 WaitUntilLong(() => !DardStorage.Recorded(false).ContainsValue(id), 10000);
                 Check(!DardStorage.Recorded(false).ContainsValue(id) && !cfg.Dards.ContainsKey(id) && !cfg.DardStorage.ContainsKey(id));
-                Check(!cfg.Positions.Keys.Any(k => k.StartsWith($"dard:{id}/")) && Mine(mgr).Count == 0);
+                Check(!cfg.PositionsPx.Keys.Any(k => k.StartsWith($"dard:{id}/")) && Mine(mgr).Count == 0);
             }
             finally { mgr.Shutdown(); }
         });

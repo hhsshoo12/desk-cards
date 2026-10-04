@@ -84,7 +84,7 @@ internal static partial class Program
                 var cards = mgr.AllCards.OfType<DardWindow>().ToList();
                 Check(mgr.Dards.Count == 1 && cards.Count == 2 && mgr.Cards.Count == 1);
                 Check(cards.Select(c => c.Key).OrderBy(k => k).SequenceEqual(new[] { "dard:com.test.clock/main", "dard:com.test.clock/mini" }));
-                Check(cfg.Positions.ContainsKey("dard:com.test.clock/main"));
+                Check(cfg.PositionsPx.ContainsKey("dard:com.test.clock/main"));
                 var main = cards.Single(c => c.Info.Id == "main");
                 Check(Math.Abs(main.Width / main.Height - 2) < 0.1); // 둥근 창은 여백·이름 줄 없이 비율 그대로
                 Test(".dard 카드도 공통 아크릴 틀을 쓰고 활성화는 허용한다", () => CheckDwmCard(main, activatable: true));

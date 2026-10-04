@@ -39,7 +39,7 @@ internal sealed partial class GroupManager
     /// <param name="baseSize">빈 자리를 찾을 때 쓸 카드 기준 크기. 없으면 기본 폴더 카드.</param>
     private void PlaceAndShow(DeskCard card, Size? baseSize)
     {
-        if (_cfg.Positions.TryGetValue(card.Key, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
+        if (_cfg.PositionsPx.TryGetValue(card.Key, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
         {
             card.RestorePosition(new Point(pos[0], pos[1]));
         }
@@ -47,7 +47,7 @@ internal sealed partial class GroupManager
         {
             var p = NextFreeSlot(baseSize);
             card.RestorePosition(p);
-            _cfg.Positions[card.Key] = new[] { p.X, p.Y };
+            _cfg.PositionsPx[card.Key] = new[] { p.X, p.Y };
             _cfg.Save();
         }
         card.Closed += OnCardClosed;
@@ -64,7 +64,7 @@ internal sealed partial class GroupManager
     public void SavePosition(DeskCard card)
     {
         var p = card.PhysicalPosition;
-        _cfg.Positions[card.Key] = new[] { p.X, p.Y };
+        _cfg.PositionsPx[card.Key] = new[] { p.X, p.Y };
         _cfg.Save();
     }
 

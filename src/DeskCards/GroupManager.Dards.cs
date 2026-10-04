@@ -428,9 +428,9 @@ internal sealed partial class GroupManager
             if (remaining.Count == 0)
             {
                 _cfg.Dards.Remove(id);
-                foreach (string key in _cfg.Positions.Keys.Concat(_cfg.Layouts.Keys).Where(k => k.StartsWith($"dard:{id}/", StringComparison.Ordinal)).ToList())
+                foreach (string key in _cfg.PositionsPx.Keys.Concat(_cfg.Layouts.Keys).Where(k => k.StartsWith($"dard:{id}/", StringComparison.Ordinal)).ToList())
                 {
-                    _cfg.Positions.Remove(key);
+                    _cfg.PositionsPx.Remove(key);
                     _cfg.Layouts.Remove(key);
                 }
                 ForgetDardData(id);

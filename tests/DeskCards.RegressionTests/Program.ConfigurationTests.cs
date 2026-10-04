@@ -15,12 +15,27 @@ internal static partial class Program
 {
     private static void ConfigurationTests(string root)
     {
+        Test("PositionsPx: property and JSON match without changing physical positions or legacy handling", () =>
+        {
+            string path = Path.Combine(root, "positions-px-name.json");
+            File.WriteAllText(path, """{"PositionsPx":{"Card":[-2400.5,123.25]},"Positions":{"legacy":[1600,200]}}""");
+            var cfg = Config.Load(path);
+            Check(cfg.PositionsPx.Count == 1 && cfg.PositionsPx["card"].SequenceEqual(new[] { -2400.5, 123.25 }));
+            cfg.PositionsPx["second"] = new[] { 2560.0, -1080.0 };
+            Check(cfg.TrySave());
+            using var json = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Check(json.RootElement.TryGetProperty(nameof(Config.PositionsPx), out var positions));
+            Check(!json.RootElement.TryGetProperty("Positions", out _));
+            Check(positions.GetProperty("Card")[0].GetDouble() == -2400.5);
+            var restored = Config.Load(path);
+            Check(restored.PositionsPx.Count == 2 && restored.PositionsPx["SECOND"].SequenceEqual(new[] { 2560.0, -1080.0 }));
+        });
         Test("null position entries are discarded", () =>
         {
             string path = Path.Combine(root, "null-position.json");
             File.WriteAllText(path, """{"PositionsPx":{"bad":null,"good":[12,34]},"ScaleVersion":2}""");
             var cfg = Config.Load(path);
-            Check(!cfg.Positions.ContainsKey("bad") && cfg.Positions["good"][0] == 12);
+            Check(!cfg.PositionsPx.ContainsKey("bad") && cfg.PositionsPx["good"][0] == 12);
         });
         Test("null layouts do not crash scale migration", () =>
         {
@@ -34,7 +49,7 @@ internal static partial class Program
             string path = Path.Combine(root, "case.json");
             File.WriteAllText(path, """{"PositionsPx":{"Test":[1,2],"test":[3,4]},"ShowGuides":false}""");
             var cfg = Config.Load(path);
-            Check(!cfg.ShowGuides && cfg.Positions.Count == 1);
+            Check(!cfg.ShowGuides && cfg.PositionsPx.Count == 1);
         });
         Test("hover expand delay is clamped to 0-1 s in 0.1 s steps", () =>
         {

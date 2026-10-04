@@ -121,7 +121,7 @@ internal sealed partial class GroupManager
         var hwnd = Hwnd.Of(card);
         if (Native.GetWindowRect(hwnd, out var r))
         {
-            _cfg.Positions[card.Key] = new[] { (double)r.Left, r.Top };
+            _cfg.PositionsPx[card.Key] = new[] { (double)r.Left, r.Top };
             _cfg.Save();
         }
         if (card is DardWindow dard)
