@@ -16,6 +16,11 @@ internal sealed class SetupEnvironment
     public string DesktopDir { get; }
     public string ConfigDir { get; }
     public string OldConfigDir { get; }
+    /// <summary>앱의 로컬 데이터(위젯 카드 브라우저 저장소 등). %LOCALAPPDATA%\DeskCards</summary>
+    public string LocalDataDir { get; }
+    /// <summary>그룹 폴더들의 루트와 예전 이름. 설치기는 맨 위의 .dard(설치한 카드)만 지울 수 있고 그룹(하위 폴더)은 건드리지 않는다.</summary>
+    public string GroupsDir { get; }
+    public string OldGroupsDir { get; }
     public string TempDir { get; }
     public string RegistryRoot { get; }
     public string? TestRoot { get; }
@@ -26,11 +31,12 @@ internal sealed class SetupEnvironment
     public string LogPath => Path.Combine(TempDir, "DeskCards-Setup.log");
 
     private SetupEnvironment(string install, string menu, string desktop, string config, string oldConfig,
-        string temp, string registryRoot, string? testRoot)
+        string localData, string groups, string oldGroups, string temp, string registryRoot, string? testRoot)
     {
         InstallDir = Path.GetFullPath(install); MenuDir = Path.GetFullPath(menu);
         DesktopDir = Path.GetFullPath(desktop); ConfigDir = Path.GetFullPath(config);
-        OldConfigDir = Path.GetFullPath(oldConfig); TempDir = Path.GetFullPath(temp);
+        OldConfigDir = Path.GetFullPath(oldConfig); LocalDataDir = Path.GetFullPath(localData);
+        GroupsDir = Path.GetFullPath(groups); OldGroupsDir = Path.GetFullPath(oldGroups); TempDir = Path.GetFullPath(temp);
         RegistryRoot = registryRoot; TestRoot = testRoot;
         if (testRoot != null)
         {
@@ -40,7 +46,7 @@ internal sealed class SetupEnvironment
                 || !Guid.TryParse(name.Substring("DeskCards-Setup-Tests-".Length), out var id)
                 || !registryRoot.Equals(@"Software\DeskCards-Setup-Tests\" + id.ToString("N"), StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("테스트 루트가 격리되지 않았습니다.");
-            foreach (string path in new[] { InstallDir, MenuDir, DesktopDir, ConfigDir, OldConfigDir, TempDir })
+            foreach (string path in new[] { InstallDir, MenuDir, DesktopDir, ConfigDir, OldConfigDir, LocalDataDir, GroupsDir, OldGroupsDir, TempDir })
                 if (!Within(path, testRoot)) throw new ArgumentException("테스트 경로가 루트 밖입니다: " + path);
         }
     }
@@ -48,6 +54,7 @@ internal sealed class SetupEnvironment
     public static SetupEnvironment ForTests(string root, string registryRoot, string? installOverride = null) =>
         new SetupEnvironment(installOverride ?? Path.Combine(root, "install"), Path.Combine(root, "menu"),
             Path.Combine(root, "desktop"), Path.Combine(root, "config"), Path.Combine(root, "old-config"),
+            Path.Combine(root, "local-data"), Path.Combine(root, "groups"), Path.Combine(root, "old-groups"),
             Path.Combine(root, "temp"), registryRoot, Path.GetFullPath(root));
 
     public static SetupEnvironment Production(string? uninstallTarget = null) => new SetupEnvironment(
@@ -56,6 +63,9 @@ internal sealed class SetupEnvironment
         Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskCards"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DeskFolders"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DeskCards"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "DeskCards"),
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "DeskFolders"),
         Path.GetTempPath(), @"Software\Microsoft\Windows\CurrentVersion", null);
 
     public static bool Within(string path, string root) => Path.GetFullPath(path).StartsWith(

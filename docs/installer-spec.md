@@ -60,7 +60,7 @@
 | AppUserModelID | `hhsshoo12.DeskCards` |
 | 시작 메뉴 바로가기 | `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Desk Cards.lnk` |
 | 바탕화면 바로가기 | 사용자 바탕화면 폴더(`Environment.SpecialFolder.DesktopDirectory`)의 `Desk Cards.lnk` |
-| 그룹 폴더 | `%USERPROFILE%\DeskCards` — **설치기는 절대 읽거나 지우지 않는다** |
+| 그룹 폴더 | `%USERPROFILE%\DeskCards` — **그룹(하위 폴더)과 그 안의 파일은 설치기가 절대 지우지 않는다.** 예외: 제거할 때 "모든 설정과 설치한 카드 지우기"를 켜면 맨 위의 `.dard`(설치한 위젯 카드)만 지운다 |
 | 앱 설정 폴더 | `%APPDATA%\DeskCards` |
 | 예전 이름 | exe `DeskFolders.exe`, Run 값 `DeskFolders`, 설정 폴더 `%APPDATA%\DeskFolders` |
 | 앱 종료 요청 이벤트 | `DeskCards.Quit` (이름 있는 `EventWaitHandle`, AutoReset) |
@@ -197,7 +197,7 @@ Windows는 `Run` 값을 작업 관리자 "시작 앱"에 보여 주고, 사용�
 
 1. 대상 폴더는 `/target` 인자, 없으면 제거 등록 키의 `InstallLocation`, 그것도 없으면 4장의 고정 설치 폴더다.
    설치 폴더의 `uninstall.exe`에서 실행되었으면, 자신을 `%TEMP%\DeskCards-uninstall-<PID>.exe`로 복사하고 그 사본을 `/uninstall /target "<설치 폴더>"`로 실행한 뒤 즉시 끝낸다.
-2. 확인 페이지: [카드 위치·크기 설정도 지우기] 체크(기본 끔). 그룹 폴더(`%USERPROFILE%\DeskCards`)는 지우지 않는다는 안내를 보여 준다.
+2. 확인 페이지: [모든 설정과 설치한 카드 지우기] 체크(기본 끔)와, 켜면 무엇을 지우는지 안내. 그룹(그룹 폴더 안의 폴더)과 그 안의 파일은 지우지 않는다는 안내를 보여 준다.
 3. 8장 5단계와 같은 방식으로 앱을 끈다.
 4. 시작 메뉴·바탕화면 바로가기를 지운다.
 5. `Run`과 `StartupApproved\Run`의 `DeskCards`, `DeskFolders` 값을 지운다.
@@ -205,7 +205,7 @@ Windows는 `Run` 값을 작업 관리자 "시작 앱"에 보여 주고, 사용�
 7. 제거 등록 키를 지운다.
 8. 시작 메뉴 흔적을 지운다(13장).
 9. 설치 폴더가 비어 있으면 지운다. 다른 파일이 있으면 남긴다.
-10. 체크했으면 `%APPDATA%\DeskCards`, `%APPDATA%\DeskFolders`를 지운다.
+10. 체크했으면 `%APPDATA%\DeskCards`, `%APPDATA%\DeskFolders`, `%LOCALAPPDATA%\DeskCards`(카드 화면 프로세스가 잠깐 쥐고 있을 수 있어 5초 동안 다시 시도)를 지우고, `%USERPROFILE%\DeskCards`와 예전 이름 `%USERPROFILE%\DeskFolders` **맨 위의** `.dard` 파일만 지운다. 하위 폴더(그룹)와 다른 파일은 건드리지 않는다.
 11. 완료 페이지. [마침]을 누르면 시작 메뉴 흔적을 한 번 더 지우고(13장), 12.1의 TEMP 사본을 예약 삭제한다.
     예약 삭제는 기존 Python의 `schedule_cleanup`과 같다: PowerShell `-EncodedCommand`로 2초 간격 최대 30번 `Remove-Item -LiteralPath`를 시도한다. 경로는 작은따옴표 리터럴로 넣고 `'`는 `''`로 바꾼다. `CREATE_NO_WINDOW`로 실행한다.
 

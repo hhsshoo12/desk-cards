@@ -176,6 +176,33 @@ internal static class Program
             f.Existing(); Directory.CreateDirectory(f.Env.ConfigDir); Directory.CreateDirectory(f.Env.OldConfigDir);
             f.Engine.Uninstall(true, _ => { }); Check(!Directory.Exists(f.Env.ConfigDir) && !Directory.Exists(f.Env.OldConfigDir));
         });
+        Test("checked removal deletes card data and installed cards but keeps groups", f =>
+        {
+            f.Existing();
+            string storage = Path.Combine(f.Env.LocalDataDir, "WebView2", "offline"); Directory.CreateDirectory(storage); File.WriteAllText(Path.Combine(storage, "data"), "x");
+            string group = Path.Combine(f.Env.GroupsDir, "Work"); Directory.CreateDirectory(group);
+            File.WriteAllText(Path.Combine(f.Env.GroupsDir, "clock.dard"), "card"); File.WriteAllText(Path.Combine(f.Env.GroupsDir, "notes.txt"), "mine");
+            File.WriteAllText(Path.Combine(group, "inside.dard"), "user file"); File.WriteAllText(Path.Combine(group, "doc.txt"), "mine");
+            Directory.CreateDirectory(f.Env.OldGroupsDir); File.WriteAllText(Path.Combine(f.Env.OldGroupsDir, "old.DARD"), "card");
+            f.Engine.Uninstall(true, _ => { });
+            Check(!Directory.Exists(f.Env.LocalDataDir));
+            Check(!File.Exists(Path.Combine(f.Env.GroupsDir, "clock.dard")) && !File.Exists(Path.Combine(f.Env.OldGroupsDir, "old.DARD")));
+            Check(File.Exists(Path.Combine(f.Env.GroupsDir, "notes.txt")) && File.Exists(Path.Combine(group, "inside.dard")) && File.Exists(Path.Combine(group, "doc.txt")));
+        });
+        Test("unchecked removal keeps card data and installed cards", f =>
+        {
+            f.Existing(); Directory.CreateDirectory(f.Env.LocalDataDir); Directory.CreateDirectory(f.Env.GroupsDir);
+            File.WriteAllText(Path.Combine(f.Env.GroupsDir, "clock.dard"), "card");
+            f.Engine.Uninstall(false, _ => { });
+            Check(Directory.Exists(f.Env.LocalDataDir) && File.Exists(Path.Combine(f.Env.GroupsDir, "clock.dard")));
+        });
+        Test("briefly locked card data is retried", f =>
+        {
+            f.Existing(); Directory.CreateDirectory(f.Env.LocalDataDir); string locked = Path.Combine(f.Env.LocalDataDir, "locked");
+            var stream = new FileStream(locked, FileMode.Create, FileAccess.Write, FileShare.None);
+            var release = Task.Delay(600).ContinueWith(_ => stream.Dispose());
+            f.Engine.Uninstall(true, _ => { }); release.Wait(); Check(!Directory.Exists(f.Env.LocalDataDir));
+        });
         Test("uninstall removes app self-update leftovers", f =>
         {
             f.Existing(); File.WriteAllText(f.Env.AppExe + ".old", "previous");

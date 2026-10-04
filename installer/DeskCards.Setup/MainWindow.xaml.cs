@@ -59,15 +59,17 @@ internal partial class MainWindow : Window
         if (_complete)
         {
             Heading.Text = _uninstall ? "제거를 마쳤어요" : "준비가 끝났어요";
-            Description.Text = _uninstall ? "Desk Cards를 제거했어요. 그룹 폴더와 그 안의 파일은 그대로 남아 있어요." : "Desk Cards를 사용할 수 있어요.";
+            Description.Text = _uninstall ? "Desk Cards를 제거했어요. 그룹과 그 안의 파일은 그대로 남아 있어요." : "Desk Cards를 사용할 수 있어요.";
             if (!_uninstall) AddCheck("Desk Cards 실행", _launch, value => _launch = value);
             return;
         }
         if (_uninstall)
         {
             Heading.Text = _busy ? "제거하고 있어요" : "Desk Cards를 제거할까요?";
-            Description.Text = _busy ? "잠시만 기다려 주세요." : "그룹 폴더(%USERPROFILE%\\DeskCards)와 그 안의 파일은 지우지 않아요.";
-            if (!_busy) AddCheck("카드 위치·크기 설정도 지우기", _removeConfig, value => _removeConfig = value);
+            Description.Text = _busy ? "잠시만 기다려 주세요." : "그룹(%USERPROFILE%\\DeskCards 안의 폴더)과 그 안의 파일은 지우지 않아요.";
+            if (_busy) return;
+            AddCheck("모든 설정과 설치한 카드 지우기", _removeConfig, value => _removeConfig = value);
+            AddParagraph("켜면 카드 위치·크기 같은 설정과, 설치한 위젯 카드(.dard 파일)와 그 데이터를 함께 지워요.");
             return;
         }
         switch (_page)

@@ -173,13 +173,35 @@ internal sealed class SetupEngine
             if (Directory.Exists(_env.InstallDir) && Directory.GetFileSystemEntries(_env.InstallDir).Length == 0) Directory.Delete(_env.InstallDir);
             if (removeConfig)
             {
-                Step("카드 설정 삭제");
+                Step("설정 삭제");
                 SetupEnvironment.DeleteTree(_env.ConfigDir, Path.GetDirectoryName(_env.ConfigDir)!);
                 SetupEnvironment.DeleteTree(_env.OldConfigDir, Path.GetDirectoryName(_env.OldConfigDir)!);
+                Step("카드 데이터 삭제");
+                // 앱이 끝난 뒤에도 카드 화면(WebView2) 프로세스가 잠깐 파일을 쥐고 있을 수 있어 몇 초 다시 시도한다.
+                Retry(() => SetupEnvironment.DeleteTree(_env.LocalDataDir, Path.GetDirectoryName(_env.LocalDataDir)!));
+                Step("설치한 카드 삭제");
+                DeleteInstalledCards(_env.GroupsDir); DeleteInstalledCards(_env.OldGroupsDir);
             }
             Step("제거 완료");
         }
         catch (Exception ex) { _log.Write(step + " 실패", ex); throw new SetupFailure(step + ": 작업을 완료하지 못했어요. 로그를 확인해 주세요.", false, ex); }
+    }
+
+    /// <summary>그룹 폴더 맨 위의 .dard(설치한 카드)만 지운다. 그룹(하위 폴더)과 다른 파일은 건드리지 않는다.</summary>
+    private static void DeleteInstalledCards(string groups)
+    {
+        if (!Directory.Exists(groups) || (File.GetAttributes(groups) & FileAttributes.ReparsePoint) != 0) return;
+        foreach (string file in Directory.GetFiles(groups))
+            if (string.Equals(Path.GetExtension(file), ".dard", StringComparison.OrdinalIgnoreCase)) File.Delete(file);
+    }
+
+    private static void Retry(Action action)
+    {
+        for (int attempt = 1; ; attempt++)
+        {
+            try { action(); return; }
+            catch (Exception ex) when (attempt < 20 && (ex is IOException || ex is UnauthorizedAccessException)) { Thread.Sleep(250); }
+        }
     }
 
     public void FinishUninstall() { _log.Write("시작 메뉴 흔적 다시 정리"); Registration.RemoveStartTraces(); }
