@@ -15,40 +15,24 @@ internal partial class MainWindow : Window
 {
     private readonly SetupEnvironment _env;
     private readonly SetupEngine _engine;
-    private readonly ReleaseService _releases;
-    private readonly string _setupExe;
     private readonly bool _uninstall;
     private readonly string? _tempCopy;
     private readonly InstallOptions _options;
     private readonly CancellationTokenSource _cancel = new CancellationTokenSource();
-    private AppRelease? _release;
     private int _page;
-    private bool _busy, _committing, _complete, _closed, _retry, _failed, _finalized;
+    private bool _busy, _committing, _complete, _closed, _failed, _finalized;
     private bool _removeConfig, _launch = true;
-    private ProgressBar? _progress;
-    private TextBlock? _transfer;
 
-    public MainWindow(SetupEnvironment env, SetupEngine engine, ReleaseService releases, string setupExe, bool uninstall, string? tempCopy = null)
+    public MainWindow(SetupEnvironment env, SetupEngine engine, bool uninstall, string? tempCopy = null)
     {
-        _env = env; _engine = engine; _releases = releases; _setupExe = setupExe; _uninstall = uninstall; _tempCopy = tempCopy;
+        _env = env; _engine = engine; _uninstall = uninstall; _tempCopy = tempCopy;
         _options = engine.Registration.ReadOptions();
         InitializeComponent();
         Title = uninstall ? "Desk Cards 제거" : "Desk Cards 설치";
         SourceInitialized += (_, _) => WindowEffects.Apply(new WindowInteropHelper(this).Handle, Theme.IsLight);
         Closing += OnClosing;
         Closed += (_, _) => { _closed = true; _cancel.Cancel(); };
-        Loaded += async (_, _) => { if (!_uninstall) await CheckVersion(); };
         Render();
-    }
-
-    private async Task CheckVersion()
-    {
-        _failed = false; _busy = true; Render(); Description.Text = "최신 버전을 확인하고 있어요…";
-        try { _release = await _releases.FindAsync(_cancel.Token); }
-        catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { _busy = false; Close(); return; }
-        catch (SetupFailure ex) { _busy = false; ShowFailure(ex); return; }
-        finally { _busy = false; }
-        if (!_closed) Render();
     }
 
     private void Render()
@@ -90,14 +74,14 @@ internal partial class MainWindow : Window
         {
             case 0:
                 Heading.Text = update ? "Desk Cards 업데이트" : "바탕화면을 정리해 보세요";
-                Description.Text = "앱과 바로가기를 카드로 묶어 보세요.\n인터넷에서 최신 버전을 내려받아요.";
+                Description.Text = "앱과 바로가기를 카드로 묶어 보세요.";
                 AddParagraph("설치 위치\n" + _env.InstallDir + "\n\n필요한 공간: 약 80MB");
                 if (update) AddParagraph("그룹과 카드 위치·크기 설정은 그대로 남아요.");
-                if (_release != null)
+                if (_engine.Package is { } package)
                 {
-                    AddParagraph(update ? "설치된 버전 " + _engine.Registration.InstalledVersion + " → 최신 버전 " + _release.Version : "최신 버전 " + _release.Version);
-                    int? comparison = ReleaseService.CompareInstalled(_engine.Registration.InstalledVersion, _release.Version);
-                    if (update && comparison == 0) { Description.Text = "이미 최신 버전이에요"; NextButton.Content = "다시 설치"; }
+                    AddParagraph(update ? "설치된 버전 " + _engine.Registration.InstalledVersion + " → " + package.Version : "버전 " + package.Version);
+                    int? comparison = EmbeddedPackage.CompareInstalled(_engine.Registration.InstalledVersion, package.Version);
+                    if (update && comparison == 0) { Description.Text = "이미 이 버전이 설치돼 있어요"; NextButton.Content = "다시 설치"; }
                     if (update && comparison > 0)
                     { Description.Text = "설치된 버전(" + _engine.Registration.InstalledVersion + ")이 더 새로워요"; NextButton.Visibility = Visibility.Collapsed; CancelButton.Content = "닫기"; }
                 }
@@ -117,10 +101,8 @@ internal partial class MainWindow : Window
                 break;
             case 3:
                 Heading.Text = update ? "업데이트하고 있어요" : "설치하고 있어요";
-                Description.Text = "다운로드를 준비하고 있어요.";
-                _progress = new ProgressBar { Minimum = 0, Maximum = 100, Margin = new Thickness(0, 20, 0, 12) };
-                _transfer = new TextBlock { TextWrapping = TextWrapping.Wrap }; _transfer.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
-                PageContent.Children.Add(_progress); PageContent.Children.Add(_transfer); break;
+                Description.Text = "설치를 준비하고 있어요.";
+                PageContent.Children.Add(new ProgressBar { IsIndeterminate = true, Margin = new Thickness(0, 20, 0, 12) }); break;
         }
     }
 
@@ -134,7 +116,6 @@ internal partial class MainWindow : Window
     private void Back(object sender, RoutedEventArgs e) { _page--; Render(); }
     private async void Next(object sender, RoutedEventArgs e)
     {
-        if (_retry) { _retry = false; await CheckVersion(); return; }
         if (_complete)
         {
             try
@@ -157,17 +138,8 @@ internal partial class MainWindow : Window
         try
         {
             if (_uninstall) await Task.Run(() => _engine.Uninstall(_removeConfig, status));
-            else
-            {
-                var progress = new Progress<TransferProgress>(p =>
-                {
-                    if (_closed || _transfer == null || _progress == null) return;
-                    _transfer.Text = string.Format("{0:F1} MB / {1} MB · {2:F1} MB/s", p.Received / 1048576.0, p.Total.HasValue ? (p.Total.Value / 1048576.0).ToString("F1") : "?", p.BytesPerSecond / 1048576.0);
-                    _progress.Value = p.Total > 0 ? 100.0 * p.Received / p.Total.Value : 0;
-                });
-                await Task.Run(() => _engine.InstallAsync(_release!, _options, _setupExe, progress, status,
-                    () => Dispatcher.Invoke(() => { _committing = true; CancelButton.IsEnabled = false; }), _cancel.Token));
-            }
+            else await Task.Run(() => _engine.Install(_options, status,
+                () => Dispatcher.Invoke(() => { _committing = true; CancelButton.IsEnabled = false; }), _cancel.Token));
             _complete = true; _page = _uninstall ? 2 : 4;
         }
         catch (OperationCanceledException) when (_cancel.IsCancellationRequested) { _busy = false; _committing = false; Close(); return; }
@@ -178,10 +150,10 @@ internal partial class MainWindow : Window
 
     private void ShowFailure(SetupFailure failure)
     {
-        _failed = true; _retry = failure.Retry && _page == 0 && !_uninstall;
+        _failed = true;
         Heading.Text = "진행할 수 없어요"; Description.Text = failure.Message;
         PageContent.Children.Clear(); LogButton.Visibility = Visibility.Visible;
-        NextButton.Visibility = _retry ? Visibility.Visible : Visibility.Collapsed; NextButton.IsEnabled = true; NextButton.Content = "다시 시도";
+        NextButton.Visibility = Visibility.Collapsed;
         BackButton.Visibility = Visibility.Collapsed; CancelButton.Visibility = Visibility.Visible; CancelButton.IsEnabled = true; CancelButton.Content = "닫기";
     }
 

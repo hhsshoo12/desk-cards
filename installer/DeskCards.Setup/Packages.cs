@@ -9,18 +9,7 @@ namespace DeskCards.Setup;
 
 internal static class Packages
 {
-    public const long DownloadLimit = 300L * 1024 * 1024;
     public const long ExpandedLimit = 1024L * 1024 * 1024;
-
-    public static void Verify(string zip, string hashFile)
-    {
-        string expected = File.ReadAllText(hashFile).Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
-        using var sha = SHA256.Create();
-        using var stream = File.OpenRead(zip);
-        string actual = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
-        if (expected.Length != 64 || !expected.Equals(actual, StringComparison.OrdinalIgnoreCase))
-            throw new SetupFailure("내려받은 파일이 손상됐어요. 다시 시도해 주세요");
-    }
 
     public static string Extract(string zip, string stage, Version tagVersion, CancellationToken token)
     {

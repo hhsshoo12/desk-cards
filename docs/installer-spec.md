@@ -1,22 +1,24 @@
-# Desk Cards 설치기 명세 (웹 설치기, .NET Framework 4.8)
+# Desk Cards 설치기 명세 (.NET Framework 4.8)
 
-이 문서는 Python 설치기(`installer/installer.py`)를 C# 웹 설치기로 바꾸는 작업의 요구사항이다.
+이 문서는 Python 설치기(`installer/installer.py`)를 C# 설치기로 바꾸는 작업의 요구사항에서 시작했다.
 "해야 한다"는 필수, "해도 된다"는 선택이다. 문서에 없는 동작은 추가하지 않는다. 판단이 필요한 부분이 생기면 구현하지 말고 질문으로 남긴다.
+
+> **0.4.3 개편 (2026-10-04)**: 웹 설치기를 **앱을 품은 설치기**로 바꿨다. 설치기는 인터넷을 쓰지 않고, 앱과 설치기는 버전 하나·릴리스 하나로 나간다.
+> 제거기는 같은 코드를 "제거기 전용"으로 빌드한 작은 exe다. 아래 1·2·4·5·7·8장은 이 구조로 고쳤고, 5장의 "배포된 버전과의 약속"은 바꾸면 안 된다.
 
 ## 1. 목표
 
-- 설치 파일 `DeskCards-Setup.exe`는 1MB 안팎의 작은 exe다. 앱 본체를 담지 않는다.
-- 설치할 때 GitHub Releases의 **최신** 앱 zip을 내려받아 설치한다.
-- 같은 exe가 설치 폴더에 `uninstall.exe`로 복사되어 제거기 역할도 한다.
+- 설치 파일 `DeskCards-Setup.exe`는 앱 zip을 리소스로 품는다(약 70MB). 인터넷 없이 설치한다.
+- 설치 폴더의 `uninstall.exe`는 같은 설치기 코드를 `-p:Uninstaller=true`로 빌드한 제거기다(앱 없음, 약 110KB, 늘 제거 모드).
+- 앱 zip에도 같은 `uninstall.exe`가 들어 있어서, 앱이 스스로 업데이트할 때 제거기도 같은 버전으로 바뀐다.
 - Windows가 권장하는 방식으로 등록한다(설치된 앱 목록, 시작 메뉴, 작업 관리자의 시작 앱).
 - 관리자 권한 없이 현재 사용자 계정에만 설치한다.
 
 ## 2. 하지 않는 것
 
 - 설치 위치 선택(고정 경로만 사용)
-- 특정 버전 설치(항상 최신)
-- 오프라인 설치(인터넷이 없으면 안내 후 종료)
-- 코드 서명, 자동 업데이트, `.dard` 파일 연결
+- 설치할 때 최신 버전 찾기(설치기에 든 버전을 설치하고, 이후는 앱의 자체 업데이트가 맡는다)
+- 코드 서명, `.dard` 파일 연결
 - 앱 본체(`src/DeskCards`)의 .NET 버전 변경. 앱은 계속 .NET 10 self-contained다.
 
 ## 3. 저장소 구성
@@ -44,10 +46,10 @@
 | 저장소 URL | `https://github.com/hhsshoo12/desk-cards` |
 | 설치 폴더 | `%LOCALAPPDATA%\Programs\Desk Cards` (고정) |
 | 앱 exe | `DeskCards.exe` |
-| 제거기 | `uninstall.exe` (설치기와 같은 파일) |
-| 릴리스 목록 API | `https://api.github.com/repos/hhsshoo12/desk-cards/releases?per_page=100` |
-| 앱 릴리스 태그 | `app-v<주.부.수>` (예: `app-v0.2.0`) |
-| 설치기 릴리스 태그 | `installer-v<주.부.수>` (예: `installer-v0.2.0`) |
+| 제거기 | `uninstall.exe` (설치기 코드의 제거기 전용 빌드) |
+| 버전 | 저장소 루트 `Directory.Build.props`의 `<Version>` 하나(앱·설치기·제거기 공통) |
+| 릴리스 목록 API(앱 자체 업데이트가 씀) | `https://api.github.com/repos/hhsshoo12/desk-cards/releases?per_page=100` |
+| 릴리스 태그 | `app-v<주.부.수>` (예: `app-v0.4.3`) |
 | 앱 zip 파일 이름 | `DeskCards-win-x64.zip` |
 | 해시 파일 이름 | `DeskCards-win-x64.zip.sha256` |
 | 설치기 파일 이름 | `DeskCards-Setup.exe` |
@@ -66,82 +68,58 @@
 
 ## 5. 릴리스 구성
 
-앱과 설치기는 **따로** 릴리스한다. 버전도 따로 올린다.
-
-### 앱 릴리스 (태그 `app-vX.Y.Z`)
-
-| 파일 | 내용 |
-|---|---|
-| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(현재 build.ps1과 같은 self-contained 단일 exe, 내부 압축 켬)와 `version.txt`(`X.Y.Z` 한 줄, BOM 있어도 읽혀야 함) |
-| `DeskCards-win-x64.zip.sha256` | zip의 SHA-256 소문자 16진수 64자. 뒤에 공백과 파일 이름이 붙어 있어도 첫 토큰만 읽는다 |
-
-- "Latest" 표시를 하지 않는다(`gh release create ... --latest=false`).
-
-### 설치기 릴리스 (태그 `installer-vX.Y.Z`)
+버전마다 **릴리스 하나**(태그 `app-vX.Y.Z`)에 세 파일을 올리고 "Latest"로 표시한다.
+README의 `releases/latest/download/DeskCards-Setup.exe` 주소가 그 설치기를 가리킨다. `installer-v` 릴리스는 0.2.3이 마지막이다.
 
 | 파일 | 내용 |
 |---|---|
-| `DeskCards-Setup.exe` | 설치기 |
+| `DeskCards-Setup.exe` | 앱 zip(아래)을 리소스 `DeskCards-win-x64.zip`으로 품은 설치기 |
+| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(self-contained 단일 exe), `uninstall.exe`(제거기 전용 빌드), `version.txt`(`X.Y.Z` 한 줄, BOM 없는 UTF-8) |
+| `DeskCards-win-x64.zip.sha256` | zip의 SHA-256 소문자 16진수 64자 |
 
-- 설치기 릴리스에 **"Latest" 표시를 한다**. 그래서 README의 `releases/latest/download/DeskCards-Setup.exe` 주소가 항상 최신 설치기를 가리킨다.
-- 설치기는 앱을 찾을 때 "Latest" 표시를 쓰지 않는다(아래 "최신 앱 찾기").
+### 배포된 버전과의 약속 (바꾸면 안 됨)
 
-### 최신 앱 찾기
+이미 배포된 앱(0.2.x~)은 자체 업데이트로, 배포된 웹 설치기(0.2.x)는 설치할 때 아래만 보고 새 버전을 찾는다. 하나라도 바꾸면 그 사용자들은 더 이상 업데이트를 받지 못한다.
 
-1. 릴리스 목록 API를 `GET`한다. 헤더: `User-Agent: DeskCards-Setup/<설치기 버전>`, `Accept: application/vnd.github+json`.
-2. 응답(JSON 배열)에서 `draft`와 `prerelease`가 모두 `false`이고 `tag_name`이 정규식 `^app-v(\d+)\.(\d+)\.(\d+)$`(대소문자 무시)에 맞는 릴리스만 고른다.
-3. 태그의 숫자 세 개를 `System.Version`으로 비교해 가장 큰 것을 고른다(릴리스 날짜나 목록 순서를 믿지 않는다).
-   - **설치기 자신의 버전보다 낮은 앱 릴리스는 후보에서 뺀다.** 설치기 0.2.0은 `app-v0.2.0` 이상만 받는다(`app-v0.1.0`은 예전 형식이므로 받지 않는다).
-   - 후보가 없으면 "받을 수 있는 앱 버전이 없어요"로 중단한다.
-4. 그 릴리스의 `assets`에서 이름이 `DeskCards-win-x64.zip`, `DeskCards-win-x64.zip.sha256`인 항목의 `browser_download_url`을 쓴다. 둘 중 하나라도 없으면 "받을 수 있는 앱 버전이 없어요"로 중단한다.
-5. JSON 해석은 .NET Framework 기본 포함 라이브러리(`System.Runtime.Serialization.Json.DataContractJsonSerializer` 또는 `System.Web.Script.Serialization.JavaScriptSerializer`)로 한다. NuGet 패키지를 쓰지 않는다. 필요한 필드(`tag_name`, `draft`, `prerelease`, `assets[].name`, `assets[].browser_download_url`)만 읽는다.
-6. API가 403/429(요청 한도)면 "잠시 후 다시 시도해 주세요"로, 네트워크 오류면 "인터넷에 연결한 뒤 다시 시도해 주세요"로 안내한다.
+- 태그 이름 형식 `app-vX.Y.Z`
+- 파일 이름 `DeskCards-win-x64.zip`과 `DeskCards-win-x64.zip.sha256`
+- zip 맨 위의 `DeskCards.exe`와, 태그와 같은 버전이 적힌 `version.txt` (다른 파일이 더 있는 것은 괜찮다)
+- 릴리스를 초안·시험판으로 올리지 않기 (둘 다 건너뛴다. "Latest" 표시는 보지 않고 가장 높은 버전을 고른다)
+
+배포된 웹 설치기(0.2.x)로 설치하면 설치 폴더의 제거기는 그 웹 설치기 자신이 된다. 다음 앱 자체 업데이트 때 zip의 제거기로 바뀐다.
 
 ## 6. 실행 모드
 
 | 조건 | 모드 |
 |---|---|
-| 인자에 `/uninstall` | 제거 |
+| 제거기 전용 빌드(`uninstall.exe`), 또는 인자에 `/uninstall` | 제거 |
 | 그 밖 | 설치 또는 업데이트(제거 등록 키가 있고 `InstallLocation`의 `DeskCards.exe`가 있으면 업데이트) |
 
 설치기는 한 번에 하나만 실행된다(`DeskCards.Setup.SingleInstance` Mutex). 이미 실행 중이면 기존 창을 앞으로 가져오고 끝낸다.
 
 ## 7. 빌드 (`installer/build.ps1`)
 
-1. `src/DeskCards/DeskCards.csproj`의 `<Version>`을 읽는다.
-2. 앱을 지금과 같은 옵션으로 게시한다: `-c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none`.
-3. `installer/dist/app/`에 앱 릴리스 파일 두 개를 만든다. zip 안의 `version.txt`는 BOM 없는 UTF-8.
-4. 설치기를 `-c Release`로 빌드해 `installer/dist/installer/DeskCards-Setup.exe`로 복사한다. 설치기 버전은 `installer/DeskCards.Setup/DeskCards.Setup.csproj`의 `<Version>`이다.
-   첫 배포 버전은 앱과 설치기 모두 `0.2.0`이다(앱 csproj의 `<Version>`도 `0.2.0`으로 올린다). 이후 두 버전은 따로 올린다.
-5. `-App`, `-Installer` 스위치로 둘 중 하나만 만들 수도 있게 한다(기본은 둘 다).
-6. 업로드는 하지 않는다. 마지막에 올릴 파일과 예시 명령을 출력만 한다.
-   - 앱: `gh release create app-vX.Y.Z installer/dist/app/* --title "Desk Cards X.Y.Z" --latest=false`
-   - 설치기: `gh release create installer-vX.Y.Z installer/dist/installer/DeskCards-Setup.exe --title "Desk Cards 설치기 X.Y.Z" --latest`
+1. `Directory.Build.props`의 `<Version>`을 읽는다.
+2. 앱을 게시한다: `-c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none`.
+3. 제거기를 빌드한다: 설치기 프로젝트를 `-p:Uninstaller=true`로, 출력·중간 폴더를 따로 두고 빌드한다.
+4. `installer/dist/release/`에 앱 zip(앱, 제거기, `version.txt`)과 `.sha256`을 만든다.
+5. 설치기를 `-p:AppPackage=<앱 zip>`으로 빌드해 `installer/dist/release/DeskCards-Setup.exe`로 복사한다.
+   .NET Framework 4.8 개발자 팩이 없어도 되도록 `-p:AutomaticallyUseReferenceAssemblyPackages=true`로 빌드한다.
+6. 업로드는 하지 않는다. 예시 명령만 출력한다: `gh release create app-vX.Y.Z installer/dist/release/* --title "Desk Cards X.Y.Z" --latest`
 
 ## 8. 설치 / 업데이트 흐름
 
 모든 단계는 `%TEMP%\DeskCards-Setup.log`에 기록한다(시각, 단계, 예외 전문).
 
-1. **버전 확인**: 5장 "최신 앱 찾기"로 최신 앱 버전과 파일 주소를 얻는다. 실패 처리는 다음과 같다.
-   - 네트워크 오류(연결 실패, DNS 실패, 시간 초과): "인터넷에 연결한 뒤 다시 시도해 주세요" + [다시 시도]/[닫기]
-   - API 403/429(요청 한도): "잠시 후 다시 시도해 주세요" + [다시 시도]/[닫기]
-   - 조건에 맞는 app-v 릴리스가 없거나 필요한 파일이 빠짐: "받을 수 있는 앱 버전이 없어요" + [닫기]
-   - 그 밖의 HTTP 오류나 JSON 해석 실패: "최신 버전 정보를 확인하지 못했어요" + [다시 시도]/[닫기]
-   - 모든 경우 앱을 끄지 않고 아무것도 바꾸지 않으며, 원인(상태 코드, 예외 전문)은 로그에 남긴다.
-   업데이트 모드에서 설치된 버전(`DisplayVersion`)과 같으면 "이미 최신 버전이에요" 안내와 함께 [다시 설치]를 제공한다.
-   설치된 버전이 받을 버전보다 **높으면** 설치하지 않는다("설치된 버전(X)이 더 새로워요"). 다운그레이드는 지원하지 않는다.
+1. **버전 확인**: 설치기에 든 앱 버전(= 설치기 버전)을 보여 준다.
+   업데이트 모드에서 설치된 버전(`DisplayVersion`)과 같으면 "이미 이 버전이 설치돼 있어요" 안내와 함께 [다시 설치]를 제공한다.
+   설치된 버전이 더 **높으면** 설치하지 않는다("설치된 버전(X)이 더 새로워요"). 다운그레이드는 지원하지 않는다.
    버전 비교는 `System.Version`으로 한다. 어느 쪽이든 해석할 수 없으면 "다른 버전"으로 본다.
-   4단계에서 zip 안의 `version.txt`가 태그의 버전과 다르면 설치를 거부한다.
-2. **다운로드**: 1단계에서 얻은 주소로 zip과 `.sha256`을 `%TEMP%\DeskCards-Setup-<GUID>\`에 받는다.
-   - `User-Agent: DeskCards-Setup/<설치기 버전>` 헤더를 넣는다. 리디렉션을 따른다.
-   - TLS 프로토콜을 코드에 고정하지 않는다(OS 기본값 사용).
-   - 진행률(받은 MB / 전체 MB, 속도)을 표시한다. [취소]하면 임시 폴더를 지우고 아무것도 바꾸지 않은 채 끝낸다.
-   - 300MB를 넘으면 중단한다.
-3. **검증**: SHA-256이 다르면 중단한다("내려받은 파일이 손상됐어요. 다시 시도해 주세요").
-4. **압축 풀기**: 같은 임시 폴더의 `stage\`에 푼다.
+   설치기에 앱이 들어 있지 않으면(개발 빌드) 설치 버튼을 막는다.
+2. **압축 풀기**: 품고 있던 zip을 `%TEMP%\DeskCards-Setup-<GUID>\`에 꺼내 `stage\`에 푼다. [취소]하면 임시 폴더를 지우고 아무것도 바꾸지 않은 채 끝낸다.
    - 모든 항목의 최종 경로가 `stage\` 안이어야 한다. 절대 경로, `..`, 드라이브 문자가 있으면 전체를 거부한다.
    - 풀린 전체 크기가 1GB를 넘으면 거부한다.
-   - `DeskCards.exe`와 `version.txt`가 없으면 거부한다.
+   - `DeskCards.exe`, `uninstall.exe`, `version.txt`가 없거나 `version.txt`가 설치기 버전과 다르면 거부한다.
 5. **앱 종료**: 앱이 실행 중이면(`DeskCards.SingleInstance` Mutex 존재) `DeskCards.Quit` 이벤트를 신호한다.
    5초 안에 설치 폴더의 `DeskCards.exe` 프로세스가 끝나지 않으면 그 프로세스만 강제 종료하고 최대 5초 더 기다린다.
    그래도 남아 있으면 중단한다("Desk Cards를 끄지 못했어요").
@@ -151,14 +129,16 @@
    - 있으면 (앱 자체 업데이트가 남긴 `DeskCards.exe.old`가 있으면 먼저 지우고) 기존 `DeskCards.exe`를 `DeskCards.exe.old`로 이름을 바꾸고 새 파일을 옮긴다. 이후 단계에서 실패하면 `.old`를 되돌린다. 성공하면 `.old`를 지운다.
    - 설치 폴더의 예전 이름 파일(`DeskFolders.exe`)을 지운다.
    - 설치 폴더의 다른 파일은 건드리지 않는다.
-7. **제거기 복사**: 실행 중인 설치기 exe를 `uninstall.exe.new`로 복사한 뒤 `uninstall.exe`로 바꿔치기한다. 설치기가 이미 설치 폴더의 `uninstall.exe`에서 실행 중이면 건너뛴다.
+7. **제거기 복사**: `stage\uninstall.exe`를 `uninstall.exe.new`로 복사한 뒤 `uninstall.exe`로 바꿔치기한다.
 8. **바로가기**: 추가 작업 선택에 따라 만들거나 지운다(9장).
 9. **등록**: 10장의 제거 등록 키 값을 모두 쓴다.
 10. **자동 실행**: 11장.
 11. **정리**: 임시 폴더를 지운다. 예전 Run 값 `DeskFolders`를 지운다.
 12. **완료**: [Desk Cards 실행] 체크(기본 켬)가 켜져 있으면 [마침] 때 앱을 실행한다.
 
-실패하면 어느 단계에서 무엇이 실패했는지 한국어로 보여 주고, 로그 파일을 여는 링크를 둔다. 6~10단계 중 실패하면 6단계의 되돌리기를 수행한다. 1~4단계에서 실패하면 앱을 끄지 않고 아무것도 바꾸지 않는다.
+(3·4단계는 0.4.3 개편으로 없어졌다. 번호는 그대로 둔다.)
+
+실패하면 어느 단계에서 무엇이 실패했는지 한국어로 보여 주고, 로그 파일을 여는 링크를 둔다. 6~10단계 중 실패하면 6단계의 되돌리기를 수행한다. 1~2단계에서 실패하면 앱을 끄지 않고 아무것도 바꾸지 않는다.
 
 ### 업데이트할 때의 기본 선택
 
@@ -251,15 +231,15 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 
 | 단계 | 내용 |
 |---|---|
-| 시작 | 앱 소개 한두 줄, 설치 위치(고정, 표시만), 필요한 공간(약 80MB), "인터넷에서 최신 버전을 내려받아요" 안내 |
+| 시작 | 앱 소개 한두 줄, 설치 위치(고정, 표시만), 필요한 공간(약 80MB), 설치할 버전 |
 | 추가 작업 | 시작 메뉴 바로가기 / 바탕화면 바로가기 / Windows 시작 시 실행 |
 | 설치 준비 | 선택 요약. 파란 버튼 글자는 [설치] |
-| 설치 | 다운로드 진행률 → 단계별 상태 문장 |
+| 설치 | 진행 막대(진행률 없음) + 단계별 상태 문장 |
 | 완료 | [Desk Cards 실행] 체크, [마침] |
 
 ### 업데이트 단계
 
-설치 단계와 같고, 시작 페이지에 "설치된 버전 X → 최신 버전 Y"를 보여 준다. 파란 버튼 글자는 [업데이트]다. 그룹과 카드 설정이 그대로 남는다는 안내를 넣는다.
+설치 단계와 같고, 시작 페이지에 "설치된 버전 X → Y"를 보여 준다. 파란 버튼 글자는 [업데이트]다. 그룹과 카드 설정이 그대로 남는다는 안내를 넣는다.
 
 ### 제거 단계
 
@@ -276,7 +256,8 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 - 설치 로직은 화면과 분리된 클래스로 만들고, 모든 경로와 레지스트리 위치를 `SetupEnvironment` 같은 객체 하나로 주입받는다(설치 폴더, 시작 메뉴 폴더, 바탕화면 폴더, 설정 폴더, TEMP, 레지스트리 루트 키 경로).
 - 테스트 환경은 폴더를 `%TEMP%\DeskCards-Setup-Tests-<GUID>\` 아래에, 레지스트리를 `HKCU\Software\DeskCards-Setup-Tests\<GUID>\` 아래에 둔다. 테스트가 끝나면 둘 다 지운다.
 - 테스트용 환경 객체는 생성할 때 모든 경로가 위 두 위치 안에 있는지 검사하고, 아니면 예외를 던진다.
-- 다운로드는 HTTP 호출을 추상화해서 로컬 파일로 대체한다. 테스트에서 실제 네트워크를 쓰지 않는다.
+- 설치기에 든 앱 패키지는 `IAppPackage`로 추상화해서 테스트 폴더의 zip으로 대체한다. 설치기는 네트워크를 쓰지 않는다.
+- 0.4.3 개편으로 다운로드·SHA-256·최신 앱 찾기·버전 확인 실패 테스트(아래 3·9·11번)는 없어졌다. 대신 패키지 읽기 실패, 제거기 없는 패키지 거부, 패키지 없는 설치기의 설치 막기, 제거기 전용 빌드의 제거 모드를 검사한다.
 
 필수 테스트:
 
@@ -311,6 +292,6 @@ WinUI 3(Windows 11 Fluent) 모양을 **WPF로** 구현한다. WinUI 3 프레임�
 
 - `dotnet build -warnaserror`가 앱, 설치기, 두 테스트 프로젝트에서 경고 없이 통과한다.
 - 모든 테스트가 통과한다.
-- `installer/build.ps1`이 5장의 앱 릴리스 파일 두 개와 설치기 파일을 만든다. `DeskCards-Setup.exe`는 1MB 이하이며 옆에 dll이 없어도 실행된다.
+- `installer/build.ps1`이 5장의 릴리스 파일 세 개를 만든다. `DeskCards-Setup.exe`와 `uninstall.exe`는 옆에 dll이 없어도 실행된다.
 - 커밋은 기능 단위로 나눈다. 커밋 작성자 이메일은 저장소에 설정된 `269848033+hhsshoo12@users.noreply.github.com`을 그대로 쓴다(바꾸지 않는다).
 - 실제 설치/제거는 수동으로 확인한다. 자동 테스트에서 실제 설치 경로에 설치하지 않는다.

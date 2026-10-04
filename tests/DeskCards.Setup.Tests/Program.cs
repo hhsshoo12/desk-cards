@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -80,10 +78,28 @@ internal static class Program
             Check(error.Message == "Desk Cards를 끄지 못했어요" && f.Processes.Killed == 1 && f.Processes.Waits.SequenceEqual(new[] { 5000, 5000 }));
         });
         Test("successful graceful exit avoids forced termination", f => { AppStopper.Stop(f.Processes, f.Env.AppExe); Check(f.Processes.Requested == 1 && f.Processes.Killed == 0); });
-        Test("download failure leaves running app and installation intact", f =>
+        Test("package read failure leaves running app and installation intact", f =>
         {
-            f.Existing(); f.Downloads.DownloadError = new HttpRequestException("connection failed");
+            f.Existing(); f.Payload.CopyError = new IOException("resource read failed");
             Throws<SetupFailure>(() => f.Install()); f.Unchanged();
+        });
+        Test("missing uninstaller in package is rejected before stopping app", f =>
+        {
+            f.Existing(); f.Package(missingUninstaller: true); Throws<SetupFailure>(() => f.Install()); f.Unchanged();
+        });
+        Test("installer without a package cannot install", f =>
+        {
+            var engine = new SetupEngine(f.Env, null, f.Processes, f.Shortcuts);
+            Throws<SetupFailure>(() => engine.Install(new InstallOptions(), _ => { }, () => { }, CancellationToken.None));
+            Check(f.Processes.Requested == 0);
+            var window = new MainWindow(f.Env, engine, false); window.Show(); Pump();
+            try { Check(!window.NextButton.IsEnabled); } finally { window.Close(); }
+        });
+        Test("uninstaller build always starts in uninstall mode", f =>
+        {
+            Check(SetupApplication.UninstallMode(new string[0], uninstallerBuild: true));
+            Check(!SetupApplication.UninstallMode(new string[0], uninstallerBuild: false));
+            Check(SetupApplication.UninstallMode(new[] { "/UNINSTALL" }, uninstallerBuild: false));
         });
         Test("missing package does not stop app", f => { f.Existing(); File.Delete(f.Zip); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); });
         Test("uninstall failure keeps registration", f =>
@@ -108,7 +124,6 @@ internal static class Program
         foreach (string entry in new[] { "..\\escape.exe", "../escape.exe", "C:\\outside.exe", "/outside.exe", "folder/../../outside", "a:stream", "folder./evil" })
             Test("unsafe zip path rejected: " + entry, f => { f.Existing(); f.Package(extra: entry); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); });
         Test("missing root executable is rejected", f => { f.Existing(); f.Package(missingExe: true); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); });
-        Test("SHA256 mismatch leaves installation intact", f => { f.Existing(); File.WriteAllText(f.Hash, new string('0', 64)); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); });
         Test("version mismatch leaves installation intact", f => { f.Existing(); f.Package(version: "0.3.0"); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); });
         Test("failure after replacement restores old executable", f =>
         {
@@ -177,50 +192,25 @@ internal static class Program
             f.Existing(); string file = Path.Combine(f.Env.InstallDir, "other.txt"); File.WriteAllText(file, "keep");
             f.Engine.Uninstall(false, _ => { }); Check(File.ReadAllText(file) == "keep");
         });
-        Test("app selection ignores installer, legacy, draft and prerelease", f =>
+        Test("downgrade rejected before unpacking or app termination", f =>
         {
-            var release = ReleaseService.Select(FixtureJson(), new Version(0, 2, 0)); Check(release.Version == new Version(0, 10, 0));
-        });
-        Test("minimum compatible app version excludes older releases", f =>
-        {
-            var error = Throws<SetupFailure>(() => ReleaseService.Select(Json(Releases("app-v0.1.0")), new Version(0, 2, 0)));
-            Check(error.Message == ReleaseService.MissingMessage && !error.Retry);
-        });
-        Test("selected newest release must contain both assets", f =>
-        {
-            string json = Json(Releases("app-v0.2.0"), new { tag_name = "app-v0.3.0", draft = false, prerelease = false, assets = new object[0] });
-            Check(Throws<SetupFailure>(() => ReleaseService.Select(json, new Version(0, 2, 0))).Message == ReleaseService.MissingMessage);
-        });
-        Test("downgrade rejected before download or app termination", f =>
-        {
-            f.Existing("0.3.0"); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); Check(f.Downloads.DownloadCount == 0);
+            f.Existing("0.3.0"); Throws<SetupFailure>(() => f.Install()); f.Unchanged(); Check(f.Payload.CopyCount == 0);
         });
         Test("version comparison is numeric and malformed versions differ", f =>
         {
-            Check(ReleaseService.CompareInstalled("0.10.0", new Version(0, 9, 0)) > 0);
-            Check(ReleaseService.CompareInstalled("0.2.0", new Version(0, 2, 0)) == 0);
-            Check(ReleaseService.CompareInstalled("invalid", new Version(0, 2, 0)) == null);
+            Check(EmbeddedPackage.CompareInstalled("0.10.0", new Version(0, 9, 0)) > 0);
+            Check(EmbeddedPackage.CompareInstalled("0.2.0", new Version(0, 2, 0)) == 0);
+            Check(EmbeddedPackage.CompareInstalled("invalid", new Version(0, 2, 0)) == null);
         });
-        foreach (int status in new[] { 403, 429, 404, 500 })
-            Test("HTTP " + status + " shows correct message, buttons and log", f =>
-                f.CheckLookupError(new HttpFailure(status), null, status == 403 || status == 429 ? ReleaseService.LimitMessage : ReleaseService.InvalidMessage, true, "HTTP " + status));
-        Test("connection and DNS failure show network guidance", f => f.CheckLookupError(new HttpRequestException("DNS failure"), null, ReleaseService.NetworkMessage, true, "DNS failure"));
-        Test("timeout shows network guidance", f => f.CheckLookupError(new TaskCanceledException("timeout"), null, ReleaseService.NetworkMessage, true, "timeout"));
-        Test("interrupted response body shows network guidance", f => f.CheckLookupError(new IOException("connection reset"), null, ReleaseService.NetworkMessage, true, "connection reset"));
-        Test("no candidate only offers close", f => f.CheckLookupError(null, "[]", ReleaseService.MissingMessage, false, "SetupFailure"));
-        Test("missing asset only offers close", f => f.CheckLookupError(null, Json(new { tag_name = "app-v0.2.0", draft = false, prerelease = false, assets = new object[0] }), ReleaseService.MissingMessage, false, "SetupFailure"));
-        Test("JSON syntax failure offers retry and close", f => f.CheckLookupError(null, "{broken", ReleaseService.InvalidMessage, true, "Exception"));
-        Test("JSON shape failure offers retry and close", f => f.CheckLookupError(null, "{}", ReleaseService.InvalidMessage, true, "FormatException"));
-        Test("cancel during download cleans temp without stopping app", f =>
+        Test("cancel while unpacking cleans temp without stopping app", f =>
         {
-            f.Existing(); using var cancel = new CancellationTokenSource(); f.Downloads.OnDownload = () => cancel.Cancel();
+            f.Existing(); using var cancel = new CancellationTokenSource(); f.Payload.OnCopy = () => cancel.Cancel();
             Throws<OperationCanceledException>(() => f.Install(cancel.Token)); f.Unchanged(); Check(!Directory.GetDirectories(f.Env.TempDir).Any());
         });
         Test("cancel at commit boundary does not stop or replace app", f =>
         {
             f.Existing(); using var cancel = new CancellationTokenSource();
-            Throws<OperationCanceledException>(() => f.Engine.InstallAsync(new AppRelease(new Version(0, 2, 0), "https://fixture/app.zip", "https://fixture/hash"),
-                new InstallOptions(), Path.Combine(f.Root, "setup.exe"), null, _ => { }, () => cancel.Cancel(), cancel.Token).GetAwaiter().GetResult());
+            Throws<OperationCanceledException>(() => f.Engine.Install(new InstallOptions(), _ => { }, () => cancel.Cancel(), cancel.Token));
             f.Unchanged();
         });
         Test("test environment rejects escaping file paths", f =>
@@ -235,7 +225,7 @@ internal static class Program
             Check(registration!.GetValueKind("NoModify") == RegistryValueKind.DWord && (int)registration.GetValue("NoModify") == 1);
             Check((string)registration.GetValue("UninstallString") == "\"" + f.Env.Uninstaller + "\" /uninstall");
             Check(registration.GetValue("QuietUninstallString") == null && (string)registration.GetValue("DisplayVersion") == "0.2.0");
-            Check(File.ReadAllText(f.Env.Uninstaller) == "setup");
+            Check(File.ReadAllText(f.Env.Uninstaller) == "uninstaller");
         });
         Test("start trace cleanup only deletes our complete backup", f =>
         {
@@ -253,17 +243,6 @@ internal static class Program
             new ShellShortcuts().Create(f.Env.MenuLink, f.Env.AppExe, f.Env.InstallDir);
             var shortcut = ShellShortcuts.Inspect(f.Env.MenuLink);
             Check(shortcut.Item1.Equals(f.Env.AppExe, StringComparison.OrdinalIgnoreCase) && shortcut.Item2 == SetupEnvironment.AppId);
-        });
-        Test("HTTP transport sends headers and respects size limit", f =>
-        {
-            var handler = new StubHandler(request =>
-            {
-                Check(request.Headers.UserAgent.ToString() == "DeskCards-Setup/0.2.0" && request.Headers.Accept.ToString().Contains("application/vnd.github+json"));
-                var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(new byte[1]) };
-                response.Content.Headers.ContentLength = Packages.DownloadLimit + 1; return response;
-            });
-            using var http = new HttpDownloads(new Version(0, 2, 0), handler);
-            Throws<SetupFailure>(() => http.DownloadAsync("https://fixture/large", Path.Combine(f.Root, "large.zip"), Packages.DownloadLimit, null, CancellationToken.None).GetAwaiter().GetResult());
         });
         Test("wizard pages render and selection survives navigation", f =>
         {
@@ -288,16 +267,6 @@ internal static class Program
     private static void Click(Button button) { button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(); }
     private static void Pump() { var frame = new DispatcherFrame(); Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false)); Dispatcher.PushFrame(frame); }
     private static string Tiles(params string[] ids) => new JavaScriptSerializer().Serialize(ids.Select(id => new { tileId = id }).ToArray());
-    internal static object Releases(string tag, bool draft = false, bool prerelease = false) => new
-    {
-        tag_name = tag, draft, prerelease, assets = new[]
-        {
-            new { name = SetupEnvironment.ZipName, browser_download_url = "https://fixture/app.zip" },
-            new { name = SetupEnvironment.HashName, browser_download_url = "https://fixture/hash" }
-        }
-    };
-    internal static string Json(params object[] rows) => new JavaScriptSerializer().Serialize(rows);
-    private static string FixtureJson() => File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "fixtures", "releases.json"));
     internal static void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
     internal static T Throws<T>(Action action) where T : Exception { try { action(); } catch (T ex) { return ex; } throw new Exception("Expected " + typeof(T).Name); }
     private static void Test(string name, Action<Fixture> test)
@@ -312,51 +281,32 @@ internal static class Program
         public string Root { get; }
         public SetupEnvironment Env { get; }
         public Registration Registry { get; }
-        public LocalDownloads Downloads { get; }
+        public LocalPackage Payload { get; }
         public FakeProcesses Processes { get; } = new FakeProcesses();
         public FakeShortcuts Shortcuts { get; } = new FakeShortcuts();
         public SetupEngine Engine { get; }
         public string Zip => Path.Combine(Root, "payload.zip");
-        public string Hash => Path.Combine(Root, "payload.sha256");
         public Fixture()
         {
             string id = Guid.NewGuid().ToString("N"); Root = Path.Combine(Path.GetTempPath(), "DeskCards-Setup-Tests-" + id);
             Env = SetupEnvironment.ForTests(Root, @"Software\DeskCards-Setup-Tests\" + id);
-            Directory.CreateDirectory(Root); Downloads = new LocalDownloads(Zip, Hash); Registry = new Registration(Env);
-            Engine = new SetupEngine(Env, Downloads, Processes, Shortcuts);
-            File.WriteAllText(Path.Combine(Root, "setup.exe"), "setup"); Package();
+            Directory.CreateDirectory(Root); Payload = new LocalPackage(Zip); Registry = new Registration(Env);
+            Engine = new SetupEngine(Env, Payload, Processes, Shortcuts);
+            Package();
         }
-        public void Package(string version = "0.2.0", bool bom = false, string? extra = null, bool missingExe = false)
+        public void Package(string version = "0.2.0", bool bom = false, string? extra = null, bool missingExe = false, bool missingUninstaller = false)
         {
-            File.Delete(Zip); using (var archive = ZipFile.Open(Zip, ZipArchiveMode.Create))
-            {
-                if (!missingExe) { using var writer = new StreamWriter(archive.CreateEntry("DeskCards.exe").Open()); writer.Write("new app"); }
-                using (var writer = new StreamWriter(archive.CreateEntry("version.txt").Open(), new UTF8Encoding(bom))) writer.Write(version);
-                if (extra != null) { using var writer = new StreamWriter(archive.CreateEntry(extra).Open()); writer.Write("unsafe"); }
-            }
-            using var sha = SHA256.Create(); using var file = File.OpenRead(Zip);
-            File.WriteAllText(Hash, BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant() + "  " + SetupEnvironment.ZipName);
+            File.Delete(Zip); using var archive = ZipFile.Open(Zip, ZipArchiveMode.Create);
+            if (!missingExe) { using var writer = new StreamWriter(archive.CreateEntry("DeskCards.exe").Open()); writer.Write("new app"); }
+            if (!missingUninstaller) { using var writer = new StreamWriter(archive.CreateEntry("uninstall.exe").Open()); writer.Write("uninstaller"); }
+            using (var writer = new StreamWriter(archive.CreateEntry("version.txt").Open(), new UTF8Encoding(bom))) writer.Write(version);
+            if (extra != null) { using var writer = new StreamWriter(archive.CreateEntry(extra).Open()); writer.Write("unsafe"); }
         }
         public void Existing(string version = "0.1.0")
         { Directory.CreateDirectory(Env.InstallDir); File.WriteAllText(Env.AppExe, "old app"); Registry.Register(version); }
-        public void Install(CancellationToken token = default) => Engine.InstallAsync(new AppRelease(new Version(0, 2, 0), "https://fixture/app.zip", "https://fixture/hash"),
-            new InstallOptions(), Path.Combine(Root, "setup.exe"), null, _ => { }, () => { }, token).GetAwaiter().GetResult();
+        public void Install(CancellationToken token = default) => Engine.Install(new InstallOptions(), _ => { }, () => { }, token);
         public void Unchanged() { Check(File.ReadAllText(Env.AppExe) == "old app" && Processes.Requested == 0); }
-        public MainWindow Window() => new MainWindow(Env, Engine, new ReleaseService(Downloads, new SetupLog(Env), new Version(0, 2, 0)), Path.Combine(Root, "setup.exe"), false);
-        public void CheckLookupError(Exception? error, string? json, string message, bool retry, string logContains)
-        {
-            Existing(); Downloads.TextError = error; if (json != null) Downloads.Json = json;
-            var window = Window(); window.Show(); Pump();
-            try
-            {
-                Check(window.Description.Text == message);
-                Check(window.NextButton.Visibility == (retry ? Visibility.Visible : Visibility.Collapsed));
-                Check(!retry || Equals(window.NextButton.Content, "다시 시도")); Check(Equals(window.CancelButton.Content, "닫기"));
-                Unchanged(); Check(Downloads.DownloadCount == 0 && Registry.InstalledVersion == "0.1.0");
-                Check(File.ReadAllText(Env.LogPath).Contains(logContains));
-            }
-            finally { window.Close(); }
-        }
+        public MainWindow Window() => new MainWindow(Env, Engine, false);
         public void Dispose()
         {
             // Revalidate before recursive deletion. Neither cleanup can address production paths.
@@ -365,21 +315,20 @@ internal static class Program
             SetupEnvironment.DeleteTree(Root, Path.GetTempPath());
         }
     }
-    private sealed class LocalDownloads : IDownloads
+    /// <summary>설치기 리소스 대신 테스트 폴더의 zip을 쓰는 패키지.</summary>
+    private sealed class LocalPackage : IAppPackage
     {
-        private readonly string _zip, _hash;
-        public Exception? TextError, DownloadError;
-        public Action? OnDownload;
-        public int DownloadCount;
-        public string Json = Program.Json(Releases("app-v0.2.0"));
-        public LocalDownloads(string zip, string hash) { _zip = zip; _hash = hash; }
-        public Task<string> ReadTextAsync(string url, CancellationToken token)
-        { if (TextError != null) return Task.FromException<string>(TextError); return Task.FromResult(Json); }
-        public Task DownloadAsync(string url, string destination, long limit, IProgress<TransferProgress>? progress, CancellationToken token)
+        private readonly string _zip;
+        public Exception? CopyError;
+        public Action? OnCopy;
+        public int CopyCount;
+        public LocalPackage(string zip) { _zip = zip; }
+        public Version Version { get; } = new Version(0, 2, 0);
+        public void CopyTo(string path, CancellationToken token)
         {
-            DownloadCount++; OnDownload?.Invoke(); token.ThrowIfCancellationRequested();
-            if (DownloadError != null) throw DownloadError;
-            File.Copy(url.EndsWith("hash") ? _hash : _zip, destination); return Task.CompletedTask;
+            CopyCount++; OnCopy?.Invoke(); token.ThrowIfCancellationRequested();
+            if (CopyError != null) throw CopyError;
+            File.Copy(_zip, path);
         }
     }
     private sealed class FakeProcesses : IAppProcesses
@@ -396,11 +345,5 @@ internal static class Program
         public bool Fail;
         public void Create(string path, string exe, string directory)
         { if (Fail) throw new IOException("Injected shortcut failure"); Directory.CreateDirectory(Path.GetDirectoryName(path)!); File.WriteAllText(path, exe); }
-    }
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _reply;
-        public StubHandler(Func<HttpRequestMessage, HttpResponseMessage> reply) { _reply = reply; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(_reply(request));
     }
 }

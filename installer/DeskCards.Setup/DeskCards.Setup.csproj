@@ -10,10 +10,17 @@
     <ApplicationIcon>../../src/DeskCards/app.ico</ApplicationIcon>
     <AssemblyName>DeskCards-Setup</AssemblyName>
     <RootNamespace>DeskCards.Setup</RootNamespace>
-    <Version>0.2.3</Version>
     <Product>Desk Cards 설치기</Product>
     <Company>hhsshoo12</Company>
   </PropertyGroup>
+  <!-- -p:Uninstaller=true: 앱을 품지 않고 늘 제거 모드로 켜지는 제거기(uninstall.exe). -->
+  <PropertyGroup Condition="'$(Uninstaller)' == 'true'">
+    <DefineConstants>$(DefineConstants);UNINSTALLER</DefineConstants>
+  </PropertyGroup>
+  <!-- -p:AppPackage=<앱 zip>: 설치기가 그 zip(DeskCards.exe, uninstall.exe, version.txt)을 품는다. -->
+  <ItemGroup Condition="'$(AppPackage)' != '' and '$(Uninstaller)' != 'true'">
+    <EmbeddedResource Include="$(AppPackage)" LogicalName="DeskCards-win-x64.zip" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="../../src/Shared/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../../src/Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />

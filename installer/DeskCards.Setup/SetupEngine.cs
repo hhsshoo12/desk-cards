@@ -8,20 +8,21 @@ namespace DeskCards.Setup;
 internal sealed class SetupEngine
 {
     private readonly SetupEnvironment _env;
-    private readonly IDownloads _downloads;
     private readonly IAppProcesses _processes;
     private readonly IShortcuts _shortcuts;
     private readonly SetupLog _log;
     public Registration Registration { get; }
-    public SetupEngine(SetupEnvironment env, IDownloads downloads, IAppProcesses processes, IShortcuts shortcuts)
+    /// <summary>설치할 앱. 제거기 전용 빌드에서는 null.</summary>
+    public IAppPackage? Package { get; }
+    public SetupEngine(SetupEnvironment env, IAppPackage? package, IAppProcesses processes, IShortcuts shortcuts)
     {
-        _env = env; _downloads = downloads; _processes = processes; _shortcuts = shortcuts;
+        _env = env; Package = package; _processes = processes; _shortcuts = shortcuts;
         _log = new SetupLog(env); Registration = new Registration(env);
     }
 
-    public async Task InstallAsync(AppRelease release, InstallOptions options, string setupExe,
-        IProgress<TransferProgress>? progress, Action<string> status, Action disableCancel, CancellationToken token)
+    public void Install(InstallOptions options, Action<string> status, Action disableCancel, CancellationToken token)
     {
+        var package = Package ?? throw new SetupFailure("설치기에 앱이 들어 있지 않아요", false);
         string temp = Path.Combine(_env.TempDir, "DeskCards-Setup-" + Guid.NewGuid().ToString("N"));
         string stage = Path.Combine(temp, "stage"), old = _env.AppExe + ".old";
         string step = "설치 준비";
@@ -29,18 +30,18 @@ internal sealed class SetupEngine
         void Step(string value) { step = value; _log.Write(value); status(value); }
         try
         {
-            if (Registration.IsUpdate && ReleaseService.CompareInstalled(Registration.InstalledVersion, release.Version) > 0)
+            if (Registration.IsUpdate && EmbeddedPackage.CompareInstalled(Registration.InstalledVersion, package.Version) > 0)
                 throw new SetupFailure("설치된 버전(" + Registration.InstalledVersion + ")이 더 새로워요", false);
             Directory.CreateDirectory(temp);
-            string version = await DownloadAndVerifyAsync(release, temp, stage, progress, Step, token).ConfigureAwait(false);
+            string version = Unpack(package, temp, stage, Step, token);
             token.ThrowIfCancellationRequested();
             disableCancel();
             token.ThrowIfCancellationRequested();
             // The UI cannot cancel or close from this point through registration.
             Step("앱 종료"); AppStopper.Stop(_processes, _env.AppExe);
             Step("파일 교체");
-            ReplaceApp(stage, old, release, rollback);
-            RegisterInstall(setupExe, options, version, Step);
+            ReplaceApp(stage, old, package.Version, rollback);
+            RegisterInstall(stage, options, version, Step);
             Step("정리"); Registration.RemoveOldRun();
             if (rollback.backedUp) File.Delete(old);
             rollback.backedUp = false;
@@ -75,18 +76,18 @@ internal sealed class SetupEngine
         public byte[]? oldVersion;
     }
 
-    private async Task<string> DownloadAndVerifyAsync(AppRelease release, string temp, string stage, IProgress<TransferProgress>? progress, Action<string> Step, CancellationToken token)
+    private static string Unpack(IAppPackage package, string temp, string stage, Action<string> Step, CancellationToken token)
     {
-        Step("다운로드");
-        string zip = Path.Combine(temp, SetupEnvironment.ZipName), hash = Path.Combine(temp, SetupEnvironment.HashName);
-        await _downloads.DownloadAsync(release.ZipUrl, zip, Packages.DownloadLimit, progress, token).ConfigureAwait(false);
-        await _downloads.DownloadAsync(release.HashUrl, hash, 65536, null, token).ConfigureAwait(false);
-        Step("검증"); Packages.Verify(zip, hash);
-        Step("압축 풀기"); string version = Packages.Extract(zip, stage, release.Version, token);
+        Step("압축 풀기");
+        string zip = Path.Combine(temp, SetupEnvironment.ZipName);
+        package.CopyTo(zip, token);
+        string version = Packages.Extract(zip, stage, package.Version, token);
+        // 앱을 끄기 전에 확인한다. 설치 폴더의 제거기는 늘 이 패키지에 든 것으로 둔다.
+        if (!File.Exists(Path.Combine(stage, "uninstall.exe"))) throw new SetupFailure("설치기에 제거기가 들어 있지 않아요", false);
         return version;
     }
 
-    private void ReplaceApp(string stage, string old, AppRelease release, InstallRollback rollback)
+    private void ReplaceApp(string stage, string old, Version version, InstallRollback rollback)
     {
         if (!Directory.Exists(_env.InstallDir))
         {
@@ -103,22 +104,19 @@ internal sealed class SetupEngine
             if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); rollback.backedUp = true; }
             rollback.replaced = true;
             File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
-            Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, release.Version));
+            Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, version));
             rollback.versionReplaced = true;
         }
         DeleteFile(Path.Combine(_env.InstallDir, "DeskFolders.exe"));
     }
 
-    private void RegisterInstall(string setupExe, InstallOptions options, string version, Action<string> Step)
+    private void RegisterInstall(string stage, InstallOptions options, string version, Action<string> Step)
     {
         Step("제거기 복사");
-        if (!Path.GetFullPath(setupExe).Equals(_env.Uninstaller, StringComparison.OrdinalIgnoreCase))
-        {
-            string next = _env.Uninstaller + ".new";
-            File.Copy(setupExe, next, true);
-            if (File.Exists(_env.Uninstaller)) File.Replace(next, _env.Uninstaller, null);
-            else File.Move(next, _env.Uninstaller);
-        }
+        string next = _env.Uninstaller + ".new";
+        File.Copy(Path.Combine(stage, "uninstall.exe"), next, true);
+        if (File.Exists(_env.Uninstaller)) File.Replace(next, _env.Uninstaller, null);
+        else File.Move(next, _env.Uninstaller);
         Step("바로가기");
         SetLink(_env.MenuLink, options.StartMenu); SetLink(_env.DesktopLink, options.Desktop);
         Step("설치된 앱 등록"); Registration.Register(version);

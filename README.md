@@ -9,7 +9,7 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 
 ## 설치
 
-1. [DeskCards-Setup.exe](https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-Setup.exe)를 받습니다. **설치할 때 인터넷 연결이 필요합니다.**
+1. [DeskCards-Setup.exe](https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-Setup.exe)를 받습니다. 앱이 들어 있어서 설치할 때 인터넷이 없어도 됩니다. 설치한 뒤에는 앱이 스스로 업데이트합니다.
 2. 실행해서 안내에 따라 [다음]을 누르면 됩니다. 관리자 권한은 필요 없고, .NET을 따로 설치하지 않아도 됩니다.
    - 설치 위치: `%LOCALAPPDATA%\Programs\Desk Cards` (고정)
    - 추가 작업: 시작 메뉴 바로가기, 바탕화면 바로가기, Windows 시작 시 자동 실행
@@ -231,18 +231,19 @@ dotnet build src/DeskCards -c Release
 
 실행 파일은 `src/DeskCards/bin/Release/net10.0-windows/DeskCards.exe`에 생깁니다.
 
-설치 파일까지 만들려면 .NET Framework 4.8 Developer Pack이 더 필요합니다. 설치기는 `net48` WPF이고 외부 NuGet 패키지를 사용하지 않습니다. 앱은 .NET 10 self-contained를 유지합니다.
+설치 파일까지 만들려면 아래를 실행합니다. 설치기는 `net48` WPF이고, .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드됩니다. 앱은 .NET 10 self-contained를 유지합니다.
 
 ```
 pwsh -File installer/build.ps1
 ```
 
-`installer/dist/app/`에 `DeskCards-win-x64.zip`과 `.sha256`, `installer/dist/installer/`에 `DeskCards-Setup.exe`가 생깁니다.
-`-App` 또는 `-Installer`를 붙이면 해당 구성만 빌드합니다. 버전은 각 프로젝트의 `<Version>`에서 읽습니다.
+`installer/dist/release/`에 세 파일이 생깁니다.
+- `DeskCards-Setup.exe`: 앱 zip을 품은 설치기
+- `DeskCards-win-x64.zip`(+`.sha256`): 앱 자체 업데이트용. `DeskCards.exe`, 제거기 `uninstall.exe`, `version.txt`
 
-앱은 `app-vX.Y.Z` 태그로 먼저 올리고(`--latest=false`), 설치기는 `installer-vX.Y.Z` 태그로 **Latest**로 올립니다.
-첫 배포는 둘 다 `0.2.0`입니다. 기존 `v0.1.0`에는 새 형식의 파일이 없으므로 이 배포 전에는 웹 설치기로 앱을 받을 수 없습니다.
-빌드 스크립트는 업로드 명령을 출력만 합니다. 앱과 설치기의 버전은 이후 따로 올릴 수 있으며 설치기는 자신의 버전 이상인 앱만 받습니다.
+버전은 저장소 루트의 `Directory.Build.props` 한 곳에서 앱·설치기·제거기가 함께 씁니다.
+릴리스는 버전마다 하나(`app-vX.Y.Z`)에 세 파일을 올리고 **Latest**로 표시합니다. 빌드 스크립트는 업로드 명령을 출력만 합니다.
+이미 배포된 앱이 업데이트를 계속 받을 수 있도록 지켜야 할 것은 [docs/installer-spec.md](docs/installer-spec.md) 5장에 있습니다.
 
 ## 회귀 테스트
 

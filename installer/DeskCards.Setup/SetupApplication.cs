@@ -20,7 +20,7 @@ internal static class SetupApplication
         Theme.Apply();
         string exe = Assembly.GetExecutingAssembly().Location;
         var env = SetupEnvironment.Production();
-        bool uninstall = args.Any(a => a.Equals("/uninstall", StringComparison.OrdinalIgnoreCase));
+        bool uninstall = UninstallMode(args);
         try
         {
             string? target = Argument(args, "/target");
@@ -47,11 +47,10 @@ internal static class SetupApplication
                 Process.Start(new ProcessStartInfo(copy, "/uninstall /target " + Quote(env.InstallDir)) { UseShellExecute = false });
                 return;
             }
-            Version buildVersion = Assembly.GetExecutingAssembly().GetName().Version!;
-            var version = new Version(buildVersion.Major, buildVersion.Minor, buildVersion.Build);
-            using var http = new HttpDownloads(version);
-            var engine = new SetupEngine(env, http, new WindowsAppProcesses(), new ShellShortcuts());
-            var window = new MainWindow(env, engine, new ReleaseService(http, new SetupLog(env), version), exe, uninstall, tempCopy);
+            var package = EmbeddedPackage.Load();
+            if (!uninstall && package == null) throw new InvalidOperationException("설치기에 앱이 들어 있지 않습니다.");
+            var engine = new SetupEngine(env, package, new WindowsAppProcesses(), new ShellShortcuts());
+            var window = new MainWindow(env, engine, uninstall, tempCopy);
             using var stop = new ManualResetEvent(false);
             var listener = new Thread(() =>
             {
@@ -75,6 +74,16 @@ internal static class SetupApplication
             ShowStartupFailure(app, env.LogPath);
         }
     }
+
+    /// <summary>제거기 전용 빌드(uninstall.exe)는 인자와 상관없이 늘 제거 모드다.</summary>
+    internal static bool UninstallMode(string[] args, bool uninstallerBuild = UninstallerBuild) =>
+        uninstallerBuild || args.Any(a => a.Equals("/uninstall", StringComparison.OrdinalIgnoreCase));
+
+#if UNINSTALLER
+    internal const bool UninstallerBuild = true;
+#else
+    internal const bool UninstallerBuild = false;
+#endif
 
     private static string? Argument(string[] args, string name)
     {
