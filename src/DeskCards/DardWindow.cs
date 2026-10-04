@@ -59,7 +59,11 @@ internal sealed class DardWindow : DeskCard
     protected override void OnEditChanged(bool editing) => _view.Freeze(editing);
 
     /// <summary>페이지를 다시 불러온다(우클릭 메뉴).</summary>
-    public void Reload() => _view.Reload();
+    public void Reload() => Mgr.ReloadDardWindow(this);
+
+    internal void ReloadPage() => _view.Reload();
+
+    internal void ShowError(string text) => _view.ShowError(text);
 
     protected override void OnClosed(EventArgs e)
     {

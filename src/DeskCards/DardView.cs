@@ -160,10 +160,11 @@ internal sealed class DardView : Grid
 
     private string PageUrl => $"https://{PageHost}/{_page}";
 
-    private void ShowError(string text)
+    internal void ShowError(string text)
     {
         _error.Text = text;
         _error.Visibility = Visibility.Visible;
+        _snapshot.Visibility = Visibility.Collapsed;
         _web.Visibility = Visibility.Collapsed;
     }
 

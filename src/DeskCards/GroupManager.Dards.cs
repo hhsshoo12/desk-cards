@@ -16,15 +16,35 @@ internal sealed partial class GroupManager
         // 환경이 모든 자원을 놓은 뒤 한 번만 통지한다. 카드별 ProcessFailed에서는 재생성하지 않는다.
         _debounce.Dispatcher.BeginInvoke(() =>
         {
-            if (_shuttingDown) return;
-            foreach (var runtime in _dards.Values.Where(r => string.Equals(
-                Path.GetFullPath(Path.Combine(AppPaths.WebDataDir, r.Package.Internet ? "online" : "offline")),
-                profile, StringComparison.OrdinalIgnoreCase)).ToList())
-            {
-                DardSettingsWindow.CloseFor(runtime);
-                foreach (var card in runtime.Windows.ToList()) RecreateDardWindow(card);
-            }
+            RecoverBrowserCards(profile);
         });
+    }
+
+    private void RecoverBrowserCards(string profile)
+    {
+        if (_shuttingDown) return;
+        bool blocked = DardStorage.BrowserRecoveryBlocked(profile);
+        foreach (var runtime in _dards.Values.Where(r => string.Equals(
+            DardStorage.ProfileDir(r.Package.Internet), profile, StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            DardSettingsWindow.CloseFor(runtime);
+            foreach (var card in runtime.Windows.ToList())
+            {
+                if (blocked) card.ShowError(DardStorage.BrowserRecoveryError);
+                else RecreateDardWindow(card);
+            }
+        }
+    }
+
+    /// <summary>사용자가 다시 불러올 때만 자동 복구의 횟수와 중단 상태를 초기화한다.</summary>
+    internal void ReloadDardWindow(DardWindow card)
+    {
+        if (_shuttingDown || card.Runtime.WindowFor(card.Info.Id) != card) return;
+        string profile = DardStorage.ProfileDir(card.Runtime.Package.Internet);
+        bool blocked = DardStorage.BrowserRecoveryBlocked(profile);
+        DardStorage.ResetBrowserRecovery(card.Runtime.Package.Internet);
+        if (blocked) RecoverBrowserCards(profile);
+        else card.ReloadPage();
     }
 
     private readonly Dictionary<string, DardRuntime> _dards = new(StringComparer.OrdinalIgnoreCase); // 파일 경로 → 불러온 카드

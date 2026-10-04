@@ -20,6 +20,8 @@ internal static partial class DardStorage
 {
     private static readonly Dictionary<string, Task<CoreWebView2Environment>> _environments = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, Task<Keeper>> _keepers = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, BrowserRecoveryPolicy> _browserRecovery = new(StringComparer.OrdinalIgnoreCase);
+    internal const string BrowserRecoveryError = "브라우저가 반복해서 종료되어 자동 복구를 멈췄어요. 카드 메뉴에서 '다시 불러오기'를 누르거나 앱을 다시 켜 주세요.";
     private static readonly SemaphoreSlim _moving = new(1, 1);
     internal static event Action<string>? BrowserLost;
 
@@ -44,12 +46,18 @@ internal static partial class DardStorage
     public static Task<CoreWebView2Environment> Environment(bool internet)
         => EnvironmentAt(ProfileDir(internet), internet);
 
-    private static string ProfileDir(bool internet) => Path.Combine(AppPaths.WebDataDir, internet ? "online" : "offline");
+    internal static string ProfileDir(bool internet) => Path.GetFullPath(Path.Combine(AppPaths.WebDataDir, internet ? "online" : "offline"));
+
+    internal static bool BrowserRecoveryBlocked(string path) =>
+        _browserRecovery.TryGetValue(Path.GetFullPath(path), out var recovery) && recovery.Blocked;
+
+    internal static void ResetBrowserRecovery(bool internet) => _browserRecovery.Remove(ProfileDir(internet));
 
     private static Task<CoreWebView2Environment> EnvironmentAt(string path, bool internet)
     {
         const string webrtc = "--force-webrtc-ip-handling-policy=disable_non_proxied_udp --webrtc-ip-handling-policy=disable_non_proxied_udp";
         path = Path.GetFullPath(path);
+        if (BrowserRecoveryBlocked(path)) throw new InvalidOperationException(BrowserRecoveryError);
         if (_environments.TryGetValue(path, out var cached) && !cached.IsFaulted) return cached;
         // 잘못된 저장 경로는 브라우저 시작 전에 I/O 오류로 돌려준다.
         Directory.CreateDirectory(path);
@@ -63,15 +71,20 @@ internal static partial class DardStorage
             new CoreWebView2EnvironmentOptions(
                 $"--proxy-server=http://{endpoint} --proxy-bypass-list=<-loopback> --disable-quic " +
                 $"--host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE {endpoint.Address}\" " + webrtc));
-        env.BrowserProcessExited += (_, _) => InvalidateBrowser(path, env);
+        env.BrowserProcessExited += (_, e) => InvalidateBrowser(path, env, e.BrowserProcessExitKind == CoreWebView2BrowserProcessExitKind.Failed);
         return env;
     }
 
-    private static void InvalidateBrowser(string path, CoreWebView2Environment env)
+    private static void InvalidateBrowser(string path, CoreWebView2Environment env, bool failed)
     {
         if (!_environments.TryGetValue(path, out var current) || !current.IsCompletedSuccessfully || !ReferenceEquals(current.Result, env)) return;
         _environments.Remove(path);
         if (_keepers.Remove(path, out var keeper)) _ = DisposeKeeper(keeper);
+        // 모든 화면을 정상적으로 닫은 경우도 통지된다. 정상 종료는 복구 횟수에 넣지 않는다.
+        if (!failed) return;
+        if (!_browserRecovery.TryGetValue(path, out var recovery))
+            _browserRecovery[path] = recovery = new BrowserRecoveryPolicy();
+        recovery.RecordExit(System.Environment.TickCount64);
         BrowserLost?.Invoke(path);
     }
 
