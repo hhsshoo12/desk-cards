@@ -20,7 +20,7 @@ internal sealed class Config
     /// <summary>.dard 카드 승인 기록. 매니페스트 id → 승인한(또는 거절한) 파일 해시. 카드 파일이 스스로 적을 수 없게 여기 둔다.</summary>
     public Dictionary<string, DardApproval> Dards { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>.dard 저장소가 지금 있는 곳(DardPackage.StorageLocation). 매니페스트 id → "offline/shared" 등. 바뀌면 불러오기 전에 옮긴다.</summary>
+    /// <summary>.dard 저장소가 지금 있는 곳(DardPackage.StorageLocation). 매니페스트 id → "offline/v2/shared" 등. 바뀌면 불러오기 전에 옮긴다.</summary>
     public Dictionary<string, string> DardStorage { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>저장소를 옮기는 중인 .dard(매니페스트 id → 옮겨 갈 위치). 끝나면 지운다. 남아 있으면 지난번에 옮기다 멈춘 것이다.</summary>

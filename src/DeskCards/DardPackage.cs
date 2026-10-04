@@ -107,10 +107,8 @@ internal sealed class DardPackage
     public IReadOnlyList<string> Origins =>
         StoragePerCard ? Cards.Select(c => "https://" + HostFor(c.Id)).ToList() : new[] { "https://" + Host };
 
-    /// <summary>카드의 옛 저장소 위치(perCard 방식이었는지에 따라)에서 이 카드가 쓰던 origin.</summary>
+    /// <summary>카드별 저장인지에 따라 이 카드가 쓰는 origin. 저장 방식을 바꿀 때 옮길 출발점·도착점을 구한다.</summary>
     public string OriginFor(string cardId, bool perCard) => "https://" + HostFor(cardId, perCard);
-
-    public string LegacyOriginFor(string cardId, bool perCard) => "https://" + (perCard ? cardId + "." : "") + Id + ".card.desk";
 
     /// <summary>이 .dard의 주소인지(다른 카드의 주소 포함).</summary>
     public bool OwnsHost(string host) =>

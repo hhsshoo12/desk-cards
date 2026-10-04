@@ -137,11 +137,8 @@ internal static partial class DardStorage
     }
 
     private static Task<Keeper> KeeperFor(bool internet)
-        => KeeperAt(ProfileDir(internet), internet);
-
-    private static Task<Keeper> KeeperAt(string path, bool internet)
     {
-        path = Path.GetFullPath(path);
+        string path = ProfileDir(internet);
         if (!_keepers.TryGetValue(path, out var keeper) || keeper.IsFaulted)
             _keepers[path] = keeper = Keeper.CreateAsync(path, internet);
         return keeper;

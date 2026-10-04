@@ -12,7 +12,6 @@ namespace DeskCards;
 internal static partial class DardStorage
 {
     public static bool IsLocation(string? location) => location is
-        "legacy/shared" or "offline/shared" or "offline/card" or "online/shared" or "online/card" or
         "offline/v2/shared" or "offline/v2/card" or "online/v2/shared" or "online/v2/card";
 
     public static (bool Internet, bool PerCard) ParseLocation(string location)
@@ -21,7 +20,7 @@ internal static partial class DardStorage
         return (location.StartsWith("online", StringComparison.Ordinal), location.EndsWith("/card", StringComparison.Ordinal));
     }
 
-    /// <summary>설정이 없을 때 기존 저장소 목록, 마지막 이전 기록, 구버전 프로필에서 출발점을 찾는다.</summary>
+    /// <summary>설정이 없을 때 마지막 이전 기록과 기존 저장소 목록에서 출발점을 찾는다.</summary>
     public static string? FindLocation(DardPackage pkg)
     {
         var pending = ReadMove(pkg.Id);
@@ -31,11 +30,9 @@ internal static partial class DardStorage
             var origins = Recorded(internet).Where(p => p.Value == pkg.Id).Select(p => p.Key).ToList();
             if (origins.Count == 0) continue;
             string env = internet ? "online" : "offline";
-            if (origins.Contains("https://" + pkg.Host)) return env + "/v2/shared";
-            if (origins.Any(o => o.EndsWith(".c--v2.card.desk", StringComparison.Ordinal))) return env + "/v2/card";
-            return env + (origins.Contains(pkg.LegacyOriginFor("", false)) ? "/shared" : "/card");
+            return env + (origins.Contains("https://" + pkg.Host) ? "/v2/shared" : "/v2/card");
         }
-        return Directory.Exists(Path.Combine(AppPaths.WebDataDir, "EBWebView", "Default")) ? "legacy/shared" : null;
+        return null;
     }
 
     private sealed record TransferOrigin(string From, string To, string Archive);
@@ -91,7 +88,6 @@ internal static partial class DardStorage
         await _moving.WaitAsync();
         try
         {
-            var move = ReadMove(id);
             foreach (bool internet in new[] { false, true })
             {
                 var origins = Recorded(internet).Where(p => p.Value == id).Select(p => p.Key).ToList();
@@ -100,12 +96,6 @@ internal static partial class DardStorage
                 foreach (string origin in origins)
                     await keeper.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
                 UpdateIndex(internet, index => origins.ForEach(o => index.Remove(o)));
-            }
-            if (move?.From == "legacy/shared")
-            {
-                var legacy = await KeeperAt(AppPaths.WebDataDir, false);
-                foreach (string origin in move.Origins.Select(p => p.From).Distinct())
-                    await legacy.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
             }
             string dir = MoveDir(id);
             if (Directory.Exists(dir))
@@ -127,12 +117,9 @@ internal static partial class DardStorage
     public static async Task<int> MoveAsync(DardPackage pkg, string fromLocation)
     {
         var (fromNet, fromPerCard) = ParseLocation(fromLocation);
-        bool legacyProfile = fromLocation == "legacy/shared";
-        bool sameEnv = !legacyProfile && fromNet == pkg.Internet;
-        bool oldOrigins = !fromLocation.Contains("/v2/", StringComparison.Ordinal);
+        bool sameEnv = fromNet == pkg.Internet;
         var pairs = pkg.Cards.Select(c => new TransferOrigin(
-            oldOrigins ? pkg.LegacyOriginFor(c.Id, fromPerCard) : pkg.OriginFor(c.Id, fromPerCard),
-            pkg.OriginFor(c.Id, pkg.StoragePerCard), ""))
+            pkg.OriginFor(c.Id, fromPerCard), pkg.OriginFor(c.Id, pkg.StoragePerCard), ""))
             .DistinctBy(p => p.To).Where(p => !sameEnv || p.From != p.To)
             .Select((p, i) => p with { Archive = i + ".zip" }).ToList();
         await _moving.WaitAsync();
@@ -149,27 +136,27 @@ internal static partial class DardStorage
                 move = new MoveRecord { From = fromLocation, To = pkg.StorageLocation, Origins = pairs };
                 WriteAtomic(path, move);
             }
-            var from = legacyProfile ? await KeeperAt(AppPaths.WebDataDir, false) : await KeeperFor(fromNet);
+            var from = await KeeperFor(fromNet);
             var to = await KeeperFor(pkg.Internet);
             await PrepareAsync(pkg);
-            await ExportMoveAsync(from, move, legacyProfile, fromNet, pkg.Id, dir, path);
+            await ExportMoveAsync(from, move, fromNet, pkg.Id, dir, path);
             await ImportMoveAsync(to, move, dir, path);
-            await ClearMoveSourceAsync(from, move, sameEnv, legacyProfile, fromNet);
+            await ClearMoveSourceAsync(from, move, sameEnv, fromNet);
             return move.Skipped;
         }
         finally { _moving.Release(); }
     }
 
-    private static async Task ExportMoveAsync(Keeper from, MoveRecord move, bool legacyProfile, bool fromNet, string id, string dir, string path)
+    private static async Task ExportMoveAsync(Keeper from, MoveRecord move, bool fromNet, string id, string dir, string path)
     {
         if (!move.Exported)
         {
             move.Skipped = 0;
-            var recorded = legacyProfile ? new Dictionary<string, string>() : Recorded(fromNet);
+            var recorded = Recorded(fromNet);
             foreach (var p in move.Origins)
             {
                 if (recorded.TryGetValue(p.From, out string? owner) && owner != id)
-                    throw new IOException("예전 저장소 주소를 다른 카드도 사용하고 있어 자동으로 옮길 수 없어요. 원본 데이터는 그대로 남겨 뒀어요.");
+                    throw new IOException("원래 저장소 주소를 다른 카드도 사용하고 있어 자동으로 옮길 수 없어요. 원본 데이터는 그대로 남겨 뒀어요.");
                 move.Skipped += await from.RunAsync(p.From, MovePage.Export, Path.Combine(dir, p.Archive));
                 using var saved = new FileStream(Path.Combine(dir, p.Archive), FileMode.Open, FileAccess.Write, FileShare.None);
                 saved.Flush(flushToDisk: true);
@@ -193,12 +180,12 @@ internal static partial class DardStorage
         }
     }
 
-    private static async Task ClearMoveSourceAsync(Keeper from, MoveRecord move, bool sameEnv, bool legacyProfile, bool fromNet)
+    private static async Task ClearMoveSourceAsync(Keeper from, MoveRecord move, bool sameEnv, bool fromNet)
     {
         var keep = sameEnv ? move.Origins.Select(p => p.To).ToHashSet() : new HashSet<string>();
         var cleared = move.Origins.Select(p => p.From).Distinct().Where(o => !keep.Contains(o)).ToList();
         foreach (string origin in cleared)
             await from.Cdp("Storage.clearDataForOrigin", new { origin, storageTypes = "all" });
-        if (!legacyProfile) UpdateIndex(fromNet, index => cleared.ForEach(o => index.Remove(o)));
+        UpdateIndex(fromNet, index => cleared.ForEach(o => index.Remove(o)));
     }
 }

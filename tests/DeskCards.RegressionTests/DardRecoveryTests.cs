@@ -105,26 +105,11 @@ internal static partial class Program
             DardStorage.AcknowledgeMove(source.Id);
         });
 
-        RecoveryTest("old origins and the original unsplit profile are migrated", async () =>
+        RecoveryTest("locations from before v2 are not recognized", () =>
         {
-            var pkg = RecoveryPackage("com.test.oldorigin");
-            using (var page = await HiddenPage.Open(await DardStorage.Environment(false), pkg.LegacyOriginFor("", false)))
-                await page.Eval("localStorage.setItem('old','split-profile-value')");
-            await DardStorage.MoveAsync(pkg, "offline/shared");
-            using (var page = await HiddenPage.Open(await DardStorage.Environment(false), pkg.Origins[0]))
-                Check(await page.Eval("localStorage.getItem('old')") == "\"split-profile-value\"");
-            DardStorage.AcknowledgeMove(pkg.Id);
-
-            pkg = RecoveryPackage("com.test.original");
-            var legacy = (Task<CoreWebView2Environment>)typeof(DardStorage).GetMethod("EnvironmentAt", BindingFlags.NonPublic | BindingFlags.Static)!
-                .Invoke(null, new object[] { AppPaths.WebDataDir, false })!;
-            using (var page = await HiddenPage.Open(await legacy, pkg.LegacyOriginFor("", false)))
-                await page.Eval("localStorage.setItem('old','original-profile-value')");
-            Check(DardStorage.FindLocation(pkg) == "legacy/shared");
-            await DardStorage.MoveAsync(pkg, "legacy/shared");
-            using (var page = await HiddenPage.Open(await DardStorage.Environment(false), pkg.Origins[0]))
-                Check(await page.Eval("localStorage.getItem('old')") == "\"original-profile-value\"");
-            DardStorage.AcknowledgeMove(pkg.Id);
+            foreach (string old in new[] { "legacy/shared", "offline/shared", "offline/card", "online/shared", "online/card" })
+                Check(!DardStorage.IsLocation(old));
+            return Task.CompletedTask;
         });
 
         RecoveryTest("browser environments follow isolated paths", async () =>
@@ -200,8 +185,8 @@ internal static partial class Program
             Check(!DardStorage.Recorded(false).ContainsValue(source.Id) && !DardStorage.Recorded(true).ContainsValue(source.Id));
             using var cleared = await HiddenPage.Open(await DardStorage.Environment(true), target.Origins[0]);
             Check(await cleared.Eval("localStorage.getItem('removed')") == "null");
-            // 원본 프로필은 다른 테스트가 만들었으므로 legacy/shared를 찾을 수 있지만, 삭제한 이전 기록은 없어야 한다.
-            Check(DardStorage.FindLocation(source) != source.StorageLocation && DardStorage.FindLocation(source) != target.StorageLocation);
+            // 이전 기록과 저장소 목록을 모두 지웠으므로 출발점을 찾을 수 없어야 한다.
+            Check(DardStorage.FindLocation(source) == null);
         });
 
         RecoveryTest("shared and per-card storage migrate within one browser", async () =>
