@@ -38,6 +38,7 @@ internal sealed class DardView : Grid
     private double _zoom = 1;
     private int? _usedInput;
     private bool _frozen, _closed;
+    private readonly RendererRecoveryPolicy _rendererRecovery = new();
 
     /// <param name="settings">settings.html(설정 화면)인지, card.html(카드)인지.</param>
     /// <param name="viewport">페이지가 보는 화면 크기(CSS 픽셀). 실제 크기와의 차이는 확대 비율로 맞춘다.</param>
@@ -130,7 +131,12 @@ internal sealed class DardView : Grid
         // 카드 자신의 주소는 파일 두 장만 준다. 다른 주소는 internet 권한이 있을 때만 그대로 내보낸다.
         core.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         core.WebResourceRequested += OnResourceRequested;
-        core.NavigationStarting += (_, e) => { if (e.Uri != PageUrl) e.Cancel = true; };
+        core.NavigationStarting += (_, e) =>
+        {
+            if (e.Uri != PageUrl) e.Cancel = true;
+            else _rendererRecovery.Reset();
+        };
+        core.NavigationCompleted += (_, e) => { if (e.IsSuccess) _rendererRecovery.Reset(); };
         core.FrameNavigationStarting += (_, e) => e.Cancel = true;
         core.NewWindowRequested += (_, e) => e.Handled = true;
         core.PermissionRequested += (_, e) => e.State = CoreWebView2PermissionState.Deny;
@@ -141,8 +147,8 @@ internal sealed class DardView : Grid
         {
             if (_closed) return;
             // BrowserProcessExited는 환경의 종료 통지가 캐시/keeper와 카드들을 함께 복구한다.
-            // GPU·보조 프로세스는 런타임의 자동 복구에 맡긴다. 주 렌더러 실패·무응답은 페이지를 다시 연다.
-            if (e.ProcessFailedKind is CoreWebView2ProcessFailedKind.RenderProcessExited or CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+            // GPU·보조 프로세스는 런타임의 자동 복구에 맡긴다. 일시적인 무응답은 기다린다.
+            if (_rendererRecovery.ShouldReload(e.ProcessFailedKind, Environment.TickCount64))
             {
                 try { core.Reload(); }
                 catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
@@ -438,7 +444,11 @@ internal sealed class DardView : Grid
         _web.Focus();
     }
 
-    public void Reload() => _web.CoreWebView2?.Reload();
+    public void Reload()
+    {
+        _rendererRecovery.Reset();
+        _web.CoreWebView2?.Reload();
+    }
 
     /// <summary>창을 닫을 때 부른다. 브라우저 화면을 정리한다.</summary>
     public void Close()

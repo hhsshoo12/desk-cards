@@ -33,6 +33,7 @@ internal static partial class Program
         RevisionTests(root);
         RevisionWindowTests(root);
         BrowserRecoveryTests(root);
+        RendererRecoveryTests();
         ConfigurationTests(root);
         BarSettingsTests(root, app);
         ConfigurationRecoveryTests(root);
