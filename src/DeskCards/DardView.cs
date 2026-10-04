@@ -154,6 +154,8 @@ internal sealed class DardView : Grid
                 catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
                 { ShowError("카드를 다시 열지 못했어요: " + ex.Message); }
             }
+            else if (_rendererRecovery.Blocked && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
+                ShowError(RendererRecoveryPolicy.Error);
         };
 
         await core.AddScriptToExecuteOnDocumentCreatedAsync(DeskScript());
@@ -446,8 +448,15 @@ internal sealed class DardView : Grid
 
     public void Reload()
     {
-        _rendererRecovery.Reset();
-        _web.CoreWebView2?.Reload();
+        _rendererRecovery.Clear();
+        if (_web.CoreWebView2 == null) return;
+        // 자동 다시 열기를 멈추며 띄운 오류를 걷고 페이지를 다시 보인다.
+        if (_error.Visibility == Visibility.Visible)
+        {
+            _error.Visibility = Visibility.Collapsed;
+            _web.Visibility = _frozen ? Visibility.Hidden : Visibility.Visible;
+        }
+        _web.CoreWebView2.Reload();
     }
 
     /// <summary>창을 닫을 때 부른다. 브라우저 화면을 정리한다.</summary>

@@ -39,5 +39,32 @@ internal static partial class Program
             Check(!policy.ShouldReload(hung, 15_000));
             Check(!policy.ShouldReload(hung, 30_000));
         });
+        const CoreWebView2ProcessFailedKind exited = CoreWebView2ProcessFailedKind.RenderProcessExited;
+        Test("renderer recovery: fourth renderer exit within a minute stops automatic reload until cleared", () =>
+        {
+            var policy = new RendererRecoveryPolicy();
+            Check(policy.ShouldReload(exited, 0));
+            Check(policy.ShouldReload(exited, 10_000));
+            Check(policy.ShouldReload(exited, 20_000));
+            Check(!policy.ShouldReload(exited, 30_000));
+            Check(policy.Blocked);
+            Check(!policy.ShouldReload(exited, 200_000)); // 시간이 지나도 저절로 풀리지 않는다.
+            for (long t = 200_000; t <= 230_000; t += 15_000) Check(!policy.ShouldReload(hung, t));
+            policy.Reset(); // 탐색 초기화는 중단을 풀지 않는다.
+            Check(policy.Blocked);
+            policy.Clear(); // 사용자가 다시 불러오기.
+            Check(!policy.Blocked);
+            Check(policy.ShouldReload(exited, 240_000));
+        });
+        Test("renderer recovery: exits spread over more than a minute and navigation resets keep reloading", () =>
+        {
+            var policy = new RendererRecoveryPolicy();
+            for (long t = 0; t < 10 * 25_000; t += 25_000)
+            {
+                Check(policy.ShouldReload(exited, t)); // 1분 창에 최대 세 번만 들어간다.
+                policy.Reset();
+            }
+            Check(!policy.Blocked);
+        });
     }
 }
