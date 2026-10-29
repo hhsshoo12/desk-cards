@@ -1,0 +1,8 @@
+diff --git a/tests/DeskCards.RegressionTests/Program.cs b/tests/DeskCards.RegressionTests/Program.cs
+--- a/tests/DeskCards.RegressionTests/Program.cs
++++ b/tests/DeskCards.RegressionTests/Program.cs
+@@ -29,3 +29,4 @@
+         AppPaths.WebDataDir = Path.Combine(root, "webview2");
+         Console.WriteLine("Sandbox: " + root);
++        TestSessionTests();
+         ReportTests(root);
