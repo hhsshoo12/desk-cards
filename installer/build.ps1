@@ -43,6 +43,21 @@ if ((Get-FileHash -LiteralPath $pythonZip -Algorithm SHA256).Hash.ToLowerInvaria
     throw "Python $pythonVersion zip의 SHA-256이 고정한 값과 달라요. 받은 파일을 지웠어요."
 }
 
+# 카드의 requirements.txt를 설치할 pip(순수 Python wheel). SHA-256은 PyPI가 알려 주는 값이다.
+$pipVersion = '26.2.2'
+$pipSha256 = 'fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70'
+$pipWheel = Join-Path $cache "pip-$pipVersion-py3-none-any.whl"
+if (-not (Test-Path -LiteralPath $pipWheel)) {
+    $ProgressPreference = 'SilentlyContinue'
+    $file = (Invoke-RestMethod -Uri "https://pypi.org/pypi/pip/$pipVersion/json").urls | Where-Object { $_.filename -eq "pip-$pipVersion-py3-none-any.whl" } | Select-Object -First 1
+    if (-not $file) { throw "PyPI에서 pip $pipVersion wheel을 찾지 못했어요." }
+    Invoke-WebRequest -Uri $file.url -OutFile $pipWheel -UseBasicParsing
+}
+if ((Get-FileHash -LiteralPath $pipWheel -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pipSha256) {
+    Remove-Item -LiteralPath $pipWheel -Force
+    throw "pip $pipVersion wheel의 SHA-256이 고정한 값과 달라요. 받은 파일을 지웠어요."
+}
+
 $publishDir = Join-Path $dist ('publish-' + [guid]::NewGuid().ToString('N'))
 $uninstallerDir = Join-Path $dist ('uninstaller-' + [guid]::NewGuid().ToString('N'))
 $zipStage = Join-Path $dist ('zip-' + [guid]::NewGuid().ToString('N'))
@@ -50,7 +65,7 @@ try {
     # 1. 앱
     dotnet publish $appProject -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-        -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:PythonEmbedZip=$pythonZip -o $publishDir -warnaserror
+        -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:PythonEmbedZip=$pythonZip -p:PipWheel=$pipWheel -o $publishDir -warnaserror
     if ($LASTEXITCODE -ne 0) { throw '앱 게시 실패' }
 
     # 2. 제거기: 같은 설치기 코드를 앱 없이, 늘 제거 모드로 빌드한다. 설치기 빌드와 obj·bin을 나눈다.

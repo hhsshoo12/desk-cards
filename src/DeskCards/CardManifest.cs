@@ -6,7 +6,7 @@ using System.Text.RegularExpressions;
 namespace DeskCards;
 
 /// <summary>카드 폴더의 manifest.json. 크기는 카드의 최초 DIP 크기다.</summary>
-internal sealed record CardManifest(string Id, string Name, double Width, double Height, bool Background)
+internal sealed record CardManifest(string Id, string Name, double Width, double Height, bool Background, bool SystemPython = false)
 {
     private static readonly Regex IdPattern = new("^[a-z0-9]+(?:[.-][a-z0-9]+)*$", RegexOptions.CultureInvariant);
 
@@ -33,7 +33,16 @@ internal sealed record CardManifest(string Id, string Name, double Width, double
                     throw new CardManifestException("background는 true 또는 false여야 해요.");
                 background = value.GetBoolean();
             }
-            return new CardManifest(id, name, width, height, background);
+            // "embedded"(기본)는 앱에 품은 Python과 pip, "system"은 PATH의 Python(패키지는 사용자가 알아서)이다.
+            bool systemPython = false;
+            if (root.TryGetProperty("python", out var python))
+            {
+                string? mode = python.ValueKind == JsonValueKind.String ? python.GetString() : null;
+                if (mode is not ("embedded" or "system"))
+                    throw new CardManifestException("python은 \"embedded\" 또는 \"system\"이어야 해요.");
+                systemPython = mode == "system";
+            }
+            return new CardManifest(id, name, width, height, background, systemPython);
         }
         catch (CardManifestException) { throw; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)

@@ -237,7 +237,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
   <h2>남은 질문</h2>
   <ul>
     <li><b>Python 번들 — 결정됨</b>: 앱 exe에 리소스로 품습니다. 자체 업데이트가 exe만 바꿔도 따라오기 때문입니다.</li>
-    <li><b>패키지 설치</b>: 카드의 <code>requirements.txt</code>를 가져올 때 앱이 공용 폴더에 <code>pip install</code> 할지, 사용자가 알아서 할지.</li>
+    <li><b>패키지 설치 — 결정됨</b>: 앱에 품은 pip(wheel)이 카드의 <code>requirements.txt</code>를 카드 폴더 <code>lib/</code>에 <code>--only-binary=:all:</code>로 설치합니다(내용이 바뀐 때만 다시). 빌드가 필요한 패키지는 manifest의 <code>"python": "system"</code>으로 PC의 Python을 쓰게 하고 사용자가 알아서 설치합니다.</li>
     <li><b>절전 모드 — 결정됨</b>: background 카드도 기존 5초 일시정지 정책을 따릅니다.</li>
     <li><b>한 폴더 = 카드 하나 — 결정됨</b>: 새 매니페스트의 id/name/size/background만 사용합니다.</li>
     <li><b>정적 서버 — 구현됨</b>: 앱 내장 TcpListener 서버가 GET/HEAD와 폴더의 자산을 제공합니다.</li>

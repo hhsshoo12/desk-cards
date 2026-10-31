@@ -9,6 +9,7 @@
 - 보이지 않은 채 5초가 지나면 WebView와 Python 프로세스를 일시정지하고, 프로세스는 Job Object로 묶어 앱이 끝나면 함께 정리한다. 서버가 죽으면 오류와 [다시 시작]이 보이고 자동 재시작은 분당 3회까지.
 - 제거기의 "모든 설정과 설치한 카드 지우기"는 `%LOCALAPPDATA%\DeskCards`를 지우는 것으로 충분해져 그룹 루트의 `.dard` 삭제 코드를 뺐다.
 - Python 3.14.10 embeddable(약 12MB)을 앱 exe에 리소스로 품는다. `installer/build.ps1`이 python.org에서 받아 `installer/cache`에 두고 고정한 SHA-256과 비교한 뒤 `-p:PythonEmbedZip=`으로 넘긴다. 처음 쓸 때 `%LOCALAPPDATA%\DeskCards\python\<앱 버전>`에 풀고(다른 버전 폴더는 삭제), `._pth`를 지워 `main.py` 옆 모듈을 import 할 수 있게 한다. 품지 않은 빌드(개발·테스트)는 PATH의 `python`을 쓴다. 자체 업데이트가 exe만 바꾸므로 폴더가 아니라 리소스로 품어야 업데이트된 앱도 Python을 가진다.
+- pip 26.2.2 wheel(PyPI가 알려 주는 SHA-256으로 고정)도 같이 품어 `pip.whl`로 풀고, 카드에 `requirements.txt`가 있으면 `python pip.whl/pip install --target <카드>\lib --only-binary=:all:`로 설치한다(`requirements.txt` 해시를 `lib\.requirements-sha256`에 적어 바뀔 때만 다시). 설치는 `Ready` 안에서 일어나서 서버를 띄우기 전에 끝나고, 실패하면 pip 출력과 함께 카드에 오류가 보인다. manifest `"python": "system"`은 PATH의 Python을 쓰고 pip은 실행하지 않는다. 테스트는 로컬 wheel로 인터넷 없이 확인했다(실제 PyPI 패키지 설치는 확인하지 않았다).
 - 아직 확인하지 않은 것: 서로 다른 DPI 모니터, 실제 설치·제거 마법사, 풀어 둔 Python을 백신이 막는 환경, pip 패키지(없음).
 
 ## 2026-10-04 앱을 품은 설치기로 통합 (0.4.3)

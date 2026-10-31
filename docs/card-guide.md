@@ -11,14 +11,18 @@ DeskCards 카드는 신뢰하는 로컬 앱을 담는 폴더입니다. `desk.*` 
 - 이미지·글꼴·JS·`data/` 등은 필요한 만큼 추가합니다.
 
 ```json
-{"id":"com.example.clock","name":"시계","size":[240,160],"background":false}
+{"id":"com.example.clock","name":"시계","size":[240,160],"background":false,"python":"embedded"}
 ```
 
 `size`는 최초 DIP 크기이며 이후 사용자가 자유롭게 조절합니다. 페이지는 실제 창 크기에 반응하도록 만드세요. 반응형 CSS를 사용하고 고정 확대 배율에 의존하지 마세요.
 
 ## Python 서버 기본형
 
-앱에 Python 3.14(embeddable)가 들어 있어서 따로 설치할 필요가 없습니다. 표준 라이브러리만 있고 pip은 없으니, 외부 패키지가 필요하면 순수 Python 패키지를 카드 폴더(예: `lib/`)에 직접 넣고 `main.py`에서 `sys.path`에 추가하세요. `main.py` 옆의 모듈은 그냥 `import` 됩니다. 앱을 새로 만든 개발 빌드는 PATH의 `python`을 씁니다.
+앱에 Python 3.14(embeddable)와 pip이 들어 있어서 따로 설치할 필요가 없습니다. `main.py` 옆의 모듈은 그냥 `import` 됩니다.
+
+- **외부 패키지**: 카드 폴더에 `requirements.txt`를 두면 카드를 처음 띄울 때(내용이 바뀐 뒤에도) 앱이 `pip install --only-binary=:all:`로 카드 폴더의 `lib/`에 설치합니다. 인터넷이 필요하고, 미리 빌드된(wheel) 패키지만 받을 수 있습니다(`psutil`, `numpy`, `pillow` 등은 대부분 가능). 앱이 `lib/`를 `PYTHONPATH`에 넣어 주므로 `import psutil`만 하면 됩니다. 설치에 실패하면 카드에 오류가 표시됩니다.
+- **빌드가 필요한 패키지나 다른 Python 버전**: manifest에 `"python": "system"`을 쓰면 내장 Python 대신 PC의 Python(PATH의 `python`)으로 실행합니다. 이 경우 앱은 pip을 실행하지 않으니 패키지는 직접 설치하세요(`pip install --target lib …`도 가능). PATH에 Python이 없으면 카드에 오류가 표시됩니다.
+- 앱을 새로 만든 개발 빌드는 내장 Python이 없어 PATH의 `python`을 씁니다.
 
 ```python
 import os

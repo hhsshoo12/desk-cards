@@ -15,7 +15,11 @@ internal static partial class Program
             var card = CardManifest.Load(dir);
             Check(card.Id == "com.example.clock" && card.Name == "시계" && card.Width == 200 && card.Height == 150 && !card.Background);
             File.WriteAllText(path, "{\"id\":\"com.example.clock\",\"name\":\"시계\",\"size\":[200,150],\"background\":true}");
-            Check(CardManifest.Load(dir).Background);
+            Check(CardManifest.Load(dir).Background && !CardManifest.Load(dir).SystemPython);
+            File.WriteAllText(path, "{\"id\":\"com.example.clock\",\"name\":\"시계\",\"size\":[200,150],\"python\":\"system\"}");
+            Check(CardManifest.Load(dir).SystemPython);
+            File.WriteAllText(path, "{\"id\":\"com.example.clock\",\"name\":\"시계\",\"size\":[200,150],\"python\":\"embedded\"}");
+            Check(!CardManifest.Load(dir).SystemPython);
         });
         Test("card manifest: invalid id, size and malformed files report an error", () =>
         {
@@ -27,6 +31,7 @@ internal static partial class Program
                 "{\"id\":\"con.test\",\"name\":\"x\",\"size\":[1,1]}",
                 "{\"id\":\"ok\",\"name\":\"x\",\"size\":[0,1]}",
                 "{\"id\":\"ok\",\"name\":\"x\",\"size\":[1,1],\"background\":\"true\"}",
+                "{\"id\":\"ok\",\"name\":\"x\",\"size\":[1,1],\"python\":\"conda\"}",
                 "{" })
             {
                 File.WriteAllText(path, json);

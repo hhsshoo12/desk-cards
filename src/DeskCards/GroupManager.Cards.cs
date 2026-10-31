@@ -161,7 +161,9 @@ internal sealed partial class GroupManager
                         {
                             var probe = new TcpListener(IPAddress.Parse(item.Address), item.Port);
                             probe.Start(); probe.Stop();
-                            backend = new CardPythonProcess(item.Directory, item.Address, item.Port);
+                            backend = manifest.SystemPython
+                                ? new CardPythonProcess(item.Directory, item.Address, item.Port, "python")
+                                : new CardPythonProcess(item.Directory, item.Address, item.Port, PythonRuntime.Executable(), PythonRuntime.PipWheel());
                         }
                         else backend = new CardStaticServer(item.Directory, IPAddress.Parse(item.Address), item.Port);
                         break;
