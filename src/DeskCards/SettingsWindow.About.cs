@@ -46,6 +46,8 @@ internal partial class SettingsWindow
             Button("라이선스", () => OpenUrl("https://github.com/dotnet/winforms/blob/main/LICENSE.TXT"))));
         AddRow(Row("", "Microsoft Edge WebView2 SDK", "BSD 3조항 라이선스 · Microsoft (웹 카드 화면)",
             Button("라이선스", () => OpenUrl("https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3719.77/License"))));
+        AddRow(Row("", "Python 3.14 (embeddable)", "PSF 라이선스 · Python Software Foundation (웹 카드의 main.py)",
+            Button("라이선스", () => OpenUrl("https://docs.python.org/3/license.html"))));
         AddRow(Row("", ".NET 런타임에 포함된 제3자 구성 요소", "런타임이 함께 싣고 있는 오픈 소스 목록이에요.",
             Button("목록", () => OpenUrl("https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT"))));
 

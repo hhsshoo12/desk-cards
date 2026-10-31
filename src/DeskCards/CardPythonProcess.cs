@@ -19,14 +19,16 @@ internal sealed class CardPythonProcess : IDisposable
     private bool _disposed;
     public event Action<string>? Failed;
     public Task Ready { get; }
-    public CardPythonProcess(string folder, string address, int port)
+    public CardPythonProcess(string folder, string address, int port, string? python = null)
     {
-        var start = new ProcessStartInfo("python")
+        var start = new ProcessStartInfo(python ?? PythonRuntime.Executable())
         {
             WorkingDirectory = folder, UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardError = true, RedirectStandardOutput = true,
         };
         start.ArgumentList.Add("-u"); start.ArgumentList.Add(Path.Combine(folder, "main.py"));
+        start.Environment["PYTHONUTF8"] = "1";
+        start.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
         start.Environment["DESK_ADDR"] = address;
         start.Environment["DESK_PORT"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _process = new Process { StartInfo = start, EnableRaisingEvents = true };

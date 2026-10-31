@@ -27,6 +27,22 @@ function Build-Setup([string[]]$properties) {
     if ($LASTEXITCODE -ne 0) { throw '설치기 빌드 실패' }
 }
 
+# 카드의 main.py를 돌릴 Python(embeddable). 받은 파일은 installer\cache에 두고, 고정한 SHA-256과 다르면 쓰지 않는다.
+# 버전을 바꿀 때는 python.org에서 받은 새 zip의 SHA-256으로 아래 두 값을 함께 고친다.
+$pythonVersion = '3.14.10'
+$pythonSha256 = '90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159'
+$cache = Join-Path $PSScriptRoot 'cache'
+$pythonZip = Join-Path $cache "python-$pythonVersion-embed-amd64.zip"
+if (-not (Test-Path -LiteralPath $pythonZip)) {
+    New-Item -ItemType Directory -Path $cache -Force | Out-Null
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" -OutFile $pythonZip -UseBasicParsing
+}
+if ((Get-FileHash -LiteralPath $pythonZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pythonSha256) {
+    Remove-Item -LiteralPath $pythonZip -Force
+    throw "Python $pythonVersion zip의 SHA-256이 고정한 값과 달라요. 받은 파일을 지웠어요."
+}
+
 $publishDir = Join-Path $dist ('publish-' + [guid]::NewGuid().ToString('N'))
 $uninstallerDir = Join-Path $dist ('uninstaller-' + [guid]::NewGuid().ToString('N'))
 $zipStage = Join-Path $dist ('zip-' + [guid]::NewGuid().ToString('N'))
@@ -34,7 +50,7 @@ try {
     # 1. 앱
     dotnet publish $appProject -c Release -r win-x64 --self-contained true `
         -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-        -p:EnableCompressionInSingleFile=true -p:DebugType=none -o $publishDir -warnaserror
+        -p:EnableCompressionInSingleFile=true -p:DebugType=none -p:PythonEmbedZip=$pythonZip -o $publishDir -warnaserror
     if ($LASTEXITCODE -ne 0) { throw '앱 게시 실패' }
 
     # 2. 제거기: 같은 설치기 코드를 앱 없이, 늘 제거 모드로 빌드한다. 설치기 빌드와 obj·bin을 나눈다.

@@ -25,4 +25,9 @@
     <EmbeddedResource Include="desk.css" />
   </ItemGroup>
 
+  <!-- 릴리스 빌드는 installer/build.ps1이 Python embeddable zip을 넘겨 앱에 품는다. 없으면 PATH의 python을 쓴다. -->
+  <ItemGroup Condition="'$(PythonEmbedZip)' != ''">
+    <EmbeddedResource Include="$(PythonEmbedZip)" LogicalName="DeskCards.python-embed.zip" />
+  </ItemGroup>
+
 </Project>

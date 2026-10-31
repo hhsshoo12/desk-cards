@@ -8,7 +8,8 @@
 - 카드는 폴더(`manifest.json`, `card.html`, 선택 `main.py`)이고 `%LOCALAPPDATA%\DeskCards\cards\<id>\`로 가져온다(연결 모드는 원본 사용). 카드마다 `127.x.y.z` 주소(카드 id 해시)에서 Python 서버 또는 앱의 정적 서버가 열리고 WebView2가 그 주소를 연다.
 - 보이지 않은 채 5초가 지나면 WebView와 Python 프로세스를 일시정지하고, 프로세스는 Job Object로 묶어 앱이 끝나면 함께 정리한다. 서버가 죽으면 오류와 [다시 시작]이 보이고 자동 재시작은 분당 3회까지.
 - 제거기의 "모든 설정과 설치한 카드 지우기"는 `%LOCALAPPDATA%\DeskCards`를 지우는 것으로 충분해져 그룹 루트의 `.dard` 삭제 코드를 뺐다.
-- 아직 확인하지 않은 것: 실제 Python이 없는 PC의 안내, 번들 Python, 서로 다른 DPI 모니터, 실제 설치·제거 마법사.
+- Python 3.14.10 embeddable(약 12MB)을 앱 exe에 리소스로 품는다. `installer/build.ps1`이 python.org에서 받아 `installer/cache`에 두고 고정한 SHA-256과 비교한 뒤 `-p:PythonEmbedZip=`으로 넘긴다. 처음 쓸 때 `%LOCALAPPDATA%\DeskCards\python\<앱 버전>`에 풀고(다른 버전 폴더는 삭제), `._pth`를 지워 `main.py` 옆 모듈을 import 할 수 있게 한다. 품지 않은 빌드(개발·테스트)는 PATH의 `python`을 쓴다. 자체 업데이트가 exe만 바꾸므로 폴더가 아니라 리소스로 품어야 업데이트된 앱도 Python을 가진다.
+- 아직 확인하지 않은 것: 서로 다른 DPI 모니터, 실제 설치·제거 마법사, 풀어 둔 Python을 백신이 막는 환경, pip 패키지(없음).
 
 ## 2026-10-04 앱을 품은 설치기로 통합 (0.4.3)
 

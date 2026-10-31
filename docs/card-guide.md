@@ -18,7 +18,7 @@ DeskCards 카드는 신뢰하는 로컬 앱을 담는 폴더입니다. `desk.*` 
 
 ## Python 서버 기본형
 
-현재 개발 경로는 PATH의 `python`입니다. Python 번들과 requirements.txt 자동 설치는 아직 도입하지 않았으므로 필요한 패키지는 사용자가 해당 Python 환경에 설치합니다.
+앱에 Python 3.14(embeddable)가 들어 있어서 따로 설치할 필요가 없습니다. 표준 라이브러리만 있고 pip은 없으니, 외부 패키지가 필요하면 순수 Python 패키지를 카드 폴더(예: `lib/`)에 직접 넣고 `main.py`에서 `sys.path`에 추가하세요. `main.py` 옆의 모듈은 그냥 `import` 됩니다. 앱을 새로 만든 개발 빌드는 PATH의 `python`을 씁니다.
 
 ```python
 import os

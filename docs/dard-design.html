@@ -170,7 +170,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
     <li>앱은 환경변수 <code>DESK_ADDR</code>, <code>DESK_PORT</code>를 넘기고, 포트가 열릴 때까지 기다린 뒤 WebView를 그 주소로 이동합니다. 시간 안에 안 열리면 카드 안에 오류 화면(로그 보기 포함)을 보여 줍니다.</li>
     <li><b>main.py가 없는 카드</b>(HTML만 있는 카드)는 앱이 같은 주소에서 폴더를 정적으로 제공합니다.</li>
     <li><b>토큰, 호스트 검증을 두지 않습니다.</b> 로컬 앱을 신뢰합니다. 감수하는 위험: 사용자가 브라우저에서 연 웹사이트가 카드의 주소와 포트, 경로를 정확히 알고 요청을 보낼 수 있다는 점(확률이 낮음).</li>
-    <li>현재 개발 구현은 PATH의 Python을 사용합니다. embeddable 번들과 패키지 자동 설치 방식은 후속 결정으로 남깁니다.</li>
+    <li>Python 3.14 embeddable을 앱 실행 파일에 리소스로 품고(약 12MB), 처음 쓸 때 <code>%LOCALAPPDATA%\DeskCards\python\&lt;앱 버전&gt;</code>에 풉니다. 앱을 업데이트하면 새 폴더에 다시 풀고 옛 폴더는 지웁니다. <code>._pth</code> 파일은 지워서 main.py 옆의 모듈을 import 할 수 있게 합니다.</li>
   </ul>
 </section>
 
@@ -236,7 +236,7 @@ th { color: var(--muted); font-weight: 600; font-size: 13px; }
 <section id="open">
   <h2>남은 질문</h2>
   <ul>
-    <li><b>Python 번들 방식</b>: 설치기에 포함할지(약 10MB 증가), 처음 필요할 때 내려받을지.</li>
+    <li><b>Python 번들 — 결정됨</b>: 앱 exe에 리소스로 품습니다. 자체 업데이트가 exe만 바꿔도 따라오기 때문입니다.</li>
     <li><b>패키지 설치</b>: 카드의 <code>requirements.txt</code>를 가져올 때 앱이 공용 폴더에 <code>pip install</code> 할지, 사용자가 알아서 할지.</li>
     <li><b>절전 모드 — 결정됨</b>: background 카드도 기존 5초 일시정지 정책을 따릅니다.</li>
     <li><b>한 폴더 = 카드 하나 — 결정됨</b>: 새 매니페스트의 id/name/size/background만 사용합니다.</li>
