@@ -43,6 +43,7 @@ internal sealed partial class GroupManager
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
         RenameInBar(oldName, newName);
+        foreach (var cardEntry in _cfg.Cards.Where(c => c.Group == oldName)) cardEntry.Group = newName;
         _cfg.Save();
     }
 
@@ -135,11 +136,11 @@ internal sealed partial class GroupManager
         }
     }
 
-    /// <summary>편집 막대의 삭제: 폴더 카드는 그룹을, .dard 카드는 카드 파일을 지운다.</summary>
+    /// <summary>편집 막대의 삭제: 폴더 카드는 그룹을, 웹 카드는 카드 파일을 지운다.</summary>
     public bool DeleteCard(DeskCard card) => card switch
     {
         CardWindow folder => DeleteGroup(folder),
-        DardWindow dard => DeleteDard(dard),
+        WebCardWindow web => DeleteWebCard(web),
         _ => false,
     };
 
@@ -173,6 +174,7 @@ internal sealed partial class GroupManager
         _cfg.Layouts.Remove(g.Name);
         _cfg.Orders.Remove(g.Name);
         RemoveFromBar(g.Name);
+        foreach (var cardEntry in _cfg.Cards.Where(c => c.Group == g.Name)) cardEntry.Group = "";
         _cfg.Save();
         RemoveCard(g.Name);
         RaiseChanged();

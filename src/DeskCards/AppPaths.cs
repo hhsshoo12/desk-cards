@@ -24,7 +24,9 @@ internal static class AppPaths
     /// <summary>카드 위치·크기 등 설정(config.json)이 있는 곳.</summary>
     public static string ConfigDir { get; private set; } = Path.Combine(AppData, NewName);
 
-    /// <summary>.dard 화면(WebView2)의 브라우저 데이터. 로밍되지 않는 로컬 앱 데이터에 둔다.</summary>
+    public static string CardsDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), NewName, "cards");
+
+    /// <summary>웹 카드 화면(WebView2)의 브라우저 데이터. 로밍되지 않는 로컬 앱 데이터에 둔다.</summary>
     public static string WebDataDir { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), NewName, "WebView2");
 

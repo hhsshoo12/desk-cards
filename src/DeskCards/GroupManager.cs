@@ -26,14 +26,14 @@ internal sealed partial class GroupManager
         _cfg = config ?? Config.Load();
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
-        DardStorage.BrowserLost += OnBrowserLost;
+        BrowserEnvironment.BrowserLost += OnBrowserLost;
     }
 
     public string Root { get; }
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
-    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>().Concat(_dards.Values.SelectMany(d => d.Windows));
+    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>().Concat(_webCards.Values.SelectMany(d => d.Windows));
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -77,10 +77,10 @@ internal sealed partial class GroupManager
         _rootWatcher = null;
         try
         {
-            // 폴더(그룹)와 .dard 파일(카드)을 같이 지켜본다.
+            // 그룹 폴더 변경만 카드 목록에 반영한다.
             _rootWatcher = new FileSystemWatcher(Root)
             {
-                NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.FileName | NotifyFilters.Attributes | NotifyFilters.LastWrite | NotifyFilters.Size,
+                NotifyFilter = NotifyFilters.DirectoryName | NotifyFilters.Attributes,
                 IncludeSubdirectories = false,
             };
             FileSystemEventHandler h = (_, _) => Bump();
@@ -124,9 +124,9 @@ internal sealed partial class GroupManager
             _cfg.PositionsPx[card.Key] = new[] { (double)r.Left, r.Top };
             _cfg.Save();
         }
-        if (card is DardWindow dard)
+        if (card is WebCardWindow webCard)
         {
-            RecreateDardWindow(dard);
+            RecreateWebCardWindow(webCard);
             return;
         }
         var folderCard = (CardWindow)card;
@@ -157,7 +157,7 @@ internal sealed partial class GroupManager
             string name = Path.GetFileName(folder);
             if (!_cards.ContainsKey(name)) CreateCard(folder);
         }
-        ReconcileDards();
+        ReconcileImportedCards();
         RaiseChanged();
     }
 
@@ -181,9 +181,9 @@ internal sealed partial class GroupManager
             _cards.Remove(card.Group.Name);
             Detach(card);
         }
-        else if (closed is DardWindow dard)
+        else if (closed is WebCardWindow webCard)
         {
-            UnloadDard(dard.Runtime.Package.Path);
+            UnloadWebCard(webCard.Runtime.Package.Path);
         }
         ScheduleDesktopRecovery();
         RaiseChanged();
@@ -225,7 +225,7 @@ internal sealed partial class GroupManager
     {
         if (_shuttingDown) return;
         _shuttingDown = true;
-        DardStorage.BrowserLost -= OnBrowserLost;
+        BrowserEnvironment.BrowserLost -= OnBrowserLost;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _debounce.Stop();
         _dpiCheck?.Stop();
@@ -235,7 +235,7 @@ internal sealed partial class GroupManager
         _rootWatcher?.Dispose();
         _rootWatchRetry?.Stop();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);
-        foreach (var path in _dards.Keys.ToList()) UnloadDard(path);
+        foreach (var path in _webCards.Keys.ToList()) UnloadWebCard(path);
     }
 
 }

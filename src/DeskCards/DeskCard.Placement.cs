@@ -60,6 +60,7 @@ internal abstract partial class DeskCard
     protected void LayoutFor()
     {
         var size = BaseSize();
+        if (FreeResize && _layout.Width > 0 && _layout.Height > 0) size = new Size(_layout.Width, _layout.Height);
         // 비율 고정 확대: 카드 확대 비율(배율 보정 포함)을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
         double t = ScaleFactor * _layout.Zoom;
         var wa = System.Windows.Forms.Screen.FromHandle(Handle).WorkingArea;
@@ -78,6 +79,8 @@ internal abstract partial class DeskCard
     /// </summary>
     protected virtual void ApplyScale(double t) =>
         Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
+
+    protected virtual bool FreeResize => false;
 
     /// <summary>크기를 다시 적용하고, 작업 영역 밖으로 나갔으면 안쪽으로 당긴다.</summary>
     public void FitToScreen()

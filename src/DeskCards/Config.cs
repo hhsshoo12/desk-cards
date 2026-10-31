@@ -9,6 +9,8 @@ namespace DeskCards;
 /// <summary>그룹 카드 위치를 %APPDATA%\DeskCards\config.json에 저장한다. 그룹 내용 자체는 실제 폴더가 원본이다.</summary>
 internal sealed class Config
 {
+    public List<CardRegistration> Cards { get; set; } = new();
+    public bool CardTrustNoticeShown { get; set; }
     public Dictionary<string, double[]> PositionsPx { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
@@ -16,18 +18,6 @@ internal sealed class Config
 
     /// <summary>카드 안 항목 순서. 그룹 이름 → 파일 이름 목록. 없는 그룹은 이름 순.</summary>
     public Dictionary<string, List<string>> Orders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>.dard 카드 승인 기록. 매니페스트 id → 승인한(또는 거절한) 파일 해시. 카드 파일이 스스로 적을 수 없게 여기 둔다.</summary>
-    public Dictionary<string, DardApproval> Dards { get; set; } = new(StringComparer.Ordinal);
-
-    /// <summary>.dard 저장소가 지금 있는 곳(DardPackage.StorageLocation). 매니페스트 id → "offline/v2/shared" 등. 바뀌면 불러오기 전에 옮긴다.</summary>
-    public Dictionary<string, string> DardStorage { get; set; } = new(StringComparer.Ordinal);
-
-    /// <summary>저장소를 옮기는 중인 .dard(매니페스트 id → 옮겨 갈 위치). 끝나면 지운다. 남아 있으면 지난번에 옮기다 멈춘 것이다.</summary>
-    public Dictionary<string, string> DardMoving { get; set; } = new(StringComparer.Ordinal);
-
-    /// <summary>"그대로 두기"를 고른 카드 데이터 경고(DardIssue.Key). 다시 알리지 않는다.</summary>
-    public List<string> KeptDardData { get; set; } = new();
 
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
@@ -164,16 +154,6 @@ internal sealed class Config
             if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
         cfg.BarEdges = edges;
         cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
-        var dards = new Dictionary<string, DardApproval>(StringComparer.Ordinal);
-        foreach (var (id, approval) in cfg.Dards ?? new())
-            if (!string.IsNullOrEmpty(id) && approval is { Hash.Length: > 0 }) dards[id] = approval.Normalized();
-        cfg.Dards = dards;
-        var dardStorage = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (id, location) in cfg.DardStorage ?? new())
-            if (!string.IsNullOrEmpty(id) && DeskCards.DardStorage.IsLocation(location)) dardStorage[id] = location;
-        cfg.DardStorage = dardStorage;
-        cfg.DardMoving = new Dictionary<string, string>((cfg.DardMoving ?? new()).Where(p => !string.IsNullOrEmpty(p.Key) && dardStorage.ContainsKey(p.Key)), StringComparer.Ordinal);
-        cfg.KeptDardData = cfg.KeptDardData?.Where(k => !string.IsNullOrEmpty(k)).Distinct().ToList() ?? new();
     }
 
     public void Save() => TrySave();
@@ -226,24 +206,20 @@ internal sealed class BarItem
     public BarItem Clone() => new() { Group = Group, X = X, Y = Y, W = W };
 }
 
-/// <summary>.dard 한 종류(매니페스트 id)의 승인. 파일의 SHA-256이 승인할 때와 다르면 권한과 상관없이 다시 묻는다.</summary>
-internal sealed class DardApproval
-{
-    public string Hash { get; set; } = "";
-    public bool Allowed { get; set; }
-    /// <summary>승인한 권한 키(DardPermission.Key).</summary>
-    public List<string> Permissions { get; set; } = new();
-
-    public DardApproval Normalized() => new()
-    {
-        Hash = Hash,
-        Allowed = Allowed,
-        Permissions = Permissions?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? new(),
-    };
-}
-
 /// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>
 internal enum ScreenEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
+
+internal sealed class CardRegistration
+{
+    public string Id { get; set; } = "";
+    public string Directory { get; set; } = "";
+    public string Source { get; set; } = "";
+    public string PythonSource { get; set; } = "";
+    public string Group { get; set; } = "";
+    public bool Linked { get; set; }
+    public string Address { get; set; } = "";
+    public int Port { get; set; } = 47831;
+}
 
 /// <summary>
 /// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.
@@ -256,11 +232,15 @@ internal sealed class CardLayout
     public int Cols { get; set; } = 2;
     public int Rows { get; set; } = 2;
     public double Zoom { get; set; } = 1;
+    public double Width { get; set; }
+    public double Height { get; set; }
 
     public CardLayout Normalized() => new()
     {
         Cols = Math.Clamp(Cols, MinCells, MaxCells),
         Rows = Math.Clamp(Rows, MinCells, MaxCells),
         Zoom = double.IsFinite(Zoom) ? Math.Clamp(Zoom, MinZoom, MaxZoom) : 1,
+        Width = double.IsFinite(Width) && Width > 0 ? Width : 0,
+        Height = double.IsFinite(Height) && Height > 0 ? Height : 0,
     };
 }

@@ -18,7 +18,7 @@ internal sealed class SetupEnvironment
     public string OldConfigDir { get; }
     /// <summary>앱의 로컬 데이터(위젯 카드 브라우저 저장소 등). %LOCALAPPDATA%\DeskCards</summary>
     public string LocalDataDir { get; }
-    /// <summary>그룹 폴더들의 루트와 예전 이름. 설치기는 맨 위의 .dard(설치한 카드)만 지울 수 있고 그룹(하위 폴더)은 건드리지 않는다.</summary>
+    /// <summary>그룹 폴더들의 루트와 예전 이름. 설치기는 이 폴더를 지우지 않는다. 가져온 웹 카드는 LocalDataDir 아래에 있다.</summary>
     public string GroupsDir { get; }
     public string OldGroupsDir { get; }
     public string TempDir { get; }

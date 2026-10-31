@@ -21,20 +21,21 @@ internal static class Menus
         .Item("", "폴더 열기", () => FileOps.OpenFolder(card.Group.Folder))
         .Separator()
         .Item("", "새 그룹", () => mgr.NewGroup())
+        .Item("", "카드 만들기", () => mgr.ImportCardFolder(card.Group.Name))
         .Item("", "그룹 삭제 (항목은 바탕화면으로)", () => mgr.DeleteGroup(card))
         .Separator()
         .Item("", "설정", () => SettingsWindow.Open(mgr, card));
 
-    /// <summary>.dard 카드 메뉴. 카드 위 어디를 우클릭해도 이 메뉴가 뜬다(페이지는 우클릭을 받지 않는다).</summary>
-    public static FluentMenu ForDard(DardWindow card, GroupManager mgr) => new FluentMenu()
-        .Item("", "카드 설정", () => card.Runtime.OpenSettings(card.Info.Id), enabled: card.Runtime.Package.SettingsRatio != null)
+    /// <summary>웹 카드 메뉴. 카드 위 어디를 우클릭해도 이 메뉴가 뜬다(페이지는 우클릭을 받지 않는다).</summary>
+    public static FluentMenu ForWebCard(WebCardWindow card, GroupManager mgr) => new FluentMenu()
+        .Item("", "카드 설정", () => card.Runtime.OpenSettings(card.Info.Id), enabled: card.Runtime.Package.SettingsHtml != null)
         .Item("", "카드 편집 (이동 · 크기 · 삭제)", () => mgr.BeginEditMode(card))
         .Item("", "다시 불러오기", card.Reload)
-        .Item("", "파일 위치 열기", () => FileOps.Reveal(card.Runtime.Package.Path))
+        .Item("", "다시 가져오기", () => mgr.ReimportWebCard(card))
+        .Item("", "폴더 열기", () => FileOps.OpenFolder(card.Runtime.Package.Path))
+        .Item("", "카드 삭제", () => mgr.DeleteWebCard(card), danger: true)
         .Separator()
-        .Item("", "카드 삭제 (.dard를 휴지통으로)", () => mgr.DeleteDard(card), danger: true)
-        .Separator()
-        .Item("", "위젯 설정", () => SettingsWindow.OpenWidget(mgr, card.Runtime.Package.Path));
+        .Item("", "설정", () => SettingsWindow.Open(mgr));
 
     public static FluentMenu ForTray(GroupManager mgr, Action quit) => new FluentMenu()
         .Item("", "설정", () => SettingsWindow.Open(mgr))

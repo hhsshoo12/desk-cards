@@ -271,12 +271,12 @@ internal static partial class Program
         }
     }
 
-    private static void CheckDardEditing(DardWindow card)
+    private static void CheckDardEditing(WebCardWindow card)
     {
-        var view = Visuals<DardView>(card).Single();
+        var view = Visuals<CardWebView>(card).Single();
         var web = view.Children.OfType<Microsoft.Web.WebView2.Wpf.WebView2>().Single();
         var snapshot = view.Children.OfType<Image>().Single();
-        WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "https");
+        WaitUntil(() => web.CoreWebView2 != null && web.Source?.Scheme == "http");
         // 캡처는 문서가 실제로 표시된 뒤 가능하다.
         WaitUntil(() => Eval(web, "document.readyState", wait: false) is "\"complete\"" or "\"interactive\"");
         Check(Eval(web, "document.readyState") is "\"complete\"" or "\"interactive\"");

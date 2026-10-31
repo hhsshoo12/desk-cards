@@ -180,13 +180,15 @@ internal static class Program
         {
             f.Existing();
             string storage = Path.Combine(f.Env.LocalDataDir, "WebView2", "offline"); Directory.CreateDirectory(storage); File.WriteAllText(Path.Combine(storage, "data"), "x");
+            string installedCard = Path.Combine(f.Env.LocalDataDir, "cards", "com.test.card"); Directory.CreateDirectory(installedCard); File.WriteAllText(Path.Combine(installedCard, "main.py"), "# card");
             string group = Path.Combine(f.Env.GroupsDir, "Work"); Directory.CreateDirectory(group);
             File.WriteAllText(Path.Combine(f.Env.GroupsDir, "clock.dard"), "card"); File.WriteAllText(Path.Combine(f.Env.GroupsDir, "notes.txt"), "mine");
             File.WriteAllText(Path.Combine(group, "inside.dard"), "user file"); File.WriteAllText(Path.Combine(group, "doc.txt"), "mine");
             Directory.CreateDirectory(f.Env.OldGroupsDir); File.WriteAllText(Path.Combine(f.Env.OldGroupsDir, "old.DARD"), "card");
             f.Engine.Uninstall(true, _ => { });
             Check(!Directory.Exists(f.Env.LocalDataDir));
-            Check(!File.Exists(Path.Combine(f.Env.GroupsDir, "clock.dard")) && !File.Exists(Path.Combine(f.Env.OldGroupsDir, "old.DARD")));
+            Check(!Directory.Exists(installedCard));
+            Check(File.Exists(Path.Combine(f.Env.GroupsDir, "clock.dard")) && File.Exists(Path.Combine(f.Env.OldGroupsDir, "old.DARD")));
             Check(File.Exists(Path.Combine(f.Env.GroupsDir, "notes.txt")) && File.Exists(Path.Combine(group, "inside.dard")) && File.Exists(Path.Combine(group, "doc.txt")));
         });
         Test("unchecked removal keeps card data and installed cards", f =>

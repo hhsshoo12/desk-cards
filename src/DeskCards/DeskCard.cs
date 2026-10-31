@@ -12,11 +12,11 @@ using System.Windows.Threading;
 namespace DeskCards;
 
 /// <summary>
-/// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)와 .dard 카드(DardWindow)가 같이 쓴다.
+/// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)와 웹 카드(WebCardWindow)가 같이 쓴다.
 /// 평소에는 고정이고, 편집 모드(편집 막대)에서만 옮기고 비율을 유지한 채 크기를 바꿀 수 있다.
 /// 모양(기준 크기)과 안의 내용은 쓰는 쪽이 정한다.
 /// 모든 카드는 Windows 11이 모서리·그림자·아크릴 배경을 그려 주는 보통 창이다.
-/// 폴더 카드는 눌러도 활성화되지 않고, 웹 화면이 있는 .dard 카드만 초점·키보드를 받는다.
+/// 폴더 카드는 눌러도 활성화되지 않고, 웹 화면이 있는 웹 카드만 초점·키보드를 받는다.
 /// </summary>
 internal abstract partial class DeskCard : Window
 {

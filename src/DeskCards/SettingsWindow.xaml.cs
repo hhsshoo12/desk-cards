@@ -70,8 +70,8 @@ internal partial class SettingsWindow : Window
     private PageKind _page = PageKind.Cards;
     private CardWindow? _card;      // 카드 상세 페이지의 대상
     private string? _cardName;      // 그 페이지를 만들 때의 이름(바뀌면 다시 그린다)
-    private string? _dardPath;      // 위젯 상세 페이지의 대상(.dard 파일)
-    private readonly Stack<(PageKind Page, CardWindow? Card, string? Dard)> _history = new();
+    private string? _webCardPath;      // 위젯 상세 페이지의 대상(카드 폴더)
+    private readonly Stack<(PageKind Page, CardWindow? Card, string? WebCard)> _history = new();
     private bool _hiddenForEdit, _buildQueued, _closed;
     private readonly List<Action> _refreshControls = new();
     private Action? _updateRefresh; // 정보 페이지의 업데이트 줄을 지금 상태로
@@ -129,7 +129,7 @@ internal partial class SettingsWindow : Window
         _win.Reveal(mgr);
     }
 
-    /// <summary>설정 창을 위젯 카드(.dard) 페이지로 연다.</summary>
+    /// <summary>설정 창을 위젯 카드(웹 카드) 페이지로 연다.</summary>
     public static void OpenWidget(GroupManager mgr, string path)
     {
         if (!CanOpen(mgr)) return;
@@ -183,18 +183,18 @@ internal partial class SettingsWindow : Window
         Activate();
     }
 
-    private void ShowCard(CardWindow card) => GoTo(PageKind.Card, card, _dardPath);
+    private void ShowCard(CardWindow card) => GoTo(PageKind.Card, card, _webCardPath);
 
     private void ShowWidget(string path) => GoTo(PageKind.Widget, _card, path);
 
-    private void Go(PageKind page) => GoTo(page, _card, _dardPath);
+    private void Go(PageKind page) => GoTo(page, _card, _webCardPath);
 
     /// <summary>페이지를 옮긴다. 지금 페이지는 뒤로 가기 기록에 남긴다.</summary>
-    private void GoTo(PageKind page, CardWindow? card, string? dard)
+    private void GoTo(PageKind page, CardWindow? card, string? webCard)
     {
-        if (page == _page && card == _card && dard == _dardPath) return;
-        _history.Push((_page, _card, _dardPath));
-        Navigate(page, card, dard);
+        if (page == _page && card == _card && webCard == _webCardPath) return;
+        _history.Push((_page, _card, _webCardPath));
+        Navigate(page, card, webCard);
     }
 
     /// <summary>제목 표시줄의 ← · Alt+← · 마우스 뒤로 버튼. 없어진 카드의 페이지는 건너뛴다.</summary>
@@ -202,16 +202,16 @@ internal partial class SettingsWindow : Window
     {
         while (_history.Count > 0)
         {
-            var (page, card, dard) = _history.Pop();
+            var (page, card, webCard) = _history.Pop();
             if (page == PageKind.Card && (card == null || !_mgr.Cards.Contains(card))) continue;
-            if (page == _page && card == _card && dard == _dardPath) continue;
-            Navigate(page, card, dard);
+            if (page == _page && card == _card && webCard == _webCardPath) continue;
+            Navigate(page, card, webCard);
             return;
         }
         UpdateBackButton();
     }
 
-    private void Navigate(PageKind page, CardWindow? card, string? dard)
+    private void Navigate(PageKind page, CardWindow? card, string? webCard)
     {
         var from = _page;
         var slide = IsAbove(page, from) ? Slide.FromLeft
@@ -219,7 +219,7 @@ internal partial class SettingsWindow : Window
             : Slide.Up;
         _page = page;
         _card = card;
-        _dardPath = dard;
+        _webCardPath = webCard;
         if (slide != Slide.Up) CaptureOldPage();
         _smooth.Stop();
         PageScroller.ScrollToVerticalOffset(0);
@@ -268,8 +268,7 @@ internal partial class SettingsWindow : Window
         }
         // 상세 페이지는 입력 중일 수 있으니 카드가 없어졌거나 이름이 바뀐 경우만 다시 그린다.
         // 위젯 페이지도 위젯 상태(켬·끔·버전·카드 수)가 그대로면 값만 맞춘다.
-        if ((_page == PageKind.Card && _card != null && _mgr.Cards.Contains(_card) && _card.Group.Name == _cardName) ||
-            (_page == PageKind.Widget && WidgetState(_dardPath) == _widgetState))
+        if (_page == PageKind.Card && _card != null && _mgr.Cards.Contains(_card) && _card.Group.Name == _cardName)
         {
             foreach (var refresh in _refreshControls) refresh();
             return;
@@ -310,7 +309,6 @@ internal partial class SettingsWindow : Window
     private void Build()
     {
         if (_page == PageKind.Card && (_card == null || !_mgr.Cards.Contains(_card))) _page = PageKind.FolderCards;
-        if (_page == PageKind.Widget && !_mgr.DardEntries().Any(d => SamePath(d.Path, _dardPath))) _page = PageKind.WidgetCards;
         double offset = PageScroller.VerticalOffset;
         _refreshControls.Clear();
         _updateRefresh = null;
@@ -325,8 +323,8 @@ internal partial class SettingsWindow : Window
             case PageKind.Cards: BuildCards(); break;
             case PageKind.FolderCards: BuildFolderCards(); break;
             case PageKind.Card: BuildCard(_card!); break;
-            case PageKind.WidgetCards: BuildWidgetCards(); break;
-            case PageKind.Widget: _widgetState = WidgetState(_dardPath); BuildWidget(_dardPath!); break;
+            case PageKind.WidgetCards:
+            case PageKind.Widget: BuildCards(); break;
             case PageKind.Bar: BuildBar(); break;
             case PageKind.BarKeys: BuildBarKeys(); break;
             case PageKind.General: BuildGeneral(); break;
@@ -338,13 +336,6 @@ internal partial class SettingsWindow : Window
         SelectNav();
         UpdateBackButton();
     }
-
-    private string? _widgetState; // 위젯 페이지를 만들 때의 상태
-
-    private string WidgetState(string? path) =>
-        _mgr.DardEntries().FirstOrDefault(d => SamePath(d.Path, path)) is { } d
-            ? $"{d.State}/{d.Runtime?.Package.Version}/{d.Runtime?.Windows.Count}"
-            : "";
 
     private static bool SamePath(string? a, string? b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 

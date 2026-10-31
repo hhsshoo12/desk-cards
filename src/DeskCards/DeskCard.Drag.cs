@@ -108,11 +108,14 @@ internal abstract partial class DeskCard
     }
 
     private double _gripZoom;
+    private double _gripWidth, _gripHeight;
 
     private void OnGripStart()
     {
         BeginMoveTracking(Handle);
         _gripZoom = _appliedScale / ScaleFactor;
+        _gripWidth = _layout.Width;
+        _gripHeight = _layout.Height;
     }
 
     /// <summary>끌기·크기 조절 시작점(마우스·창 위치)과 안내선 기준이 될 다른 카드 위치를 기억한다.</summary>
@@ -131,6 +134,20 @@ internal abstract partial class DeskCard
         // 손잡이가 모서리와 함께 움직여 증분이 흔들리므로, 잡은 순간부터의 전체 마우스 이동량으로 계산한다.
         Native.GetCursorPos(out var cur);
         var r0 = _moveWindowStart;
+        if (FreeResize)
+        {
+            var area = DesktopGrid.WorkAreaAt(r0.Left + 1, r0.Top + 1);
+            int right = r0.Right + cur.X - _moveCursorStart.X;
+            int bottom = r0.Bottom + cur.Y - _moveCursorStart.Y;
+            var (x, y, guides) = SmartGuides.Snap(right, bottom, 0, 0, _moveOthers, area, Native.MonitorScaleOf(Handle));
+            SmartGuides.Show(area, guides);
+            double factor = DpiScale * ScaleFactor * _layout.Zoom;
+            _layout.Width = Math.Max(40, x - r0.Left) / factor;
+            _layout.Height = Math.Max(40, y - r0.Top) / factor;
+            LayoutFor();
+            SetInvalid(Placement() != SmartGuides.Placement.Ok);
+            return;
+        }
         double w0 = r0.Right - r0.Left, h0 = r0.Bottom - r0.Top;
         double g = ((w0 + cur.X - _moveCursorStart.X) / w0 + (h0 + cur.Y - _moveCursorStart.Y) / h0) / 2;
 
@@ -150,6 +167,7 @@ internal abstract partial class DeskCard
         if (p != SmartGuides.Placement.Ok)
         {
             _layout.Zoom = _gripZoom;
+            if (FreeResize) { _layout.Width = _gripWidth; _layout.Height = _gripHeight; }
             LayoutFor();
         }
         CommitLayout();

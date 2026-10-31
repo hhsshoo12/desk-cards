@@ -12,7 +12,7 @@ internal static class Theme
     /// <summary>창 배경에 Mica·아크릴을 쓸 수 있는지(22H2부터).</summary>
     public static bool HasBackdrop => Environment.OSVersion.Version.Build >= 22621;
 
-    /// <summary>테마(밝게·어둡게)를 다시 적용했을 때. .dard 화면에 새 색을 알려 준다.</summary>
+    /// <summary>테마(밝게·어둡게)를 다시 적용했을 때. 웹 카드 화면에 새 색을 알려 준다.</summary>
     public static event Action? Changed;
 
     public static void Apply()
@@ -74,7 +74,7 @@ internal static class Theme
         Changed?.Invoke();
     }
 
-    /// <summary>.dard 화면에 CSS 변수(--desk-이름)로 넘겨 주는 색. #RRGGBBAA 형식.</summary>
+    /// <summary>웹 카드 화면에 CSS 변수(--desk-이름)로 넘겨 주는 색. #RRGGBBAA 형식.</summary>
     public static System.Collections.Generic.Dictionary<string, string> CssColors()
     {
         var r = Application.Current.Resources;

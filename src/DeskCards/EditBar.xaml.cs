@@ -94,7 +94,7 @@ internal partial class EditBar : Window
         Items.Children.Add(_name);
 
         _gridButton = GridButton();
-        // 이름 바꾸기·칸 수는 폴더 카드에만 있다. .dard 카드는 비율을 카드가 정한다.
+        // 이름 바꾸기·칸 수는 폴더 카드에만 있다. 웹 카드는 비율을 카드가 정한다.
         _folderButtons = new[]
         {
             Btn("", "이름 바꾸기", () => { if (_mgr.Selected is CardWindow c) ExpandedWindow.Open(c, _mgr, editTitle: true); }),

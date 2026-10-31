@@ -15,21 +15,6 @@ internal static partial class Program
 {
     private static void ReportTests(string root)
     {
-        RecoveryTest("report 03: browser rejects SSH and SMTP ports before proxy tunnelling", async () =>
-        {
-            using var page = await HiddenPage.Open(await DardStorage.Environment(true), "https://report-ports.card.desk", interceptAll: false);
-            await page.Core.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
-            var errors = new System.Collections.Generic.List<string>();
-            page.Core.GetDevToolsProtocolEventReceiver("Network.loadingFailed").DevToolsProtocolEventReceived += (_, e) =>
-            {
-                using var json = System.Text.Json.JsonDocument.Parse(e.ParameterObjectAsJson);
-                errors.Add(json.RootElement.GetProperty("errorText").GetString() ?? "");
-            };
-            await page.Eval("for(const p of [22,25]) fetch('https://8.8.8.8:'+p+'/',{mode:'no-cors'}).catch(()=>{});");
-            for (int i = 0; i < 100 && errors.Count < 2; i++) await Task.Delay(20);
-            Console.WriteLine("  browser ports: " + string.Join(", ", errors));
-            Check(errors.Count == 2 && errors.All(e => e == "net::ERR_UNSAFE_PORT"));
-        });
         Test("report 09: completed icon updates bindings on the UI thread", () =>
         {
             string folder = Path.Combine(root, "report-icon-complete"); Directory.CreateDirectory(folder);
@@ -93,43 +78,6 @@ internal static partial class Program
             }
             finally { mgr.Shutdown(); }
         });
-        RecoveryTest("report 11: storage I/O failure returns unknown usage", async () =>
-        {
-            string original = AppPaths.WebDataDir;
-            try
-            {
-                AppPaths.WebDataDir = Path.Combine(root, "unwritable-profile"); File.WriteAllText(AppPaths.WebDataDir, "file blocks directory");
-                Check(await DardStorage.UsageAsync(false, "https://failure.card.desk") == null);
-            }
-            finally { AppPaths.WebDataDir = original; }
-        });
-        RecoveryTest("report 03: traffic keeps relay alive and EOF ends its peer", async () =>
-        {
-            using var first = await LocalPair.Create(); using var second = await LocalPair.Create();
-            var relay = DardProxy.RelayAsync(first.Inside.GetStream(), second.Inside.GetStream(), TimeSpan.FromSeconds(1));
-            try
-            {
-                for (int n = 0; n < 6; n++)
-                {
-                    await first.Outside.GetStream().WriteAsync(new byte[] { (byte)n });
-                    byte[] received = new byte[1];
-                    Check(await second.Outside.GetStream().ReadAsync(received).AsTask().WaitAsync(TimeSpan.FromSeconds(2)) == 1 && received[0] == n);
-                    await Task.Delay(250); Check(!relay.IsCompleted);
-                }
-                first.Outside.Dispose(); await relay.WaitAsync(TimeSpan.FromSeconds(2));
-            }
-            finally { first.Dispose(); second.Dispose(); }
-        });
-        RecoveryTest("report 03: idle tunnel relay releases both directions", async () =>
-        {
-            using var first = await LocalPair.Create();
-            using var second = await LocalPair.Create();
-            var relay = DardProxy.RelayAsync(first.Inside.GetStream(), second.Inside.GetStream(), TimeSpan.FromMilliseconds(150));
-            bool ended = await Task.WhenAny(relay, Task.Delay(2000)) == relay;
-            first.Dispose(); second.Dispose();
-            try { await relay; } catch (IOException) { }
-            Check(ended);
-        });
         Test("report 04: failed group deletion restores already moved files", () =>
         {
             string folder = Path.Combine(root, "report-group"), target = Path.Combine(root, "report-desktop");
@@ -152,49 +100,6 @@ internal static partial class Program
             FileOps.MoveContentsAndDelete(folder, target);
             Check(!Directory.Exists(folder) && File.ReadAllText(Path.Combine(target, ".env (2)")) == "moved");
             Check(File.ReadAllText(Path.Combine(target, ".env")) == "existing" && File.ReadAllText(Path.Combine(target, "nested", "a.txt")) == "nested");
-        });
-        Test("report 01: malformed bridge messages never escape the host", () =>
-        {
-            var mgr = new GroupManager(Path.Combine(root, "report-missing"), Config.Load(Path.Combine(root, "report.json")));
-            var runtime = new DardRuntime(RecoveryPackage("com.test.messages"), mgr, default);
-            var view = new DardView(runtime, "main", false, new Size(100, 100));
-            try
-            {
-                foreach (string json in new[] { "null", "[]", "{", "{\"t\":{}}", "{\"t\":123}",
-                    "{\"t\":\"call\",\"id\":1,\"fn\":{}}",
-                    "{\"t\":\"call\",\"id\":1,\"fn\":\"cards.post\",\"args\":12345}",
-                    "{\"t\":\"call\",\"id\":2,\"fn\":\"openUrl\",\"args\":{}}",
-                    "{\"t\":\"call\",\"id\":3,\"fn\":\"cards.post\",\"args\":{\"to\":[]}}",
-                    "{\"t\":\"call\",\"id\":4,\"fn\":\"cards.post\",\"args\":{\"to\":\"main\",\"data\":{\"ok\":true}}}" })
-                    view.ReceiveMessage(json);
-            }
-            finally { view.Close(); mgr.Shutdown(); }
-        });
-        RecoveryTest("report 02: approved inline script runs but dynamic source does not", async () =>
-        {
-            const string html = """
-                <!doctype html><script>
-                window.approved = true;
-                const s = document.createElement('script');
-                s.textContent = 'window.injected = true'; document.head.appendChild(s);
-                try { new Function('window.evaluated=true')(); } catch {}
-                </script><button onclick="window.handler=true">test</button>
-                """;
-            using var page = await HiddenPage.Open(await DardStorage.Environment(false), "https://report.card.desk", html,
-                "Content-Security-Policy: " + DardView.ContentPolicy(Encoding.UTF8.GetBytes(html), true));
-            Check(await page.Eval("window.approved===true && !window.injected && !window.evaluated") == "true");
-            Check(await page.Eval("document.querySelector('button').click(); !window.handler") == "true");
-        });
-        RecoveryTest("report 02: HTML parsing and line endings preserve approved scripts", async () =>
-        {
-            string html = "<!-- <script>window.fake=true</script> --><textarea><script>window.textarea=true</script></textarea>" +
-                "<SCRIPT data-x='>'>\r\nwindow.unicode='한글';\rwindow.lines=true;\n</SCRIPT>" +
-                "<script type='module'>window.moduleOK=true;</script>" +
-                "<script src='https://untrusted.example/script.js'></script>";
-            var bytes = Encoding.UTF8.GetBytes(html);
-            using var page = await HiddenPage.Open(await DardStorage.Environment(false), "https://report-parser.card.desk", html,
-                "Content-Security-Policy: " + DardView.ContentPolicy(bytes, false));
-            Check(await page.Eval("window.unicode==='한글' && window.lines===true && window.moduleOK===true && !window.fake && !window.textarea") == "true");
         });
         Test("report 05: dotfile collisions keep the filename stem", () =>
         {

@@ -18,8 +18,9 @@ internal static partial class Program
     [STAThread]
     private static int Main()
     {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        using var desktopShell = new IsolatedDesktopShell();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        GroupManager.QuietDardIssues = true; // 경고 확인 창은 그 기능을 보는 테스트에서만 띄운다
         Theme.Apply();
         using var session = DeskCards.Testing.TestSession.Start("앱 회귀 테스트");
         _session = session;
@@ -33,6 +34,9 @@ internal static partial class Program
         RevisionTests(root);
         RevisionWindowTests(root);
         BrowserRecoveryTests(root);
+        CardManifestTests(root);
+        CardStoreTests(root);
+        CardServerTests(root);
         RendererRecoveryTests();
         ConfigurationTests(root);
         BarSettingsTests(root, app);
@@ -41,7 +45,6 @@ internal static partial class Program
         CardWindowTests(root, app);
         SettingsLifecycleTests(root, app);
         DwmCardTests(root);
-        DardTests(root, app);
         UpdateTests(root);
         Console.WriteLine($"Failures: {_failed}");
         session.Dispose();

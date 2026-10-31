@@ -69,7 +69,7 @@ internal partial class MainWindow : Window
             Description.Text = _busy ? "잠시만 기다려 주세요." : "그룹(%USERPROFILE%\\DeskCards 안의 폴더)과 그 안의 파일은 지우지 않아요.";
             if (_busy) return;
             AddCheck("모든 설정과 설치한 카드 지우기", _removeConfig, value => _removeConfig = value);
-            AddParagraph("켜면 카드 위치·크기 같은 설정과, 설치한 위젯 카드(.dard 파일)와 그 데이터를 함께 지워요.");
+            AddParagraph("켜면 카드 위치·크기 같은 설정과, 가져온 웹 카드와 그 데이터를 함께 지워요.");
             return;
         }
         switch (_page)
