@@ -9,7 +9,7 @@ namespace DeskCards;
 
 /// <summary>
 /// 웹 카드의 설정 화면(settings.html). 카드 옆에 아크릴 창으로 뜨고, 밖을 누르거나 Esc를 누르면 닫힌다.
-/// 크기는 매니페스트의 settings.ratio로 정하고, 카드와 같은 주소에서 떠서 카드의 브라우저 저장소를 같이 본다.
+/// 크기는 고정 값이고, 카드와 같은 주소에서 떠서 카드의 브라우저 저장소를 같이 본다.
 /// </summary>
 internal sealed class CardSettingsWindow : Window
 {
