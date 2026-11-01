@@ -26,14 +26,13 @@ internal sealed partial class GroupManager
         _cfg = config ?? Config.Load();
         _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reconcile(); };
-        BrowserEnvironment.BrowserLost += OnBrowserLost;
     }
 
     public string Root { get; }
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
-    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>().Concat(_webCards.Values.SelectMany(d => d.Windows));
+    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>();
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -124,11 +123,6 @@ internal sealed partial class GroupManager
             _cfg.PositionsPx[card.Key] = new[] { (double)r.Left, r.Top };
             _cfg.Save();
         }
-        if (card is WebCardWindow webCard)
-        {
-            RecreateWebCardWindow(webCard);
-            return;
-        }
         var folderCard = (CardWindow)card;
         string folder = folderCard.Group.Folder;
         RemoveCard(folderCard.Group.Name);
@@ -157,7 +151,6 @@ internal sealed partial class GroupManager
             string name = Path.GetFileName(folder);
             if (!_cards.ContainsKey(name)) CreateCard(folder);
         }
-        ReconcileImportedCards();
         RaiseChanged();
     }
 
@@ -180,10 +173,6 @@ internal sealed partial class GroupManager
         {
             _cards.Remove(card.Group.Name);
             Detach(card);
-        }
-        else if (closed is WebCardWindow webCard)
-        {
-            UnloadWebCard(webCard.Runtime.Package.Path);
         }
         ScheduleDesktopRecovery();
         RaiseChanged();
@@ -225,7 +214,6 @@ internal sealed partial class GroupManager
     {
         if (_shuttingDown) return;
         _shuttingDown = true;
-        BrowserEnvironment.BrowserLost -= OnBrowserLost;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _debounce.Stop();
         _dpiCheck?.Stop();
@@ -235,7 +223,6 @@ internal sealed partial class GroupManager
         _rootWatcher?.Dispose();
         _rootWatchRetry?.Stop();
         foreach (var name in _cards.Keys.ToList()) RemoveCard(name);
-        foreach (var path in _webCards.Keys.ToList()) UnloadWebCard(path);
     }
 
 }

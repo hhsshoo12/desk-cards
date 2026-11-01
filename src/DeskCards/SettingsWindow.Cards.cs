@@ -13,7 +13,7 @@ internal partial class SettingsWindow
     private string CardsSignature() => string.Join("|", _mgr.Cards.Select(c =>
         $"{c.Group.Name}/{c.Group.Items.Count}/{c.CurrentLayout.Cols}x{c.CurrentLayout.Rows}/{c.SizePercent}"));
 
-    /// <summary>카드: 편집 시작, 그리고 폴더 카드 › · 위젯 카드 ›.</summary>
+    /// <summary>카드: 편집 시작, 그리고 폴더 카드 ›.</summary>
     private void BuildCards()
     {
         _cardsSignature = CardsSignature();

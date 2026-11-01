@@ -27,17 +27,11 @@ internal static partial class Program
         // Keep the sandbox as diagnostic evidence. Never touch the user's groups/config.
         string root = Path.Combine(Path.GetTempPath(), "DeskCards-regression-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        AppPaths.WebDataDir = Path.Combine(root, "webview2");
         Console.WriteLine("Sandbox: " + root);
         TestSessionTests();
         ReportTests(root);
         RevisionTests(root);
         RevisionWindowTests(root);
-        BrowserRecoveryTests(root);
-        CardManifestTests(root);
-        CardStoreTests(root);
-        CardServerTests(root);
-        RendererRecoveryTests();
         ConfigurationTests(root);
         BarSettingsTests(root, app);
         ConfigurationRecoveryTests(root);

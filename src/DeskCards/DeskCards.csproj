@@ -19,16 +19,8 @@
     <Compile Include="../Shared/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />
     <InternalsVisibleTo Include="DeskCards.RegressionTests" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
     <!-- 설정 창의 앱 아이콘 -->
     <Resource Include="app.ico" />
-    <EmbeddedResource Include="desk.css" />
-  </ItemGroup>
-
-  <!-- 릴리스 빌드는 installer/build.ps1이 Python embeddable zip을 넘겨 앱에 품는다. 없으면 PATH의 python을 쓴다. -->
-  <ItemGroup Condition="'$(PythonEmbedZip)' != ''">
-    <EmbeddedResource Include="$(PythonEmbedZip)" LogicalName="DeskCards.python-embed.zip" />
-    <EmbeddedResource Include="$(PipWheel)" LogicalName="DeskCards.pip.whl" Condition="'$(PipWheel)' != ''" />
   </ItemGroup>
 
 </Project>

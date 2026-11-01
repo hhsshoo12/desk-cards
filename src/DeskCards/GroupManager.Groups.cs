@@ -43,7 +43,6 @@ internal sealed partial class GroupManager
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
         RenameInBar(oldName, newName);
-        foreach (var cardEntry in _cfg.Cards.Where(c => c.Group == oldName)) cardEntry.Group = newName;
         _cfg.Save();
     }
 
@@ -140,7 +139,6 @@ internal sealed partial class GroupManager
     public bool DeleteCard(DeskCard card) => card switch
     {
         CardWindow folder => DeleteGroup(folder),
-        WebCardWindow web => DeleteWebCard(web),
         _ => false,
     };
 
@@ -174,7 +172,6 @@ internal sealed partial class GroupManager
         _cfg.Layouts.Remove(g.Name);
         _cfg.Orders.Remove(g.Name);
         RemoveFromBar(g.Name);
-        foreach (var cardEntry in _cfg.Cards.Where(c => c.Group == g.Name)) cardEntry.Group = "";
         _cfg.Save();
         RemoveCard(g.Name);
         RaiseChanged();

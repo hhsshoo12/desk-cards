@@ -9,8 +9,6 @@ namespace DeskCards;
 /// <summary>그룹 카드 위치를 %APPDATA%\DeskCards\config.json에 저장한다. 그룹 내용 자체는 실제 폴더가 원본이다.</summary>
 internal sealed class Config
 {
-    public List<CardRegistration> Cards { get; set; } = new();
-    public bool CardTrustNoticeShown { get; set; }
     public Dictionary<string, double[]> PositionsPx { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>카드별 미리보기 칸 수와 확대 비율. 그룹 이름 → 배치.</summary>
@@ -208,18 +206,6 @@ internal sealed class BarItem
 
 /// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>
 internal enum ScreenEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
-
-internal sealed class CardRegistration
-{
-    public string Id { get; set; } = "";
-    public string Directory { get; set; } = "";
-    public string Source { get; set; } = "";
-    public string PythonSource { get; set; } = "";
-    public string Group { get; set; } = "";
-    public bool Linked { get; set; }
-    public string Address { get; set; } = "";
-    public int Port { get; set; } = 47831;
-}
 
 /// <summary>
 /// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.

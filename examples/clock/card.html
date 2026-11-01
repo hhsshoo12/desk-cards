@@ -1,7 +1,0 @@
-<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>시계</title>
-<style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}time{font-size:clamp(24px,15vw,64px);font-variant-numeric:tabular-nums}</style>
-<body><time id="clock" aria-label="현재 시각"></time><div id="date" class="desk-caption"></div>
-<script>
-function tick(){const now=new Date();const seconds=localStorage.getItem('seconds')!=='false';document.getElementById('clock').textContent=now.toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',...(seconds?{second:'2-digit'}:{}),hour12:localStorage.getItem('hour12')==='true'});document.getElementById('date').textContent=now.toLocaleDateString('ko-KR',{year:'numeric',month:'long',day:'numeric',weekday:'long'});}
-tick();setInterval(tick,1000);window.addEventListener('storage',tick);
-</script></body></html>

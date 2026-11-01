@@ -74,15 +74,6 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 
 ---
 
-## 웹 카드
-
-그룹 메뉴의 **카드 만들기**에서 폴더, zip/.dard 또는 HTML과 선택 Python 파일을 가져옵니다. 카드는 `%LOCALAPPDATA%\DeskCards\cards\<id>\`에 복사되며 그룹 폴더의 `.dard` 파일을 감시하지 않습니다. 개발용 **연결 모드**는 원본 폴더를 사용하고 변경 시 새로 고칩니다.
-
-카드는 직접 만들었거나 믿는 로컬 앱입니다. 권한 승인·해시 검증·샌드박스·`desk.*` API는 없습니다. `main.py`가 있으면 로컬 서버를 실행하고, 없으면 앱이 폴더를 정적으로 제공합니다. Python은 앱에 품은 3.14 embeddable을 처음 쓸 때 `%LOCALAPPDATA%\DeskCards\python`에 풀어서 씁니다(표준 라이브러리 + 폴더의 `requirements.txt`를 pip으로 `lib`에 설치, wheel만 가능). manifest에 `"python": "system"`을 쓰면 PATH의 Python을 대신 씁니다.
-
-카드 메뉴에서 설정, 다시 시작, 다시 가져오기, 내부 폴더 열기, 삭제를 할 수 있습니다. 카드 크기는 자유롭게 조절하며 페이지는 실제 창 크기를 봅니다. 보이지 않으면 5초 뒤 화면과 백엔드를 일시정지하고, `background: true`인 카드는 가시성 중지에서 제외됩니다.
-
-[카드 제작 지침](docs/card-guide.md)을 AI에게 전달하거나 [시계 예시](examples/clock)를 폴더로 가져오세요. `pwsh -File examples/pack.ps1 clock`은 전체 폴더를 `examples/dist/clock.zip`으로 묶습니다. UI에는 앱이 주입하는 `desk.css` 토큰과 `.desk-*` 클래스를 사용합니다.
 ## 설정
 
 트레이 아이콘을 더블클릭하거나, 펼친 창 오른쪽 위 ⚙ 또는 카드 우클릭 메뉴의 **설정**을 누르면
@@ -208,7 +199,6 @@ Windows 캡처 도구처럼 화면 위쪽 가운데에 막대가 뜨고, 모든 
 ## 요구 사항
 
 - Windows 11 22H2 이상 권장 (그 이전 버전에서는 바탕화면 카드·펼친 창 등의 시스템 아크릴 효과 대신 대체 배경을 씁니다)
-- `.dard` 카드는 Microsoft Edge WebView2 런타임을 씁니다 (Windows 11에는 기본으로 들어 있습니다)
 
 ## 직접 빌드하기
 

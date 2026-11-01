@@ -27,7 +27,7 @@ internal partial class SettingsWindow : Window
     /// <summary>메뉴 한 줄의 높이(36)와 위아래 여백(2+2).</summary>
     private const double NavSlot = 40;
 
-    private enum PageKind { Cards, FolderCards, Card, WidgetCards, Widget, Bar, BarKeys, General, About, DevInfo, Libraries }
+    private enum PageKind { Cards, FolderCards, Card, Bar, BarKeys, General, About, DevInfo, Libraries }
 
     private enum Slide { None, Up, FromRight, FromLeft }
 
@@ -42,9 +42,8 @@ internal partial class SettingsWindow : Window
     /// <summary>하위 페이지의 위 페이지. 맨 위(왼쪽 메뉴에 있는 것)는 null.</summary>
     private static PageKind? ParentOf(PageKind page) => page switch
     {
-        PageKind.FolderCards or PageKind.WidgetCards => PageKind.Cards,
+        PageKind.FolderCards => PageKind.Cards,
         PageKind.Card => PageKind.FolderCards,
-        PageKind.Widget => PageKind.WidgetCards,
         PageKind.BarKeys => PageKind.Bar,
         PageKind.DevInfo => PageKind.About,
         PageKind.Libraries => PageKind.DevInfo,
@@ -70,8 +69,7 @@ internal partial class SettingsWindow : Window
     private PageKind _page = PageKind.Cards;
     private CardWindow? _card;      // 카드 상세 페이지의 대상
     private string? _cardName;      // 그 페이지를 만들 때의 이름(바뀌면 다시 그린다)
-    private string? _webCardPath;      // 위젯 상세 페이지의 대상(카드 폴더)
-    private readonly Stack<(PageKind Page, CardWindow? Card, string? WebCard)> _history = new();
+    private readonly Stack<(PageKind Page, CardWindow? Card)> _history = new();
     private bool _hiddenForEdit, _buildQueued, _closed;
     private readonly List<Action> _refreshControls = new();
     private Action? _updateRefresh; // 정보 페이지의 업데이트 줄을 지금 상태로
@@ -129,25 +127,6 @@ internal partial class SettingsWindow : Window
         _win.Reveal(mgr);
     }
 
-    /// <summary>설정 창을 위젯 카드(웹 카드) 페이지로 연다.</summary>
-    public static void OpenWidget(GroupManager mgr, string path)
-    {
-        if (!CanOpen(mgr)) return;
-        bool fresh = _win == null;
-        _win ??= new SettingsWindow(mgr);
-        _win.GoTo(PageKind.Widget, _win._card, path);
-        if (fresh) _win._history.Clear();
-        _win.Reveal(mgr);
-    }
-
-    /// <summary>설정 창을 위젯 카드 페이지로 연다(카드 데이터 경고에서).</summary>
-    public static void OpenWidgetCards(GroupManager mgr)
-    {
-        if (!CanOpen(mgr)) return;
-        Open(mgr);
-        _win!.Go(PageKind.WidgetCards);
-    }
-
     /// <summary>설정 창을 카드 바 페이지로 연다(카드 바의 설정 버튼에서).</summary>
     public static void OpenBar(GroupManager mgr)
     {
@@ -183,18 +162,16 @@ internal partial class SettingsWindow : Window
         Activate();
     }
 
-    private void ShowCard(CardWindow card) => GoTo(PageKind.Card, card, _webCardPath);
+    private void ShowCard(CardWindow card) => GoTo(PageKind.Card, card);
 
-    private void ShowWidget(string path) => GoTo(PageKind.Widget, _card, path);
-
-    private void Go(PageKind page) => GoTo(page, _card, _webCardPath);
+    private void Go(PageKind page) => GoTo(page, _card);
 
     /// <summary>페이지를 옮긴다. 지금 페이지는 뒤로 가기 기록에 남긴다.</summary>
-    private void GoTo(PageKind page, CardWindow? card, string? webCard)
+    private void GoTo(PageKind page, CardWindow? card)
     {
-        if (page == _page && card == _card && webCard == _webCardPath) return;
-        _history.Push((_page, _card, _webCardPath));
-        Navigate(page, card, webCard);
+        if (page == _page && card == _card) return;
+        _history.Push((_page, _card));
+        Navigate(page, card);
     }
 
     /// <summary>제목 표시줄의 ← · Alt+← · 마우스 뒤로 버튼. 없어진 카드의 페이지는 건너뛴다.</summary>
@@ -202,16 +179,16 @@ internal partial class SettingsWindow : Window
     {
         while (_history.Count > 0)
         {
-            var (page, card, webCard) = _history.Pop();
+            var (page, card) = _history.Pop();
             if (page == PageKind.Card && (card == null || !_mgr.Cards.Contains(card))) continue;
-            if (page == _page && card == _card && webCard == _webCardPath) continue;
-            Navigate(page, card, webCard);
+            if (page == _page && card == _card) continue;
+            Navigate(page, card);
             return;
         }
         UpdateBackButton();
     }
 
-    private void Navigate(PageKind page, CardWindow? card, string? webCard)
+    private void Navigate(PageKind page, CardWindow? card)
     {
         var from = _page;
         var slide = IsAbove(page, from) ? Slide.FromLeft
@@ -219,7 +196,6 @@ internal partial class SettingsWindow : Window
             : Slide.Up;
         _page = page;
         _card = card;
-        _webCardPath = webCard;
         if (slide != Slide.Up) CaptureOldPage();
         _smooth.Stop();
         PageScroller.ScrollToVerticalOffset(0);
@@ -267,7 +243,6 @@ internal partial class SettingsWindow : Window
             return;
         }
         // 상세 페이지는 입력 중일 수 있으니 카드가 없어졌거나 이름이 바뀐 경우만 다시 그린다.
-        // 위젯 페이지도 위젯 상태(켬·끔·버전·카드 수)가 그대로면 값만 맞춘다.
         if (_page == PageKind.Card && _card != null && _mgr.Cards.Contains(_card) && _card.Group.Name == _cardName)
         {
             foreach (var refresh in _refreshControls) refresh();
@@ -304,7 +279,7 @@ internal partial class SettingsWindow : Window
 
     private void OnUpdateChanged() => _updateRefresh?.Invoke();
 
-    private bool ShowsCardList => _page is PageKind.Cards or PageKind.FolderCards or PageKind.WidgetCards or PageKind.Widget;
+    private bool ShowsCardList => _page is PageKind.Cards or PageKind.FolderCards;
 
     private void Build()
     {
@@ -323,8 +298,6 @@ internal partial class SettingsWindow : Window
             case PageKind.Cards: BuildCards(); break;
             case PageKind.FolderCards: BuildFolderCards(); break;
             case PageKind.Card: BuildCard(_card!); break;
-            case PageKind.WidgetCards:
-            case PageKind.Widget: BuildCards(); break;
             case PageKind.Bar: BuildBar(); break;
             case PageKind.BarKeys: BuildBarKeys(); break;
             case PageKind.General: BuildGeneral(); break;

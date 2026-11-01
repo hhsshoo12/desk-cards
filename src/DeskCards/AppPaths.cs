@@ -27,12 +27,6 @@ internal static class AppPaths
     /// <summary>로밍되지 않는 앱 데이터(가져온 카드, 브라우저 데이터, 풀어 둔 Python).</summary>
     public static string LocalDataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), NewName);
 
-    public static string CardsDir => Path.Combine(LocalDataDir, "cards");
-
-    /// <summary>웹 카드 화면(WebView2)의 브라우저 데이터. 로밍되지 않는 로컬 앱 데이터에 둔다.</summary>
-    public static string WebDataDir { get; set; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), NewName, "WebView2");
-
     /// <summary>앱 시작 때 한 번. 예전 이름의 폴더와 자동 실행 등록을 새 이름으로 옮긴다.</summary>
     public static void Migrate()
     {

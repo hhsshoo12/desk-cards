@@ -62,8 +62,8 @@ internal static partial class Program
             var mgr = new GroupManager(Path.Combine(root, "settings-shutdown"), Config.Load(Path.Combine(root, "settings-shutdown.json")));
             System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
             {
-                SettingsWindow.Open(mgr); SettingsWindow.OpenWidget(mgr, "missing.dard");
-                SettingsWindow.OpenWidgetCards(mgr); SettingsWindow.OpenBar(mgr); SettingsWindow.OpenGeneral(mgr);
+                SettingsWindow.Open(mgr);
+                SettingsWindow.OpenBar(mgr); SettingsWindow.OpenGeneral(mgr);
             });
             mgr.Shutdown(); Pump(50);
             Check(!System.Windows.Application.Current.Windows.OfType<SettingsWindow>().Any());
@@ -123,34 +123,6 @@ internal static partial class Program
                 Check(Directory.GetDirectories(folder).Length == 1);
             }
             finally { mgr.Shutdown(); }
-        });
-        RecoveryTest("revision A1: isolated browser crash invalidates environment once", async () =>
-        {
-            string original = AppPaths.WebDataDir;
-            string profile = Path.Combine(root, "browser-crash");
-            int lost = 0;
-            void OnLost(string path) { if (path.StartsWith(profile, StringComparison.OrdinalIgnoreCase)) lost++; }
-            BrowserEnvironment.BrowserLost += OnLost;
-            try
-            {
-                AppPaths.WebDataDir = profile;
-                var pkg = RecoveryPackage("com.test.browsercrash");
-                var env = await BrowserEnvironment.Environment();
-                var page = await HiddenPage.Open(env, pkg.Origins[0]);
-                await page.Async("const r=await navigator.storage.getDirectory();const h=await r.getFileHandle('saved',{create:true});const w=await h.createWritable();await w.write('yes');await w.close();return true;");
-                uint pid = page.Core.BrowserProcessId;
-                Check(env.UserDataFolder.StartsWith(profile, StringComparison.OrdinalIgnoreCase));
-                using (var browser = System.Diagnostics.Process.GetProcessById((int)pid)) browser.Kill();
-                for (int n = 0; n < 400 && lost == 0; n++) await Task.Delay(25);
-                try { page.Dispose(); } catch (System.Runtime.InteropServices.COMException) { }
-                Check(lost == 1);
-                var replacement = await BrowserEnvironment.Environment();
-                Check(!ReferenceEquals(env, replacement));
-                using var restored = await HiddenPage.Open(replacement, pkg.Origins[0]);
-                Check(await restored.Async("const r=await navigator.storage.getDirectory();return await (await (await r.getFileHandle('saved')).getFile()).text();") == "\"yes\"");
-                Check(restored.Core.BrowserProcessId != pid);
-            }
-            finally { BrowserEnvironment.BrowserLost -= OnLost; AppPaths.WebDataDir = original; }
         });
     }
     private sealed class BrokenReadStream : MemoryStream

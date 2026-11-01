@@ -12,7 +12,7 @@ using System.Windows.Threading;
 namespace DeskCards;
 
 /// <summary>
-/// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)와 웹 카드(WebCardWindow)가 같이 쓴다.
+/// 바탕화면에 붙어 있는 카드 창 하나. 폴더 카드(CardWindow)의 바탕이다.
 /// 평소에는 고정이고, 편집 모드(편집 막대)에서만 옮기고 비율을 유지한 채 크기를 바꿀 수 있다.
 /// 모양(기준 크기)과 안의 내용은 쓰는 쪽이 정한다.
 /// 모든 카드는 Windows 11이 모서리·그림자·아크릴 배경을 그려 주는 보통 창이다.

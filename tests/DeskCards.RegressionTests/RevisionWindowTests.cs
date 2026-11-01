@@ -30,43 +30,5 @@ internal static partial class Program
                 finally { mgr.Shutdown(); }
             }
         });
-        Test("revision UI A1: one browser crash recreates every affected card once", () =>
-        {
-            string original = AppPaths.WebDataDir;
-            string profile = Path.Combine(root, "cards-browser-crash");
-            string groups = Path.Combine(root, "cards-browser-crash-groups");
-            Directory.CreateDirectory(groups);
-            string path = Path.Combine(groups, "crash.dard");
-            var pkg = RecoveryPackage("com.test.recovery");
-            var cfg = Config.Load(Path.Combine(root, "cards-browser-crash.json"));
-            AppPaths.WebDataDir = profile;
-            var mgr = new GroupManager(groups, cfg);
-            try
-            {
-                mgr.Start();
-                AttachRecoveryCards(mgr, pkg);
-                var before = mgr.AllCards.OfType<WebCardWindow>().ToList();
-                Check(before.Count == 2);
-                CheckDwmCard(before[0], activatable: true);
-                CheckDardEditing(before[0]);
-                var first = WebOf(before[0]);
-                uint pid = first.CoreWebView2.BrowserProcessId;
-                Check(WebOf(before[1]).CoreWebView2.BrowserProcessId == pid);
-                Check(first.CoreWebView2.Environment.UserDataFolder.StartsWith(profile, StringComparison.OrdinalIgnoreCase));
-                using (var process = System.Diagnostics.Process.GetProcessById((int)pid)) process.Kill();
-                WaitUntilLong(() => mgr.AllCards.OfType<WebCardWindow>().Count() == 2 && !mgr.AllCards.OfType<WebCardWindow>().Any(before.Contains), 15000);
-                var after = mgr.AllCards.OfType<WebCardWindow>().ToList();
-                Check(after.Count == 2 && !after.Any(before.Contains));
-                foreach (var card in after)
-                {
-                    var web = WebOf(card);
-                    Check(web.CoreWebView2.BrowserProcessId != pid);
-                    Check(Eval(web, "document.body.textContent.trim()") == "\"recovered\"");
-                }
-                Pump(500);
-                Check(mgr.AllCards.OfType<WebCardWindow>().SequenceEqual(after));
-            }
-            finally { mgr.Shutdown(); AppPaths.WebDataDir = original; }
-        });
     }
 }
