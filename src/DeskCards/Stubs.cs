@@ -12,16 +12,6 @@ internal static class SettingsWindow
     public static void HideForEdit() { }
 }
 
-internal static class ExpandedWindow
-{
-    public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false, bool hover = false,
-        Func<Size, Point>? place = null, Microsoft.UI.Xaml.Window? anchor = null) { }
-    public static bool IsOpen => false;
-    public static bool IsOpenFor(CardWindow card) => false;
-    public static void CloseCurrent() { }
-    public static void CloseFor(CardWindow card) { }
-}
-
 internal static class BalloonTip
 {
     public sealed record Tip(string Title, string Subtitle, string Action, Action OnAction, Action? NeverShow = null);
