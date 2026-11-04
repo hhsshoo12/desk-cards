@@ -93,8 +93,10 @@ internal abstract partial class DeskCard : Window
         _grip.PointerCaptureLost += (_, _) => { if (_gripActive) OnGripDone(); };
 
         aw.Changed += (_, e) => { if (e.DidVisibilityChange) SyncLabel(); };
-        InitHandle();
     }
+
+    /// <summary>파생 클래스의 생성자 끝에서 한 번 부른다(키·내용이 정해진 뒤에 창을 꾸미려고).</summary>
+    protected void Init() => InitHandle();
 
     private bool _gripActive;
 
@@ -132,7 +134,7 @@ internal abstract partial class DeskCard : Window
     public abstract string CardName { get; }
 
     /// <summary>카드 안쪽 테두리. 편집 중·드롭 대상 강조를 여기에 칠한다.</summary>
-    protected abstract Border Frame { get; }
+    protected abstract Border? Frame { get; }
 
     /// <summary>확대 비율을 적용하기 전의 카드 창 크기(DIP).</summary>
     protected abstract Size BaseSize();
@@ -226,6 +228,7 @@ internal abstract partial class DeskCard : Window
         // 테마·선택 변경은 현재 드롭 상태를 보존하고, DragLeave·Drop에서만 명시적으로 끈다.
         if (dropTarget.HasValue) _dropTarget = dropTarget.Value;
         var card = Frame;
+        if (card == null) return; // 파생 클래스가 아직 만드는 중
         bool strong = _dropTarget || _selected || _invalid;
         // Windows가 그리는 1px 창 테두리를 강조색으로 바꾸고, 고른 카드는 안쪽 테두리를 더한다.
         // 지금 설정에서 안 되는 자리(겹침·간격보다 가까움)는 빨간색으로.

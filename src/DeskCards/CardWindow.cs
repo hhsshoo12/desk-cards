@@ -26,6 +26,7 @@ internal sealed class CardWindow : DeskCard
             Editing = () => Editing,
         };
         Layout.Children.Add(View);
+        UpdateBorder();
         Group.Changed += RefreshLabel;
 
         var root = (UIElement)Content;
@@ -36,6 +37,7 @@ internal sealed class CardWindow : DeskCard
         root.Drop += OnDrop;
         // 아이콘 칸 밖(이름 줄·가장자리)을 우클릭해도 카드 메뉴.
         root.RightTapped += (_, e) => { e.Handled = true; Menus.ForCard(this, Mgr).ShowAtCursor(); };
+        Init();
     }
 
     public GroupModel Group { get; }
@@ -43,7 +45,7 @@ internal sealed class CardWindow : DeskCard
     public override string Key => Group.Name;
     public override string CardName => Group.Name;
     protected override string? LabelText => Group.Name;
-    protected override Border Frame => View.Card;
+    protected override Border? Frame => View?.Card;
 
     /// <summary>
     /// 미리보기 칸 하나의 기준 크기(DIP)를 바탕화면 아이콘 간격으로 잰다. 기본 2×2 카드의 가로가 아이콘 2칸이 된다.

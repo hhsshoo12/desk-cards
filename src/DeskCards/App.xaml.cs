@@ -25,6 +25,20 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs e)
     {
+        UnhandledException += (_, ev) => Log(ev.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, ev) => Log(ev.ExceptionObject as Exception);
+        try { Launch(); }
+        catch (Exception ex) { Log(ex); throw; }
+    }
+
+    private static void Log(Exception? ex)
+    {
+        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "deskcards-crash.log"), $"{DateTime.Now:s} {ex}\r\n\r\n"); }
+        catch { }
+    }
+
+    private void Launch()
+    {
         Ui.Init();
         string[] args = Environment.GetCommandLineArgs()[1..];
         Native.SetCurrentProcessExplicitAppUserModelID("hhsshoo12.DeskCards");
