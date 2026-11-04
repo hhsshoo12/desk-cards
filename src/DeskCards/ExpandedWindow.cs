@@ -151,7 +151,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
             var wa = Screens.FromHandle(reference).WorkArea;
             p = PixelPlacement.Beside(rect, new Rect(wa.Left, wa.Top, wa.Width, wa.Height), new Size(root.Width, root.Height), scale, centered: true);
         }
-        AppWindow.MoveAndResize(new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h));
+        Resize(new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h));
         Hwnd.SetZOrder(Handle, _mgr.Editing || _anchor != IntPtr.Zero ? Hwnd.Topmost : IntPtr.Zero);
     }
 
@@ -216,3 +216,4 @@ internal sealed partial class ExpandedWindow : ToolWindow
         if (_current == this) _current = null;
     }
 }
+

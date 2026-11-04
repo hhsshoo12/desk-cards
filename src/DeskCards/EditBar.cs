@@ -138,13 +138,9 @@ internal sealed class EditBar : ToolWindow
     private void PlaceTop()
     {
         var wa = Screens.Primary.WorkArea;
-        var root = (FrameworkElement)Content;
-        root.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         double s = Native.MonitorScaleAt(wa.Left + wa.Width / 2, wa.Top + wa.Height / 2);
-        int w = (int)Math.Round(root.DesiredSize.Width * s);
-        Place(wa.Left + (wa.Width - w) / 2, wa.Top + (int)Math.Round(12 * s));
+        Place(wa.Left + wa.Width / 2, wa.Top + (int)Math.Round(12 * s), centerX: true);
     }
-
     private void Refresh()
     {
         var sel = _mgr.Selected;
@@ -291,3 +287,4 @@ internal sealed class EditBar : ToolWindow
     private static Border Sep() =>
         new() { Width = 1, Height = 22, Margin = new Thickness(6, 0, 6, 0), Background = Theme.Brush("MenuLine") };
 }
+

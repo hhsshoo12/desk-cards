@@ -18,7 +18,7 @@ internal abstract class SettingsPage : UserControl
     protected static string RepoUrl => RepoUrlValue;
 
     protected readonly SettingsPageArgs Args;
-    private readonly StackPanel _list = new() { Spacing = 3, MaxWidth = 1000, Padding = new Thickness(36, 8, 36, 36), HorizontalAlignment = HorizontalAlignment.Stretch };
+    private readonly StackPanel _list = new() { Spacing = 3, Padding = new Thickness(40, 8, 40, 36) };
     private readonly List<Action> _refreshers = new();
 
     protected GroupManager Mgr => Args.Mgr;
@@ -57,7 +57,7 @@ internal abstract class SettingsPage : UserControl
     {
         var bar = new BreadcrumbBar { Margin = new Thickness(0, 4, 0, 12), ItemsSource = items.Select(i => i.Text).ToList() };
         // 제목 크기로 키운 마지막 칸을 쓰려면 템플릿이 필요하다. 기본 모양을 쓰되 글자만 키운다.
-        bar.FontSize = 28;
+        bar.Resources["BreadcrumbBarItemThemeFontSize"] = 28.0;
         bar.ItemClicked += (_, e) =>
         {
             if (e.Index < items.Length - 1 && items[e.Index].Page is { } page) Host.Go(page);
@@ -432,3 +432,4 @@ internal sealed class LibrariesPage : SettingsPage
     private void Lib(string name, string desc, string url, string button = "라이선스") =>
         Row("", name, desc, Btn(button, () => OpenUrl(url)));
 }
+

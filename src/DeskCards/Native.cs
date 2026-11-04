@@ -62,6 +62,8 @@ internal static partial class Native
 
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    public static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
 
     [DllImport("user32.dll")]
     public static extern uint GetDpiForSystem();
@@ -266,3 +268,4 @@ internal static partial class Native
     public static void SetDwm(IntPtr hwnd, int attr, int value) =>
         DwmSetWindowAttribute(hwnd, attr, ref value, sizeof(int));
 }
+
