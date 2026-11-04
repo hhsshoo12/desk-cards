@@ -74,7 +74,8 @@ internal sealed class SettingsWindow : Window
             Go(page);
         };
         // 제목 줄: 뒤로 가기는 앱 이름 바로 왼쪽에, 메뉴 펼치기·접기 버튼은 창이 좁아 메뉴가 접혔을 때만 둔다.
-        _titleBar = new TitleBar { Title = "Desk Cards 설정", IsBackButtonVisible = true, IsBackButtonEnabled = false, IsPaneToggleButtonVisible = false, Height = 84 };
+        _titleBar = new TitleBar { Title = "Desk Cards 설정", IsBackButtonVisible = true, IsBackButtonEnabled = false, IsPaneToggleButtonVisible = false, FontSize = 18 };
+        BigTitleBar(_titleBar);
         _titleBar.BackRequested += (_, _) => GoBack();
         _titleBar.PaneToggleRequested += (_, _) => _nav.IsPaneOpen = !_nav.IsPaneOpen;
         _nav.DisplayModeChanged += (_, _) => _titleBar.IsPaneToggleButtonVisible = _nav.DisplayMode != NavigationViewDisplayMode.Expanded;
@@ -103,6 +104,23 @@ internal sealed class SettingsWindow : Window
             if (_win == this) _win = null;
         };
         Navigate(SettingsPageKind.Cards, null, new EntranceThemeTransition { FromVerticalOffset = 32 });
+    }
+
+    /// <summary>제목 줄을 64로 키우고 뒤로 가기·메뉴 버튼과 아이콘도 그만큼 키운다.</summary>
+    private static void BigTitleBar(TitleBar bar)
+    {
+        bar.Resources["TitleBarExpandedHeight"] = 64.0;
+        bar.Resources["TitleBarCompactHeight"] = 64.0;
+        bar.Resources["TitleBarBackButtonWidth"] = 56.0;
+        bar.Resources["TitleBarPaneToggleButtonWidth"] = 56.0;
+        foreach (var key in new[] { "TitleBarBackButtonStyle", "TitleBarPaneToggleButtonStyle" })
+        {
+            // 이 스타일은 컨트롤 기본 테마에 있어 앱 리소스에서 안 보일 수 있다. 없으면 건너뛴다.
+            if (!Application.Current.Resources.TryGetValue(key, out var found) || found is not Style basis) continue;
+            var style = new Style(typeof(Button)) { BasedOn = basis };
+            style.Setters.Add(new Setter(Control.FontSizeProperty, 22.0));
+            bar.Resources[key] = style;
+        }
     }
 
     // ----- 열기·닫기 -----
@@ -226,6 +244,8 @@ internal sealed class SettingsWindow : Window
         if (ParentOf(_page) is { } up) Go(up);
     }
 }
+
+
 
 
 
