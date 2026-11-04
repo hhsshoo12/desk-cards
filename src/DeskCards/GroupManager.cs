@@ -32,7 +32,7 @@ internal sealed partial class GroupManager
     public bool IsShuttingDown => _shuttingDown;
 
     /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
-    public IEnumerable<DeskCard> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<DeskCard>();
+    public IEnumerable<CardWindow> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<CardWindow>();
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -114,7 +114,7 @@ internal sealed partial class GroupManager
         Bump();
     });
 
-    private void RecreateCard(DeskCard card)
+    private void RecreateCard(CardWindow card)
     {
         // 화면상 왼쪽 위(물리 픽셀)를 그대로 저장한 뒤 다시 띄운다.
         var hwnd = Hwnd.Of(card);
@@ -167,7 +167,7 @@ internal sealed partial class GroupManager
 
     private void OnCardClosed(object? sender, EventArgs e)
     {
-        if (sender is not DeskCard closed || closed.ClosingByManager || _shuttingDown) return;
+        if (sender is not CardWindow closed || closed.ClosingByManager || _shuttingDown) return;
         // 탐색기가 재시작되면 소유자(Progman)와 함께 카드가 파괴된다. 잠시 뒤 다시 띄운다.
         if (closed is CardWindow card)
         {

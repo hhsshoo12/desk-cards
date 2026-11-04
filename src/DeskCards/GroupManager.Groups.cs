@@ -136,7 +136,7 @@ internal sealed partial class GroupManager
     }
 
     /// <summary>편집 막대의 삭제: 폴더 카드는 그룹을, 웹 카드는 카드 파일을 지운다.</summary>
-    public bool DeleteCard(DeskCard card) => card switch
+    public bool DeleteCard(CardWindow card) => card switch
     {
         CardWindow folder => DeleteGroup(folder),
         _ => false,

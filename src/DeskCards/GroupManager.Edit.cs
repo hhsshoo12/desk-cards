@@ -15,9 +15,9 @@ internal sealed partial class GroupManager
     // 막대의 이름 바꾸기·칸 수·삭제 등은 '고른 카드'(마지막으로 누른 카드)에 적용된다.
 
     public bool Editing { get; private set; }
-    public DeskCard? Selected { get; private set; }
+    public CardWindow? Selected { get; private set; }
 
-    public void BeginEditMode(DeskCard? select = null)
+    public void BeginEditMode(CardWindow? select = null)
     {
         if (!Editing)
         {
@@ -55,7 +55,7 @@ internal sealed partial class GroupManager
         EditChanged?.Invoke();
     }
 
-    public void Select(DeskCard? card)
+    public void Select(CardWindow? card)
     {
         Selected = card;
         foreach (var c in AllCards) c.SetSelected(c == card);

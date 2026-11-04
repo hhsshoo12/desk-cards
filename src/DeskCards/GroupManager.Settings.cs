@@ -222,7 +222,7 @@ internal sealed partial class GroupManager
     public CardLayout GetLayout(string name) =>
         _cfg.Layouts.TryGetValue(name, out var l) ? l.Normalized() : new CardLayout { Zoom = _cfg.DefaultZoom }.Normalized();
 
-    public void SaveLayout(DeskCard card, CardLayout layout)
+    public void SaveLayout(CardWindow card, CardLayout layout)
     {
         var l = layout.Normalized();
         l.Zoom = Math.Round(l.Zoom, 3);

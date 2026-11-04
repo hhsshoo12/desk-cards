@@ -17,7 +17,7 @@ internal sealed partial class GroupManager
     }
 
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
-    public IReadOnlyList<Native.RECT> CardRects(DeskCard except) =>
+    public IReadOnlyList<Native.RECT> CardRects(CardWindow except) =>
         AllCards.Where(c => c != except)
             .Select(c => c.Footprint)
             .Where(r => r.Right > r.Left)
@@ -37,7 +37,7 @@ internal sealed partial class GroupManager
 
     /// <summary>저장된 자리(없으면 빈 자리)에 카드를 띄운다. 편집 중이면 바로 편집 상태로.</summary>
     /// <param name="baseSize">빈 자리를 찾을 때 쓸 카드 기준 크기. 없으면 기본 폴더 카드.</param>
-    private void PlaceAndShow(DeskCard card, Size? baseSize)
+    private void PlaceAndShow(CardWindow card, Size? baseSize)
     {
         if (_cfg.PositionsPx.TryGetValue(card.Key, out var pos) && pos.Length == 2 && IsOnScreen(pos[0], pos[1]))
         {
@@ -61,7 +61,7 @@ internal sealed partial class GroupManager
         }
     }
 
-    public void SavePosition(DeskCard card)
+    public void SavePosition(CardWindow card)
     {
         var p = card.PhysicalPosition;
         _cfg.PositionsPx[card.Key] = new[] { p.X, p.Y };
@@ -86,7 +86,7 @@ internal sealed partial class GroupManager
 
         double k = _cfg.DefaultZoom * ZoomFactor(s);
         var size = baseSize ?? CardWindow.BaseSize(new CardLayout(), CellSize);
-        if (baseSize == null) size.Height += DeskCard.LabelH; // 카드 아래 이름 줄
+        if (baseSize == null) size.Height += CardWindow.LabelH; // 카드 아래 이름 줄
         int wPx = (int)Math.Round(size.Width * k * s), hPx = (int)Math.Round(size.Height * k * s);
         var waPx = DesktopGrid.WorkAreaAt(wa.Left + 1, wa.Top + 1);
         var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
