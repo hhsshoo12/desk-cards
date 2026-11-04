@@ -5,7 +5,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Windows;
+using System.Threading.Tasks;
+using Microsoft.UI.Input;
+using Microsoft.UI.Xaml;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage;
 
 namespace DeskCards;
 
@@ -47,11 +51,8 @@ internal static class FileOps
     }
 
     /// <summary>드래그된 파일 목록이 이 폴더에 넣을 만한 것인지(전부 이미 들어있는 게 아닌지).</summary>
-    public static bool CanAccept(IDataObject data, string folder)
-    {
-        if (data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0) return false;
-        return paths.Any(p => CanAddPath(p, folder));
-    }
+    public static bool CanAccept(IReadOnlyCollection<string> paths, string folder) =>
+        paths.Count > 0 && paths.Any(p => CanAddPath(p, folder));
 
     private static bool CanAddPath(string path, string folder)
     {
@@ -197,16 +198,29 @@ internal static class FileOps
     /// <summary>항목을 끌어내는 중인지(카드 바가 그동안 들어가지 않게).</summary>
     public static bool Dragging { get; private set; }
 
-    public static void DragOut(DependencyObject source, string path)
+    public static async Task DragOut(UIElement source, string path, PointerPoint point)
     {
-        var data = new DataObject(DataFormats.FileDrop, new[] { path });
         Dragging = true;
+        Windows.Foundation.TypedEventHandler<UIElement, DragStartingEventArgs>? starting = null;
         try
         {
-            DragDrop.DoDragDrop(source, data, DragDropEffects.Move | DragDropEffects.Copy | DragDropEffects.Link);
+            IStorageItem item = Directory.Exists(path)
+                ? await StorageFolder.GetFolderFromPathAsync(path)
+                : await StorageFile.GetFileFromPathAsync(path);
+            starting = (_, e) =>
+            {
+                e.Data.RequestedOperation = DataPackageOperation.Move | DataPackageOperation.Copy | DataPackageOperation.Link;
+                e.Data.SetStorageItems(new[] { item });
+            };
+            source.DragStarting += starting;
+            await source.StartDragAsync(point);
         }
         catch { }
-        finally { Dragging = false; }
+        finally
+        {
+            if (starting != null) source.DragStarting -= starting;
+            Dragging = false;
+        }
     }
 
     public static string Unique(string folder, string name)

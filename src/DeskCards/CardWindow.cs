@@ -1,6 +1,8 @@
 using System;
-using System.Windows;
-using System.Windows.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 
 namespace DeskCards;
 
@@ -13,7 +15,6 @@ internal sealed class CardWindow : DeskCard
     public CardWindow(GroupModel group, GroupManager mgr) : base(mgr)
     {
         Group = group;
-        AllowDrop = true;
         View = new CardView(group, mgr, onDesktop: true)
         {
             Expand = hover =>
@@ -27,12 +28,14 @@ internal sealed class CardWindow : DeskCard
         Layout.Children.Add(View);
         Group.Changed += RefreshLabel;
 
-        DragEnter += OnDragOver;
-        DragOver += OnDragOver;
-        DragLeave += (_, _) => UpdateBorder(false);
-        Drop += OnDrop;
+        var root = (UIElement)Content;
+        root.AllowDrop = true;
+        root.DragEnter += OnDragOver;
+        root.DragOver += OnDragOver;
+        root.DragLeave += (_, _) => UpdateBorder(false);
+        root.Drop += OnDrop;
         // 아이콘 칸 밖(이름 줄·가장자리)을 우클릭해도 카드 메뉴.
-        MouseRightButtonUp += (_, e) => { e.Handled = true; Menus.ForCard(this, Mgr).ShowAtCursor(); };
+        root.RightTapped += (_, e) => { e.Handled = true; Menus.ForCard(this, Mgr).ShowAtCursor(); };
     }
 
     public GroupModel Group { get; }
@@ -62,8 +65,8 @@ internal sealed class CardWindow : DeskCard
     protected override void ApplyScale(double t)
     {
         base.ApplyScale(t);
-        // 기준 단위에서 칸 크기는 항상 같으므로 아이콘도 같다(기본 72 → 40).
-        View.Apply(_layout, Mgr.CellSize);
+        // 칸 크기에 확대 비율을 곱해 아이콘·여백까지 함께 키운다(기본 72 → 40).
+        View.Apply(_layout, Mgr.CellSize * t);
     }
 
     /// <summary>미리보기 칸 수를 바꾼다(카드 비율이 따라 바뀐다).</summary>
@@ -78,26 +81,38 @@ internal sealed class CardWindow : DeskCard
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
-        bool ok = FileOps.CanAccept(e.Data, Group.Folder);
-        e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
+        // 끌어온 것이 파일·폴더인지만 먼저 보고(목록을 읽는 건 비동기), 이 폴더에 넣을 수 있는지는 놓을 때 거른다.
+        bool ok = e.DataView.Contains(StandardDataFormats.StorageItems);
+        e.AcceptedOperation = ok ? DataPackageOperation.Move : DataPackageOperation.None;
         UpdateBorder(ok);
         e.Handled = true;
     }
 
-    private void OnDrop(object sender, DragEventArgs e)
+    private async void OnDrop(object sender, DragEventArgs e)
     {
         UpdateBorder(false);
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
-            FileOps.AddToGroup(paths, Group.Folder, Mgr.Root);
-        // 이동은 우리가 직접 했으므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
-        e.Effects = DragDropEffects.None;
+        var deferral = e.GetDeferral();
+        try
+        {
+            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                var items = await e.DataView.GetStorageItemsAsync();
+                var paths = new System.Collections.Generic.List<string>();
+                foreach (var item in items)
+                    if (!string.IsNullOrEmpty(item.Path)) paths.Add(item.Path);
+                FileOps.AddToGroup(paths, Group.Folder, Mgr.Root);
+            }
+            // 이동은 우리가 직접 했으므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
+            e.AcceptedOperation = DataPackageOperation.None;
+        }
+        finally { deferral.Complete(); }
         e.Handled = true;
     }
 
-    protected override void OnClosed(EventArgs e)
+    protected override void OnClosed()
     {
         Group.Changed -= RefreshLabel;
         View.Detach();
-        base.OnClosed(e);
+        base.OnClosed();
     }
 }

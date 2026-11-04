@@ -2,10 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace DeskCards;
+
+/// <summary>UI 틀과 상관없는 아이콘 픽셀(미리 곱한 BGRA).</summary>
+internal sealed record IconBitmap(int Width, int Height, byte[] Pixels);
 
 /// <summary>셸에서 파일/바로가기의 고해상도 아이콘을 가져온다.</summary>
 internal static partial class ShellIcons
@@ -14,7 +15,7 @@ internal static partial class ShellIcons
     private const int SIIGBF_ICONONLY = 0x4;
     private const int IconPx = 96;
 
-    private static readonly Dictionary<string, (long Stamp, ImageSource? Image)> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (long Stamp, IconBitmap? Image)> Cache = new(StringComparer.OrdinalIgnoreCase);
 
     [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IShellItemImageFactory
@@ -31,7 +32,7 @@ internal static partial class ShellIcons
         string path, IntPtr pbc, [In, MarshalAs(UnmanagedType.LPStruct)] Guid riid,
         [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory ppv);
 
-    private static ImageSource? Get(string path)
+    private static IconBitmap? Get(string path)
     {
         long stamp = SafeStamp(path);
         if (Cache.TryGetValue(path, out var cached) && cached.Stamp == stamp) return cached.Image;
@@ -46,7 +47,7 @@ internal static partial class ShellIcons
         try { return File.GetLastWriteTimeUtc(path).Ticks; } catch { return 0; }
     }
 
-    private static ImageSource? Load(string path)
+    private static IconBitmap? Load(string path)
     {
         IShellItemImageFactory? factory = null;
         IntPtr hbm = IntPtr.Zero;
@@ -68,7 +69,7 @@ internal static partial class ShellIcons
         }
     }
 
-    private static BitmapSource? FromHBitmap(IntPtr hbm)
+    private static IconBitmap? FromHBitmap(IntPtr hbm)
     {
         var bmp = new Native.BITMAP();
         if (Native.GetObject(hbm, Marshal.SizeOf<Native.BITMAP>(), ref bmp) == 0) return null;
@@ -99,8 +100,7 @@ internal static partial class ShellIcons
         if (!anyAlpha)
             for (int i = 3; i < buf.Length; i += 4) buf[i] = 255;
 
-        var src = BitmapSource.Create(w, h, 96, 96, PixelFormats.Pbgra32, null, buf, w * 4);
-        src.Freeze();
-        return src;
+        // 셸이 주는 BGRA는 알파가 곱해진 값(Pbgra32)이다.
+        return new IconBitmap(w, h, buf);
     }
 }

@@ -1,13 +1,5 @@
 using System;
-using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
-using System.Windows.Interop;
-using System.Windows.Markup;
-using System.Windows.Media;
-using System.Windows.Threading;
+using Windows.Foundation;
 
 namespace DeskCards;
 
@@ -16,7 +8,15 @@ internal abstract partial class DeskCard
     // ----- 크기 / 위치 -----
 
     /// <summary>이 카드가 있는 모니터의 지금 배율(125% = 1.25).</summary>
-    public double DpiScale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+    public double DpiScale
+    {
+        get
+        {
+            var hwnd = Handle;
+            uint dpi = hwnd == IntPtr.Zero ? 0 : Native.GetDpiForWindow(hwnd);
+            return dpi == 0 ? Native.PrimaryScale() : dpi / 96.0;
+        }
+    }
 
     /// <summary>확대 비율에 곱할 값. 따라가기를 끈 동안 Windows 배율이 바뀌어도 실제 크기를 유지한다.</summary>
     private double ScaleFactor => Mgr.ZoomFactor(DpiScale);
@@ -43,13 +43,6 @@ internal abstract partial class DeskCard
         }
     }
 
-    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
-    {
-        base.OnDpiChanged(oldDpi, newDpi);
-        // Windows 배율이 바뀌면 크기를 다시 계산하고 화면 안으로 맞춘다.
-        Dispatcher.BeginInvoke(() => { if (!_closed) Refit(); }, DispatcherPriority.Background);
-    }
-
     /// <summary>저장된 모양(칸 수·확대 비율)을 불러와 적용한다.</summary>
     public void ApplySize()
     {
@@ -63,22 +56,19 @@ internal abstract partial class DeskCard
         if (FreeResize && _layout.Width > 0 && _layout.Height > 0) size = new Size(_layout.Width, _layout.Height);
         // 비율 고정 확대: 카드 확대 비율(배율 보정 포함)을 내용 전체(아이콘·글자·모서리)에 똑같이 건다.
         double t = ScaleFactor * _layout.Zoom;
-        var wa = System.Windows.Forms.Screen.FromHandle(Handle).WorkingArea;
-        var dpi = VisualTreeHelper.GetDpi(this);
-        t = Math.Min(t, Math.Min(wa.Width / (size.Width * dpi.DpiScaleX), wa.Height / ((size.Height + LabelBelow) * dpi.DpiScaleY)));
+        var wa = Screens.FromHandle(Handle).WorkArea;
+        double dpi = DpiScale;
+        t = Math.Min(t, Math.Min(wa.Width / (size.Width * dpi), wa.Height / ((size.Height + LabelBelow) * dpi)));
         _appliedScale = t;
-        Width = size.Width * t;
-        Height = size.Height * t;
+        AppWindow.Resize(new Windows.Graphics.SizeInt32((int)Math.Round(size.Width * t * dpi), (int)Math.Round(size.Height * t * dpi)));
         ApplyScale(t);
         FollowLabel();
     }
 
     /// <summary>
-    /// 확대 비율 t를 내용에 건다. 기본은 내용 전체를 그림처럼 키운다.
-    /// 흐려지면 안 되는 내용(웹 화면)은 쓰는 쪽이 크기를 직접 정한다.
+    /// 확대 비율 t를 내용에 건다. WinUI에는 레이아웃 변환이 없어서, 쓰는 쪽이 칸·아이콘 크기를 t배로 직접 정한다.
     /// </summary>
-    protected virtual void ApplyScale(double t) =>
-        Layout.LayoutTransform = t == 1 ? Transform.Identity : new ScaleTransform(t, t);
+    protected virtual void ApplyScale(double t) { }
 
     protected virtual bool FreeResize => false;
 
@@ -88,8 +78,8 @@ internal abstract partial class DeskCard
         LayoutFor();
         var hwnd = Handle;
         if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return;
-        var dpi = VisualTreeHelper.GetDpi(this);
-        int w = (int)Math.Round(Width * dpi.DpiScaleX), h = (int)Math.Round(FootprintHeight * dpi.DpiScaleY);
+        double dpi = DpiScale;
+        int w = (int)Math.Round(Width * dpi), h = (int)Math.Round(FootprintHeight * dpi);
         var wa = DesktopGrid.WorkAreaAt(r.Left + w / 2, r.Top + h / 2);
         int x = Math.Max(wa.Left, Math.Min(r.Left, wa.Right - w));
         int y = Math.Max(wa.Top, Math.Min(r.Top, wa.Bottom - h));
@@ -105,18 +95,15 @@ internal abstract partial class DeskCard
         Mgr.SavePosition(this);
     }
 
-    /// <summary>
-    /// 실제 창 위치(DIP). SetWindowPos나 끌기로 옮긴 직후에는 WPF의 Left/Top이 늦게 갱신될 수 있어
-    /// DIP를 쓰는 UI 계산용이며, 설정 저장에는 PhysicalPosition을 쓴다.
-    /// </summary>
+    /// <summary>실제 창 위치(DIP). 설정 저장에는 PhysicalPosition을 쓴다.</summary>
     public Point ActualPosition
     {
         get
         {
             var hwnd = Handle;
-            if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return new Point(Left, Top);
-            var dpi = VisualTreeHelper.GetDpi(this);
-            return new Point(r.Left / dpi.DpiScaleX, r.Top / dpi.DpiScaleY);
+            if (hwnd == IntPtr.Zero || !Native.GetWindowRect(hwnd, out var r)) return _restorePosition ?? default;
+            double dpi = DpiScale;
+            return new Point(r.Left / dpi, r.Top / dpi);
         }
     }
 

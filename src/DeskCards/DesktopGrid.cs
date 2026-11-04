@@ -38,7 +38,7 @@ internal static class DesktopGrid
     }
 
     public static System.Drawing.Rectangle WorkAreaAt(int x, int y) =>
-        System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point(x, y)).WorkingArea;
+        Screens.FromPoint(x, y).WorkArea;
 
     private static int CountOf(int free, int size) =>
         free <= 0 ? 0 : Math.Max(1, (int)Math.Round(free / (size / 2.0)));

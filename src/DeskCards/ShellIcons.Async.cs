@@ -2,8 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Media;
 
 namespace DeskCards;
 
@@ -20,18 +18,12 @@ internal static partial class ShellIcons
         return thread;
     });
 
-    public static ImageSource Placeholder { get; } = CreatePlaceholder();
-    private static ImageSource CreatePlaceholder()
-    {
-        var image = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(
-            System.Drawing.SystemIcons.Application.Handle, Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-        image.Freeze();
-        return image;
-    }
+    /// <summary>아이콘이 오기 전에 보여 주는 빈 아이콘(투명). 이름과 자리는 그대로 보이고 아이콘만 나중에 채워진다.</summary>
+    public static IconBitmap Placeholder { get; } = new(1, 1, new byte[4]);
 
-    internal static Task<ImageSource?> GetAsync(string path, CancellationToken token, Func<string, ImageSource?>? loader = null)
+    internal static Task<IconBitmap?> GetAsync(string path, CancellationToken token, Func<string, IconBitmap?>? loader = null)
     {
-        var result = new TaskCompletionSource<ImageSource?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var result = new TaskCompletionSource<IconBitmap?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = Worker.Value;
         Pending.Add(() =>
         {

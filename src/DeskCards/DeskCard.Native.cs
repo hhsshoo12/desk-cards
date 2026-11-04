@@ -1,13 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
-using System.Windows.Interop;
-using System.Windows.Markup;
-using System.Windows.Media;
-using System.Windows.Threading;
+using Microsoft.UI.Xaml;
 
 namespace DeskCards;
 
@@ -15,13 +8,11 @@ internal abstract partial class DeskCard
 {
     // ----- 바탕화면 층에 붙이기 -----
 
-    private void OnSourceInitialized(object? sender, EventArgs e)
+    /// <summary>창이 만들어진 직후 한 번: 도구 창 스타일, 둥근 모서리·아크릴, 바탕화면 층, 메시지 감시.</summary>
+    private void InitHandle()
     {
         var hwnd = Handle;
-        if (_restorePosition is { } position) PixelPlacement.Move(this, position);
-        Hwnd.RemoveSysMenu(hwnd);
-        if (Activatable) Hwnd.MakeTool(hwnd);
-        else Hwnd.MakeNoActivateTool(hwnd);
+        Hwnd.MakeNoActivateTool(hwnd);
         Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
         Theme.Changed += OnThemeChanged;
         UpdateBorder();
@@ -29,14 +20,18 @@ internal abstract partial class DeskCard
         ApplySize();
 
         if (_taskbarCreatedMsg == 0) _taskbarCreatedMsg = Native.RegisterWindowMessage("TaskbarCreated");
-        HwndSource.FromHwnd(hwnd)!.AddHook(WndProc);
+        _subclass = new Native.Subclass(hwnd, WndProc);
+        base.Closed += (_, _) =>
+        {
+            OnClosed();
+            CardClosed?.Invoke(this, EventArgs.Empty);
+        };
     }
 
     private void AttachToDesktop(IntPtr hwnd)
     {
         // Progman을 소유자로 두면 Win+D(바탕화면 보기) 때도 숨겨지지 않는다.
-        var progman = Native.FindWindow("Progman", null);
-        if (progman != IntPtr.Zero) Native.SetWindowLongPtr(hwnd, Native.GWLP_HWNDPARENT, progman);
+        Hwnd.SetOwner(hwnd, Native.FindWindow("Progman", null));
         SendToBottom();
     }
 
@@ -48,14 +43,16 @@ internal abstract partial class DeskCard
         finally { _ownZ = false; }
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private bool WndProc(IntPtr hwnd, uint umsg, IntPtr wParam, IntPtr lParam, out IntPtr result)
     {
+        int msg = (int)umsg;
+        result = IntPtr.Zero;
         if (msg == Native.WM_NCACTIVATE)
         {
             // Windows 11 아크릴 배경은 창이 비활성이면 단색으로 바뀐다. 바탕화면 카드는 거의 늘 비활성이라,
             // 창 틀을 늘 활성 상태로 그리게 해서 아크릴을 유지한다(실제 활성·초점은 그대로).
-            handled = true;
-            return Native.DefWindowProc(hwnd, msg, new IntPtr(1), lParam);
+            result = Native.DefSubclassProc(hwnd, umsg, new IntPtr(1), lParam);
+            return true;
         }
         if (msg == Native.WM_WINDOWPOSCHANGED)
         {
@@ -65,6 +62,11 @@ internal abstract partial class DeskCard
         {
             KeepDesktopOrder(lParam);
         }
+        else if (msg == Native.WM_DPICHANGED)
+        {
+            // Windows 배율이 바뀌면 크기를 다시 계산하고 화면 안으로 맞춘다.
+            Ui.Post(() => { if (!_closed) Refit(); }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
+        }
         else if (msg == Native.WM_ENTERSIZEMOVE)
         {
             BeginMoveTracking(hwnd);
@@ -72,8 +74,8 @@ internal abstract partial class DeskCard
         else if (msg == Native.WM_MOVING)
         {
             MoveWithGuides(hwnd, lParam);
-            handled = true;
-            return new IntPtr(1);
+            result = new IntPtr(1);
+            return true;
         }
         else if (msg == Native.WM_EXITSIZEMOVE)
         {
@@ -84,7 +86,7 @@ internal abstract partial class DeskCard
         {
             AttachToDesktop(hwnd);
         }
-        return IntPtr.Zero;
+        return false;
     }
 
     private void KeepDesktopOrder(IntPtr lParam)

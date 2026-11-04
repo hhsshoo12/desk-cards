@@ -1,9 +1,5 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Shapes;
 
 namespace DeskCards;
 
@@ -280,78 +276,30 @@ internal static class SmartGuides
     public static void Hide() => _overlay?.Clear();
 }
 
-/// <summary>안내선을 그리는 투명 창. 클릭은 그대로 아래로 통과한다.</summary>
-internal sealed class GuideOverlay : Window
+/// <summary>안내선을 그리는 투명 창들(선마다 얇은 창 하나). 클릭은 그대로 아래로 통과한다.</summary>
+internal sealed class GuideOverlay
 {
-    private readonly Canvas _canvas = new();
-    private System.Drawing.Rectangle _area;
-
-    public GuideOverlay()
-    {
-        WindowStyle = WindowStyle.None;
-        AllowsTransparency = true;
-        Background = Brushes.Transparent;
-        ShowInTaskbar = false;
-        ShowActivated = false;
-        Topmost = true;
-        ResizeMode = ResizeMode.NoResize;
-        IsHitTestVisible = false;
-        Width = Height = 1;
-        Content = _canvas;
-        SourceInitialized += (_, _) =>
-        {
-            Hwnd.MakeClickThrough(Hwnd.Of(this));
-        };
-    }
+    private readonly List<LayeredWindow> _lines = new();
 
     public void Draw(System.Drawing.Rectangle wa, List<SmartGuides.Line> lines)
     {
         if (lines.Count == 0) { Clear(); return; }
-        if (!IsVisible) Show();
-        var hwnd = Hwnd.Of(this);
-        if (_area != wa)
+        const int thick = 2;
+        while (_lines.Count < lines.Count) _lines.Add(new LayeredWindow(topmost: true));
+        for (int i = 0; i < _lines.Count; i++)
         {
-            _area = wa;
-            Native.SetWindowPos(hwnd, Hwnd.Topmost, wa.Left, wa.Top, wa.Width, wa.Height, Native.SWP_NOACTIVATE);
-        }
-
-        double s = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        _canvas.Children.Clear();
-        const double thick = 1.5;
-        foreach (var l in lines)
-        {
-            var r = new Rectangle { Fill = GuideBrush };
-            if (l.Vertical)
-            {
-                r.Width = thick;
-                r.Height = (l.To - l.From) / s;
-                Canvas.SetLeft(r, (l.Pos - wa.Left) / s - thick / 2);
-                Canvas.SetTop(r, (l.From - wa.Top) / s);
-            }
-            else
-            {
-                r.Height = thick;
-                r.Width = (l.To - l.From) / s;
-                Canvas.SetTop(r, (l.Pos - wa.Top) / s - thick / 2);
-                Canvas.SetLeft(r, (l.From - wa.Left) / s);
-            }
-            _canvas.Children.Add(r);
+            if (i >= lines.Count) { _lines[i].Hide(); continue; }
+            var l = lines[i];
+            int x = l.Vertical ? l.Pos - thick / 2 : l.From, y = l.Vertical ? l.From : l.Pos - thick / 2;
+            int w = l.Vertical ? thick : l.To - l.From, h = l.Vertical ? l.To - l.From : thick;
+            if (w <= 0 || h <= 0) { _lines[i].Hide(); continue; }
+            _lines[i].Update(x, y, w, h, LayeredWindow.Solid(w, h, 0xA8, 0x55, 0xF7, 255)); // 보라
+            if (!_lines[i].IsShown) _lines[i].Show();
         }
     }
 
     public void Clear()
     {
-        _canvas.Children.Clear();
-        if (IsVisible) Hide();
-        _area = default;
-    }
-
-    private static readonly Brush GuideBrush = MakeBrush();
-
-    private static Brush MakeBrush()
-    {
-        var b = new SolidColorBrush(Color.FromRgb(0xA8, 0x55, 0xF7)); // 보라
-        b.Freeze();
-        return b;
+        foreach (var w in _lines) w.Hide();
     }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Windows.Input;
 
 namespace DeskCards;
 
@@ -28,7 +27,7 @@ internal static class KeyCombo
         _ => 0,
     };
 
-    public static int FromKey(Key key) => Normalize(KeyInterop.VirtualKeyFromKey(key));
+    public static int FromKey(Windows.System.VirtualKey key) => Normalize((int)key);
 
     public static bool IsModifier(int vk) => vk is Win or Ctrl or Alt or Shift;
 
@@ -87,7 +86,7 @@ internal static class KeyCombo
         Alt => "Alt",
         Shift => "Shift",
         >= 0x30 and <= 0x39 => ((char)vk).ToString(), // 숫자 키는 D1 대신 1로
-        _ => KeyInterop.KeyFromVirtualKey(vk).ToString(),
+        _ => ((Windows.System.VirtualKey)vk).ToString(),
     };
 
     /// <summary>조합의 키가 모두 눌려 있는지.</summary>

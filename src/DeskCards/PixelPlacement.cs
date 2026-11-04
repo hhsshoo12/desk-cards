@@ -1,5 +1,6 @@
 using System;
-using System.Windows;
+using Microsoft.UI.Xaml;
+using Windows.Foundation;
 
 namespace DeskCards;
 

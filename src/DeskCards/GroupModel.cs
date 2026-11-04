@@ -4,15 +4,16 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
-using System.Windows.Media;
-using System.Windows.Threading;
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace DeskCards;
 
 internal sealed class ShellEntry : INotifyPropertyChanged
 {
-    public ShellEntry(string path, CancellationToken token, Func<string, ImageSource?>? loader = null, bool isDirectory = false)
+    public ShellEntry(string path, CancellationToken token, Func<string, IconBitmap?>? loader = null, bool isDirectory = false)
     {
         Path = path;
         string ext = System.IO.Path.GetExtension(path);
@@ -20,28 +21,27 @@ internal sealed class ShellEntry : INotifyPropertyChanged
             ? System.IO.Path.GetFileName(path)
             : System.IO.Path.GetFileNameWithoutExtension(path);
         if (Name.Length == 0) Name = System.IO.Path.GetFileName(path);
-        _ = LoadIconAsync(Dispatcher.CurrentDispatcher, token, loader);
+        _ = LoadIconAsync(Ui.Queue, token, loader);
     }
 
     public string Path { get; }
     public string Name { get; }
-    public ImageSource? Icon { get; private set; } = ShellIcons.Placeholder;
+    /// <summary>아이콘 그림. 셸에서 읽어 오면 PropertyChanged로 알린다.</summary>
+    public WriteableBitmap? Icon { get; private set; }
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private async Task LoadIconAsync(Dispatcher dispatcher, CancellationToken token, Func<string, ImageSource?>? loader)
+    private async Task LoadIconAsync(DispatcherQueue queue, CancellationToken token, Func<string, IconBitmap?>? loader)
     {
         var icon = await ShellIcons.GetAsync(Path, token, loader).ConfigureAwait(false);
-        if (token.IsCancellationRequested || dispatcher.HasShutdownStarted) return;
-        try
+        if (token.IsCancellationRequested || icon == null || Ui.ShuttingDown) return;
+        queue.TryEnqueue(() =>
         {
-            await dispatcher.InvokeAsync(() =>
-            {
-                if (token.IsCancellationRequested || icon == null) return;
-                Icon = icon;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
-            });
-        }
-        catch (TaskCanceledException) { }
+            if (token.IsCancellationRequested || Ui.ShuttingDown) return;
+            var bitmap = new WriteableBitmap(icon.Width, icon.Height);
+            using (var stream = bitmap.PixelBuffer.AsStream()) stream.Write(icon.Pixels, 0, icon.Pixels.Length);
+            Icon = bitmap;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
+        });
     }
 }
 
@@ -49,17 +49,17 @@ internal sealed class ShellEntry : INotifyPropertyChanged
 internal sealed class GroupModel : IDisposable
 {
     private FileSystemWatcher? _watcher;
-    private readonly DispatcherTimer _debounce;
+    private readonly Microsoft.UI.Xaml.DispatcherTimer _debounce;
     private bool _disposed;
     private CancellationTokenSource? _icons;
-    private readonly Func<string, ImageSource?>? _iconLoader;
+    private readonly Func<string, IconBitmap?>? _iconLoader;
 
-    public GroupModel(string folder, IReadOnlyList<string>? order = null, Func<string, ImageSource?>? iconLoader = null)
+    public GroupModel(string folder, IReadOnlyList<string>? order = null, Func<string, IconBitmap?>? iconLoader = null)
     {
         Folder = folder;
         _order = order;
         _iconLoader = iconLoader;
-        _debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _debounce = new Microsoft.UI.Xaml.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _debounce.Tick += (_, _) => { _debounce.Stop(); Reload(); };
         Reload();
         Watch();
@@ -148,7 +148,7 @@ internal sealed class GroupModel : IDisposable
             _watcher.Deleted += h;
             _watcher.Changed += h;
             _watcher.Renamed += (_, _) => Bump();
-            _watcher.Error += (_, _) => _debounce.Dispatcher.BeginInvoke(() =>
+            _watcher.Error += (_, _) => Ui.Post(() =>
             {
                 if (_disposed) return;
                 Watch();
@@ -162,7 +162,7 @@ internal sealed class GroupModel : IDisposable
         }
     }
 
-    private void Bump() => _debounce.Dispatcher.BeginInvoke(() =>
+    private void Bump() => Ui.Post(() =>
     {
         if (_disposed) return;
         _debounce.Stop();

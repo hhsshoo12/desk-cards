@@ -1,18 +1,18 @@
 using System;
 using System.Linq;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Effects;
-using System.Windows.Threading;
+using Microsoft.UI;
+using Microsoft.UI.Input;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 
 namespace DeskCards;
 
 /// <summary>
 /// 카드 한 장의 모양과 조작: 아이콘 칸(넘치면 마지막 칸이 더보기), 이름, 클릭 실행·끌어 꺼내기·우클릭 메뉴.
-/// 바탕화면 카드(CardWindow)와 카드 바(EdgeBar)가 같이 쓴다. 크기는 기준 단위(DIP)로 그리고, 확대는 쓰는 쪽이 한다.
+/// 바탕화면 카드(CardWindow)와 카드 바(EdgeBar)가 같이 쓴다. 크기는 DIP로 그리고, 확대는 쓰는 쪽이 칸 크기에 곱해서 넘긴다.
 /// </summary>
 internal sealed class CardView : Grid
 {
@@ -20,13 +20,14 @@ internal sealed class CardView : Grid
     private const string OverflowTag = "overflow";
 
     private readonly GroupManager _mgr;
-    private readonly UniformGrid _cells = new() { Rows = 2, Columns = 2 };
+    private readonly Grid _cells = new();
     private readonly TextBlock _placeholder, _label;
     private readonly DispatcherTimer _hoverTimer = new();
     private readonly double _labelH;
     private CardLayout _layout = new();
     private double _iconSize = 40;
     private Point _downPos;
+    private PointerPoint? _downPoint;
     private object? _downTarget;
     private bool _pending;
 
@@ -41,10 +42,7 @@ internal sealed class CardView : Grid
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(_labelH) });
 
-        Card = new Border
-        {
-            CornerRadius = new CornerRadius(8),
-        };
+        Card = new Border { CornerRadius = new CornerRadius(8) };
         if (onDesktop)
         {
             // 창 전체의 강조 테두리. 아이콘 칸의 크기·여백은 바꾸지 않는다.
@@ -53,9 +51,10 @@ internal sealed class CardView : Grid
         else
         {
             Card.BorderThickness = new Thickness(1);
-            Card.Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 };
-            Card.SetResourceReference(Border.BackgroundProperty, "CardBg");
-            Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+            Card.Background = Theme.Brush("CardBg");
+            Card.BorderBrush = Theme.Brush("CardBorder");
+            Card.Shadow = new ThemeShadow();
+            Card.Translation = new System.Numerics.Vector3(0, 0, 16);
         }
         Children.Add(Card);
         Children.Add(_cells);
@@ -68,8 +67,8 @@ internal sealed class CardView : Grid
             VerticalAlignment = VerticalAlignment.Center,
             Visibility = Visibility.Collapsed,
             IsHitTestVisible = false,
+            Foreground = Theme.Brush("SubFg"),
         };
-        _placeholder.SetResourceReference(TextBlock.ForegroundProperty, "SubFg");
         Children.Add(_placeholder);
 
         _label = new TextBlock
@@ -78,8 +77,8 @@ internal sealed class CardView : Grid
             FontSize = 13,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = Theme.Brush("Fg"),
         };
-        _label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         SetRow(_label, 1);
         if (onDesktop) _label.Visibility = Visibility.Collapsed;
         Children.Add(_label);
@@ -87,12 +86,12 @@ internal sealed class CardView : Grid
         _hoverTimer.Tick += (_, _) =>
         {
             _hoverTimer.Stop();
-            if (!Editing() && Mouse.LeftButton != MouseButtonState.Pressed && IsVisible) Expand?.Invoke(true);
+            if (!Editing() && !LeftDown() && IsLoaded) Expand?.Invoke(true);
         };
-        PreviewMouseLeftButtonDown += OnDown;
-        PreviewMouseMove += OnMove;
-        PreviewMouseLeftButtonUp += OnUp;
-        MouseRightButtonUp += OnRightUp;
+        AddHandler(PointerPressedEvent, new PointerEventHandler(OnDown), true);
+        AddHandler(PointerMovedEvent, new PointerEventHandler(OnMove), true);
+        AddHandler(PointerReleasedEvent, new PointerEventHandler(OnUp), true);
+        RightTapped += OnRightTapped;
         Group.Changed += Rebuild;
         Unloaded += (_, _) => _hoverTimer.Stop();
     }
@@ -111,6 +110,8 @@ internal sealed class CardView : Grid
     /// <summary>편집 모드처럼 클릭·끌기를 쓰는 쪽이 가져가는 동안 true.</summary>
     public Func<bool> Editing { get; set; } = () => false;
 
+    private static bool LeftDown() => (Native.GetAsyncKeyState(0x01) & 0x8000) != 0;
+
     /// <summary>그룹을 다 쓰고 나면(창을 닫을 때) 부른다.</summary>
     public void Detach()
     {
@@ -119,7 +120,7 @@ internal sealed class CardView : Grid
     }
 
     /// <summary>
-    /// 칸 수와 칸 하나의 기준 크기로 모양을 정한다. 이 뷰의 크기는 (칸 수 × cell) + 이름 줄(카드 바만)이다.
+    /// 칸 수와 칸 하나의 크기(DIP, 확대 반영)로 모양을 정한다. 이 뷰의 크기는 (칸 수 × cell) + 이름 줄(카드 바만)이다.
     /// 아이콘 크기가 바뀌었을 때만 다시 그린다.
     /// </summary>
     public void Apply(CardLayout layout, double cell)
@@ -129,19 +130,29 @@ internal sealed class CardView : Grid
         double pad = cell * 0.17;
         _cells.Margin = new Thickness(pad);
         double inner = (cell * layout.Cols - 2 * pad) / layout.Cols - 6;
-        double icon = Math.Clamp(Math.Round(inner * 0.74), 16, 128);
+        double icon = Math.Clamp(Math.Round(inner * 0.74), 16, 256);
         bool changed = Math.Abs(icon - _iconSize) > 0.5 || layout.Cols != _layout.Cols || layout.Rows != _layout.Rows;
         _layout = new CardLayout { Cols = layout.Cols, Rows = layout.Rows, Zoom = layout.Zoom };
         _iconSize = icon;
         if (changed || _label.Text != Group.Name) Rebuild();
     }
 
+    private static Image IconImage(ShellEntry e, double size, Thickness margin)
+    {
+        var img = new Image { Source = e.Icon, Width = size, Height = size, Margin = margin };
+        // 아이콘은 셸에서 나중에 오므로, 도착하면 그림만 바꾼다.
+        e.PropertyChanged += (_, _) => img.Source = e.Icon;
+        return img;
+    }
+
     public void Rebuild()
     {
         _label.Text = Group.Name;
         _cells.Children.Clear();
-        _cells.Columns = _layout.Cols;
-        _cells.Rows = _layout.Rows;
+        _cells.RowDefinitions.Clear();
+        _cells.ColumnDefinitions.Clear();
+        for (int r = 0; r < _layout.Rows; r++) _cells.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        for (int c = 0; c < _layout.Cols; c++) _cells.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         var items = Group.Items;
         _placeholder.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -149,29 +160,37 @@ internal sealed class CardView : Grid
         int slots = _layout.Cols * _layout.Rows;
         bool overflow = items.Count > slots;
         int direct = overflow ? slots - 1 : items.Count;
-        for (int i = 0; i < direct; i++)
+        void Place(Border cell, int index)
         {
-            var img = new Image { Source = items[i].Icon, Width = _iconSize, Height = _iconSize };
-            img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = items[i] });
-            RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
-            _cells.Children.Add(MakeCell(img, items[i], items[i].Name));
+            SetRow(cell, index / _layout.Cols);
+            SetColumn(cell, index % _layout.Cols);
+            _cells.Children.Add(cell);
         }
+        for (int i = 0; i < direct; i++)
+            Place(MakeCell(IconImage(items[i], _iconSize, new Thickness(0)), items[i], items[i].Name), i);
 
         if (overflow)
         {
             double mini = _iconSize * 0.48;
-            var grid = new UniformGrid { Rows = 2, Columns = 2, Width = mini * 2 + 8, Height = mini * 2 + 8 };
+            var grid = new Grid { Width = mini * 2 + 8, Height = mini * 2 + 8 };
+            for (int i = 0; i < 2; i++)
+            {
+                grid.RowDefinitions.Add(new RowDefinition());
+                grid.ColumnDefinitions.Add(new ColumnDefinition());
+            }
+            int n = 0;
             foreach (var e in items.Skip(direct).Take(4))
             {
-                var img = new Image { Source = e.Icon, Width = mini, Height = mini, Margin = new Thickness(2) };
-                img.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ShellEntry.Icon)) { Source = e });
-                RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.HighQuality);
+                var img = IconImage(e, mini, new Thickness(2));
+                SetRow(img, n / 2);
+                SetColumn(img, n % 2);
                 grid.Children.Add(img);
+                n++;
             }
             var more = MakeCell(grid, OverflowTag, null);
-            more.MouseEnter += (_, _) => StartHoverExpand();
-            more.MouseLeave += (_, _) => _hoverTimer.Stop();
-            _cells.Children.Add(more);
+            more.PointerEntered += (_, _) => StartHoverExpand();
+            more.PointerExited += (_, _) => _hoverTimer.Stop();
+            Place(more, direct);
         }
     }
 
@@ -181,13 +200,13 @@ internal sealed class CardView : Grid
         {
             CornerRadius = new CornerRadius(6),
             Margin = new Thickness(3),
-            Background = Brushes.Transparent,
+            Background = new SolidColorBrush(Colors.Transparent),
             Tag = tag,
             Child = content,
-            ToolTip = tip,
         };
-        b.MouseEnter += (_, _) => { if (!Editing()) b.SetResourceReference(Border.BackgroundProperty, "HoverBg"); };
-        b.MouseLeave += (_, _) => b.Background = Brushes.Transparent;
+        if (tip != null) ToolTipService.SetToolTip(b, tip);
+        b.PointerEntered += (_, _) => { if (!Editing()) b.Background = Theme.Brush("HoverBg"); };
+        b.PointerExited += (_, _) => b.Background = new SolidColorBrush(Colors.Transparent);
         return b;
     }
 
@@ -195,7 +214,7 @@ internal sealed class CardView : Grid
     private void StartHoverExpand()
     {
         _hoverTimer.Stop();
-        if (Editing() || !_mgr.HoverExpand || Mouse.LeftButton == MouseButtonState.Pressed) return;
+        if (Editing() || !_mgr.HoverExpand || LeftDown()) return;
         _hoverTimer.Interval = TimeSpan.FromMilliseconds(_mgr.HoverExpandDelay);
         _hoverTimer.Start();
     }
@@ -203,25 +222,27 @@ internal sealed class CardView : Grid
     // ----- 입력 -----
     // 아이콘 클릭 = 실행, 더보기 칸 클릭 = 펼치기(빈 칸·이름은 아무 일 없음), 아이콘 끌기 = 밖으로 꺼내기.
 
-    private void OnDown(object sender, MouseButtonEventArgs e)
+    private void OnDown(object sender, PointerRoutedEventArgs e)
     {
-        if (Editing()) return;
-        _downPos = e.GetPosition(this);
+        var point = e.GetCurrentPoint(this);
+        if (Editing() || !point.Properties.IsLeftButtonPressed) return;
+        _downPos = point.Position;
+        _downPoint = point;
         _downTarget = FindTag(e.OriginalSource as DependencyObject);
         _pending = true;
     }
 
-    private void OnMove(object sender, MouseEventArgs e)
+    private void OnMove(object sender, PointerRoutedEventArgs e)
     {
-        if (!_pending || Editing() || e.LeftButton != MouseButtonState.Pressed) return;
-        var d = e.GetPosition(this) - _downPos;
-        if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var point = e.GetCurrentPoint(this);
+        if (!_pending || Editing() || !point.Properties.IsLeftButtonPressed) return;
+        if (Math.Abs(point.Position.X - _downPos.X) < Native.GetSystemMetrics(68) &&
+            Math.Abs(point.Position.Y - _downPos.Y) < Native.GetSystemMetrics(69)) return;
         _pending = false;
-        if (_downTarget is ShellEntry entry) FileOps.DragOut(this, entry.Path);
+        if (_downTarget is ShellEntry entry && _downPoint != null) _ = FileOps.DragOut(this, entry.Path, _downPoint);
     }
 
-    private void OnUp(object sender, MouseButtonEventArgs e)
+    private void OnUp(object sender, PointerRoutedEventArgs e)
     {
         if (!_pending || Editing()) return;
         _pending = false;
@@ -230,7 +251,7 @@ internal sealed class CardView : Grid
     }
 
     // 아이콘 위 우클릭 = 항목 메뉴(펼친 창과 같음), 그 밖 = 카드 메뉴.
-    private void OnRightUp(object sender, MouseButtonEventArgs e)
+    private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         e.Handled = true;
         if (!Editing() && FindTag(e.OriginalSource as DependencyObject) is ShellEntry entry)
@@ -244,7 +265,7 @@ internal sealed class CardView : Grid
         while (d != null && d != this)
         {
             if (d is Border { Tag: not null } b) return b.Tag;
-            d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+            d = VisualTreeHelper.GetParent(d);
         }
         return null;
     }

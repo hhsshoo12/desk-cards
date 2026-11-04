@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Windows;
-using System.Windows.Threading;
+using Windows.Foundation;
+using Microsoft.UI.Xaml;
 using Microsoft.Win32;
 
 namespace DeskCards;
@@ -86,7 +86,7 @@ internal sealed partial class GroupManager
             _rootWatcher.Created += h;
             _rootWatcher.Deleted += h;
             _rootWatcher.Changed += h;
-            _rootWatcher.Renamed += (_, e) => _debounce.Dispatcher.BeginInvoke(() => OnFolderRenamed(e));
+            _rootWatcher.Renamed += (_, e) => Ui.Post(() => OnFolderRenamed(e));
             _rootWatcher.Error += (_, _) => OnRootWatchError();
             _rootWatcher.EnableRaisingEvents = true;
             _rootWatchRetry?.Stop();
@@ -107,7 +107,7 @@ internal sealed partial class GroupManager
         return timer;
     }
 
-    private void OnRootWatchError() => _debounce.Dispatcher.BeginInvoke(() =>
+    private void OnRootWatchError() => Ui.Post(() =>
     {
         if (_shuttingDown) return;
         StartRootWatch();
@@ -129,7 +129,7 @@ internal sealed partial class GroupManager
         CreateCard(folder);
     }
 
-    private void Bump() => _debounce.Dispatcher.BeginInvoke(() =>
+    private void Bump() => Ui.Post(() =>
     {
         if (_shuttingDown) return;
         _debounce.Stop();

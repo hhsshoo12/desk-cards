@@ -1,13 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Input;
-using System.Windows.Interop;
-using System.Windows.Markup;
-using System.Windows.Media;
-using System.Windows.Threading;
+using Microsoft.UI.Input;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
+using Windows.Foundation;
 
 namespace DeskCards;
 
@@ -19,37 +15,40 @@ internal abstract partial class DeskCard
 
     private Point _downPos;
 
-    private void OnDown(object sender, MouseButtonEventArgs e)
+    private void OnDown(object sender, PointerRoutedEventArgs e)
     {
         if (!_editing) return;
         Mgr.Select(this);
-        _pending = !IsWithin<Thumb>(e.OriginalSource as DependencyObject);
-        _downPos = e.GetPosition(this);
-        if (_pending) e.Handled = true; // 편집 중에는 카드 내용(아이콘·HTML)이 누르기를 받지 않는다.
+        _pending = !IsWithin(_grip, e.OriginalSource as DependencyObject);
+        _downPos = e.GetCurrentPoint(_rootGrid).Position;
     }
 
-    private void OnMove(object sender, MouseEventArgs e)
+    private void OnMove(object sender, PointerRoutedEventArgs e)
     {
-        if (!_pending || !_editing || e.LeftButton != MouseButtonState.Pressed) return;
-        var d = e.GetPosition(this) - _downPos;
-        if (Math.Abs(d.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(d.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        var point = e.GetCurrentPoint(_rootGrid);
+        if (!_pending || !_editing || !point.Properties.IsLeftButtonPressed) return;
+        var d = new Point(point.Position.X - _downPos.X, point.Position.Y - _downPos.Y);
+        if (Math.Abs(d.X) < Native.GetSystemMetrics(68) && Math.Abs(d.Y) < Native.GetSystemMetrics(69)) return;
         _pending = false;
-        try { DragMove(); } catch (InvalidOperationException) { }
+        StartMove();
         Mgr.SavePosition(this);
     }
 
-    private void OnUp(object sender, MouseButtonEventArgs e) => _pending = false;
+    private void OnUp(object sender, PointerRoutedEventArgs e) => _pending = false;
 
-    private static bool IsWithin<T>(DependencyObject? d) where T : DependencyObject
+    /// <summary>창 이동 루프를 시작한다(캡션을 끄는 것과 같다). 마우스를 놓을 때까지 돌아오지 않고, 그동안 WM_MOVING이 안내선을 맞춘다.</summary>
+    private void StartMove()
     {
-        for (; d != null; d = GetParent(d))
-            if (d is T) return true;
-        return false;
+        Native.ReleaseCapture();
+        Native.SendMessage(Handle, 0x0112 /* WM_SYSCOMMAND */, new IntPtr(0xF012 /* SC_MOVE | HTCAPTION */), IntPtr.Zero);
     }
 
-    private static DependencyObject? GetParent(DependencyObject d) =>
-        d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+    private static bool IsWithin(DependencyObject target, DependencyObject? d)
+    {
+        for (; d != null; d = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(d))
+            if (d == target) return true;
+        return false;
+    }
 
     // ----- 편집 모드 -----
 
@@ -58,7 +57,8 @@ internal abstract partial class DeskCard
     {
         _editing = true;
         _grip.Visibility = Visibility.Visible;
-        Cursor = Cursors.SizeAll;
+        _shield.Visibility = Visibility.Visible;
+        _shield.SetCursor(InputSystemCursorShape.SizeAll);
         UpdateBorder();
         OnEditChanged(true);
         RaiseForEdit();
@@ -78,7 +78,8 @@ internal abstract partial class DeskCard
         if (!_editing) return;
         _editing = _selected = _invalid = false;
         _grip.Visibility = Visibility.Collapsed;
-        Cursor = null;
+        _shield.Visibility = Visibility.Collapsed;
+        _shield.SetCursor(null);
         UpdateBorder();
         OnEditChanged(false);
         // HWND_BOTTOM은 맨 위(topmost) 상태도 함께 푼다.
@@ -112,6 +113,7 @@ internal abstract partial class DeskCard
 
     private void OnGripStart()
     {
+        _gripActive = true;
         BeginMoveTracking(Handle);
         _gripZoom = _appliedScale / ScaleFactor;
         _gripWidth = _layout.Width;
@@ -161,6 +163,7 @@ internal abstract partial class DeskCard
 
     private void OnGripDone()
     {
+        _gripActive = false;
         SmartGuides.Hide();
         // 겹치거나 간격보다 가까워지는 크기는 저장하지 않고 잡기 전 크기로 되돌린다.
         var p = Placement();
@@ -196,7 +199,7 @@ internal abstract partial class DeskCard
 
     /// <summary>안 되는 자리에 놓았을 때 이유와 실험 설정을 알려 준다.</summary>
     /// <remarks>편집 모드마다 종류별로 처음 한 번만 말풍선을 띄운다. 그 뒤로는 빨간 테두리와 되돌리기로 충분하다.</remarks>
-    private void Warn(SmartGuides.Placement p) => Dispatcher.BeginInvoke(() =>
+    private void Warn(SmartGuides.Placement p) => Ui.Post(() =>
     {
         bool overlap = p == SmartGuides.Placement.Overlap;
         string id = overlap ? "placement.overlap" : "placement.flush";
@@ -208,7 +211,7 @@ internal abstract partial class DeskCard
             : new BalloonTip.Tip("카드를 조금 띄워 뒀어요",
                 "카드끼리는 딱 붙일 수 없어요. 붙여 두려면 실험 설정에서 '완전히 붙이기'를 켜 주세요.",
                 "실험 설정 열기", () => SettingsWindow.OpenGeneral(Mgr), () => Mgr.HideTip(id)));
-    }, DispatcherPriority.Background);
+    }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
 
     /// <summary>바뀐 모양을 적용·저장하고, 화면 밖으로 나갔으면 당겨서 위치도 저장한다.</summary>
     protected void CommitLayout()
@@ -246,10 +249,10 @@ internal abstract partial class DeskCard
 
     private Rect WorkAreaDip()
     {
-        var dpi = VisualTreeHelper.GetDpi(this);
+        double dpi = DpiScale;
         var p = ActualPosition;
-        var wa = DesktopGrid.WorkAreaAt((int)(p.X * dpi.DpiScaleX) + 1, (int)(p.Y * dpi.DpiScaleY) + 1);
-        return new Rect(wa.Left / dpi.DpiScaleX, wa.Top / dpi.DpiScaleY, wa.Width / dpi.DpiScaleX, wa.Height / dpi.DpiScaleY);
+        var wa = DesktopGrid.WorkAreaAt((int)(p.X * dpi) + 1, (int)(p.Y * dpi) + 1);
+        return new Rect(wa.Left / dpi, wa.Top / dpi, wa.Width / dpi, wa.Height / dpi);
     }
 
     private void MoveWithGuides(IntPtr hwnd, IntPtr lParam)
@@ -312,7 +315,7 @@ internal abstract partial class DeskCard
             Native.SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, Native.SWP_NOSIZE | Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
         if (p == SmartGuides.Placement.Ok && _triedFlush) p = SmartGuides.Placement.TooClose;
         _triedFlush = false;
-        Dispatcher.BeginInvoke(() => Mgr.RefreshPlacement(), DispatcherPriority.Background);
+        Ui.Post(() => Mgr.RefreshPlacement(), Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
         if (p != SmartGuides.Placement.Ok) Warn(p);
     }
 }

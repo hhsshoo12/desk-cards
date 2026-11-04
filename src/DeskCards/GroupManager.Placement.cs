@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Windows;
-using System.Windows.Threading;
+using Windows.Foundation;
+using Microsoft.UI.Xaml;
 using Microsoft.Win32;
 
 namespace DeskCards;
@@ -23,7 +23,7 @@ internal sealed partial class GroupManager
             .Where(r => r.Right > r.Left)
             .ToList();
 
-    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _debounce.Dispatcher.BeginInvoke(() =>
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Ui.Post(() =>
     {
         if (!_shuttingDown) RefitAll();
     });
@@ -50,7 +50,7 @@ internal sealed partial class GroupManager
             _cfg.PositionsPx[card.Key] = new[] { p.X, p.Y };
             _cfg.Save();
         }
-        card.Closed += OnCardClosed;
+        card.CardClosed += OnCardClosed;
         card.Show();
         // 해상도나 작업 표시줄이 바뀌었을 수 있으니 화면 안으로 맞춘다.
         card.Refit();
@@ -70,8 +70,7 @@ internal sealed partial class GroupManager
 
     private static bool IsOnScreen(double x, double y)
     {
-        return System.Windows.Forms.Screen.AllScreens.Any(s => new Rect(s.WorkingArea.X, s.WorkingArea.Y,
-            s.WorkingArea.Width, s.WorkingArea.Height).Contains(new Point(x + 40, y + 40)));
+        return Screens.All().Any(s => s.WorkArea.Contains((int)x + 40, (int)y + 40));
     }
 
     /// <summary>
@@ -81,27 +80,25 @@ internal sealed partial class GroupManager
     /// <param name="baseSize">새 카드의 기준 크기(DIP). 없으면 기본 폴더 카드(2×2).</param>
     private Point NextFreeSlot(Size? baseSize = null)
     {
-        var wa = SystemParameters.WorkArea;
-        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => c.Footprint)
-            .Select(r => new Rect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top)).ToList();
-
         double s = Native.PrimaryScale();
+        var wa = Screens.Primary.WorkArea; // 물리 픽셀
+        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => c.Footprint).ToList();
+
         double k = _cfg.DefaultZoom * ZoomFactor(s);
         var size = baseSize ?? CardWindow.BaseSize(new CardLayout(), CellSize);
         if (baseSize == null) size.Height += DeskCard.LabelH; // 카드 아래 이름 줄
         int wPx = (int)Math.Round(size.Width * k * s), hPx = (int)Math.Round(size.Height * k * s);
-        var waPx = DesktopGrid.WorkAreaAt((int)(wa.Left * s) + 1, (int)(wa.Top * s) + 1);
+        var waPx = DesktopGrid.WorkAreaAt(wa.Left + 1, wa.Top + 1);
         var (nx, ny) = DesktopGrid.Counts(waPx, wPx, hPx);
         for (int i = nx; i >= 0; i -= 2)
         {
             for (int j = 0; j <= ny; j += 2)
             {
                 var (px, py) = DesktopGrid.CellAt(waPx, wPx, hPx, i, j);
-                var r = new Rect(px, py, wPx, hPx);
-                var probe = new Rect(r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
-                if (!taken.Any(t => t.IntersectsWith(probe))) return r.TopLeft;
+                int pl = (int)px + 4, pt = (int)py + 4, pr = (int)px + wPx - 4, pb = (int)py + hPx - 4;
+                if (!taken.Any(t => t.Left < pr && t.Right > pl && t.Top < pb && t.Bottom > pt)) return new Point(px, py);
             }
         }
-        return new Point((wa.Left + 40) * s, (wa.Top + 40) * s); // 빈 자리가 없으면 겹쳐서라도 보이게
+        return new Point(wa.Left + 40, wa.Top + 40); // 빈 자리가 없으면 겹쳐서라도 보이게
     }
 }

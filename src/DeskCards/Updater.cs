@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows.Threading;
+using Microsoft.UI.Xaml;
 using Microsoft.Win32;
 
 namespace DeskCards;

@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 
 namespace DeskCards;
 
-internal static class Native
+internal static partial class Native
 {
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     public static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
@@ -115,10 +115,10 @@ internal static class Native
     /// 이 디스플레이에서 작업 표시줄이 붙은 가장자리. 작업 영역이 화면보다 좁은 쪽으로 알아내고,
     /// 자동 숨기기라 좁아지지 않았으면 주 작업 표시줄의 가장자리로 본다.
     /// </summary>
-    public static ScreenEdge? TaskbarEdgeOn(System.Windows.Forms.Screen screen)
+    public static ScreenEdge? TaskbarEdgeOn(Screens.Monitor screen)
     {
         var b = screen.Bounds;
-        var wa = screen.WorkingArea;
+        var wa = screen.WorkArea;
         if (wa.Bottom < b.Bottom) return ScreenEdge.Bottom;
         if (wa.Top > b.Top) return ScreenEdge.Top;
         if (wa.Left > b.Left) return ScreenEdge.Left;
