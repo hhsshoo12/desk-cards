@@ -22,19 +22,6 @@ internal static class ExpandedWindow
     public static void CloseFor(CardWindow card) { }
 }
 
-internal static class EditBar
-{
-    public static void Open(GroupManager mgr) { }
-    public static void BringToTop() { }
-    public static void CloseBar() { }
-}
-
-internal static class EditDim
-{
-    public static void ShowAll(GroupManager mgr) { }
-    public static void CloseAll() { }
-}
-
 internal static class BalloonTip
 {
     public sealed record Tip(string Title, string Subtitle, string Action, Action OnAction, Action? NeverShow = null);

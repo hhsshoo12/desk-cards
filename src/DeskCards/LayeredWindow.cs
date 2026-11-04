@@ -15,13 +15,42 @@ internal sealed class LayeredWindow : IDisposable
 
     /// <param name="owner">소유자 창. 소유자가 있으면 z 순서가 그 창을 따라간다.</param>
     /// <param name="topmost">다른 모든 창 위에 둘지.</param>
-    public LayeredWindow(IntPtr owner = default, bool topmost = false)
+    /// <param name="clickThrough">true면 클릭이 아래로 통과한다. false면 눌림을 <see cref="Clicked"/>로 알리고 아래로 보내지 않는다.</param>
+    public LayeredWindow(IntPtr owner = default, bool topmost = false, bool clickThrough = true)
     {
         const uint WS_POPUP = 0x80000000;
-        long ex = Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | Native.WS_EX_TRANSPARENT | Native.WS_EX_LAYERED;
+        long ex = Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | Native.WS_EX_LAYERED;
+        if (clickThrough) ex |= Native.WS_EX_TRANSPARENT;
         if (topmost) ex |= 0x8; // WS_EX_TOPMOST
         _hwnd = CreateWindowEx((uint)ex, "Static", "Desk Cards Layer", WS_POPUP, 0, 0, 1, 1, owner, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+        if (!clickThrough)
+        {
+            // Static 컨트롤은 마우스를 통과시키므로(HTTRANSPARENT) 직접 받는다.
+            _subclass = new Native.Subclass(_hwnd, (IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam, out IntPtr result) =>
+            {
+                result = IntPtr.Zero;
+                switch (msg)
+                {
+                    case 0x0084: result = new IntPtr(1); return true; // WM_NCHITTEST → HTCLIENT
+                    case 0x0201: Clicked?.Invoke(); return true; // WM_LBUTTONDOWN
+                    case 0x0204: case 0x0205: return true; // 오른쪽 누름·뗌: 아무 일 없음
+                    case 0x0046 when LockZOrder: // WM_WINDOWPOSCHANGING
+                        var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
+                        wp.flags |= Native.SWP_NOZORDER;
+                        Marshal.StructureToPtr(wp, lParam, false);
+                        return false;
+                }
+                return false;
+            });
+        }
     }
+
+    private readonly Native.Subclass? _subclass;
+
+    public event Action? Clicked;
+
+    /// <summary>true인 동안은 눌러도 다른 창 위로 올라오지 않게 z 순서를 고정한다.</summary>
+    public bool LockZOrder { get; set; }
 
     public IntPtr Handle => _hwnd;
     public bool IsShown { get; private set; }
@@ -107,6 +136,7 @@ internal sealed class LayeredWindow : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _subclass?.Dispose();
         if (_hwnd != IntPtr.Zero) Native.DestroyWindow(_hwnd);
         if (_dib != IntPtr.Zero) Native.DeleteObject(_dib);
         if (_memDc != IntPtr.Zero) DeleteDC(_memDc);
