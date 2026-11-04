@@ -43,6 +43,7 @@ internal sealed class SettingsWindow : Window
 
     private readonly GroupManager _mgr;
     private readonly NavigationView _nav;
+    private readonly TitleBar _titleBar;
     private readonly ContentControl _host = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
     private readonly Stack<(SettingsPageKind Page, CardWindow? Card)> _history = new();
     private SettingsPageKind _page = SettingsPageKind.Cards;
@@ -60,8 +61,8 @@ internal sealed class SettingsWindow : Window
         {
             PaneDisplayMode = NavigationViewPaneDisplayMode.Auto,
             IsSettingsVisible = false,
-            IsBackButtonVisible = NavigationViewBackButtonVisible.Visible,
-            IsBackEnabled = false,
+            IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
+            IsPaneToggleButtonVisible = false,
             OpenPaneLength = 300,
             Content = _host,
         };
@@ -72,9 +73,22 @@ internal sealed class SettingsWindow : Window
             if (_syncingNav || e.SelectedItemContainer?.Tag is not SettingsPageKind page || page == TopOf(_page)) return;
             Go(page);
         };
-        _nav.BackRequested += (_, _) => GoBack();
-        Content = _nav;
-        ((FrameworkElement)Content).RequestedTheme = Theme.Element;
+        // 제목 줄: 뒤로 가기는 앱 이름 바로 왼쪽에, 메뉴 펼치기·접기 버튼은 창이 좁아 메뉴가 접혔을 때만 둔다.
+        _titleBar = new TitleBar { Title = "Desk Cards 설정", IsBackButtonVisible = true, IsBackButtonEnabled = false, IsPaneToggleButtonVisible = false };
+        _titleBar.BackRequested += (_, _) => GoBack();
+        _titleBar.PaneToggleRequested += (_, _) => _nav.IsPaneOpen = !_nav.IsPaneOpen;
+        _nav.DisplayModeChanged += (_, _) => _titleBar.IsPaneToggleButtonVisible = _nav.DisplayMode != NavigationViewDisplayMode.Expanded;
+        _nav.Loaded += (_, _) => _titleBar.IsPaneToggleButtonVisible = _nav.DisplayMode != NavigationViewDisplayMode.Expanded;
+        var layout = new Grid();
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition());
+        Grid.SetRow(_nav, 1);
+        layout.Children.Add(_titleBar);
+        layout.Children.Add(_nav);
+        layout.RequestedTheme = Theme.Element;
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(_titleBar);
+        Content = layout;
 
         var area = Screens.Primary.WorkArea;
         double scale = Native.MonitorScaleAt(area.Left + area.Width / 2, area.Top + area.Height / 2);
@@ -200,7 +214,7 @@ internal sealed class SettingsWindow : Window
         _card = card;
         _host.ContentTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection { transition };
         _host.Content = PageFactories[page](new SettingsPageArgs(this, _mgr, card));
-        _nav.IsBackEnabled = _history.Count > 0;
+        _titleBar.IsBackButtonEnabled = _history.Count > 0;
         _syncingNav = true;
         _nav.SelectedItem = _nav.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (SettingsPageKind)i.Tag == TopOf(page));
         _syncingNav = false;
@@ -212,4 +226,6 @@ internal sealed class SettingsWindow : Window
         if (ParentOf(_page) is { } up) Go(up);
     }
 }
+
+
 
