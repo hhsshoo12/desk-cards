@@ -74,7 +74,7 @@ internal sealed class SettingsWindow : Window
             Go(page);
         };
         // 제목 줄: 뒤로 가기는 앱 이름 바로 왼쪽에, 메뉴 펼치기·접기 버튼은 창이 좁아 메뉴가 접혔을 때만 둔다.
-        _titleBar = new TitleBar { Title = "Desk Cards 설정", IsBackButtonVisible = true, IsBackButtonEnabled = false, IsPaneToggleButtonVisible = false };
+        _titleBar = new TitleBar { Title = "Desk Cards 설정", IsBackButtonVisible = true, IsBackButtonEnabled = false, IsPaneToggleButtonVisible = false, Height = 84 };
         _titleBar.BackRequested += (_, _) => GoBack();
         _titleBar.PaneToggleRequested += (_, _) => _nav.IsPaneOpen = !_nav.IsPaneOpen;
         _nav.DisplayModeChanged += (_, _) => _titleBar.IsPaneToggleButtonVisible = _nav.DisplayMode != NavigationViewDisplayMode.Expanded;
@@ -226,6 +226,7 @@ internal sealed class SettingsWindow : Window
         if (ParentOf(_page) is { } up) Go(up);
     }
 }
+
 
 
 
