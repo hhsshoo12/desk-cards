@@ -18,7 +18,7 @@ internal abstract class SettingsPage : UserControl
     protected static string RepoUrl => RepoUrlValue;
 
     protected readonly SettingsPageArgs Args;
-    private readonly StackPanel _list = new() { Spacing = 3, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(40, 8, 40, 36) };
+    private readonly StackPanel _list = new() { Spacing = 3, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(40, 8, 40, 36) };
     private readonly List<Action> _refreshers = new();
 
     protected GroupManager Mgr => Args.Mgr;
@@ -432,5 +432,6 @@ internal sealed class LibrariesPage : SettingsPage
     private void Lib(string name, string desc, string url, string button = "라이선스") =>
         Row("", name, desc, Btn(button, () => OpenUrl(url)));
 }
+
 
 
