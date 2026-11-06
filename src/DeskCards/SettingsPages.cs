@@ -17,8 +17,10 @@ internal abstract class SettingsPage : UserControl
     protected const string DeveloperUrl = "https://github.com/hhsshoo12";
     protected static string RepoUrl => RepoUrlValue;
 
+    private const double MaxContentWidth = 1000;
+
     protected readonly SettingsPageArgs Args;
-    private readonly StackPanel _list = new() { Spacing = 3, MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(40, 8, 40, 36) };
+    private readonly StackPanel _list = new() { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(40, 8, 40, 36) };
     private readonly List<Action> _refreshers = new();
 
     protected GroupManager Mgr => Args.Mgr;
@@ -27,7 +29,10 @@ internal abstract class SettingsPage : UserControl
     protected SettingsPage(SettingsPageArgs args)
     {
         Args = args;
-        Content = new ScrollViewer { Content = _list, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // 본문은 최대 폭 1000으로 가운데에 둔다. ScrollViewer 안에서 MaxWidth만 걸면 메뉴가 펼쳐질 때 옛 폭 기준으로 밀려서, 폭을 직접 정한다.
+        var wrap = new Grid { Children = { _list } };
+        wrap.SizeChanged += (_, e) => _list.Width = Math.Min(MaxContentWidth, e.NewSize.Width);
+        Content = new ScrollViewer { Content = wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         Loaded += (_, _) => { Mgr.Changed += OnMgrChanged; };
         Unloaded += (_, _) => { Mgr.Changed -= OnMgrChanged; OnUnloaded(); };
     }
@@ -36,6 +41,7 @@ internal abstract class SettingsPage : UserControl
     protected abstract void Build();
 
     protected virtual void OnUnloaded() { }
+
 
     protected void Start() => Build();
 
@@ -432,6 +438,7 @@ internal sealed class LibrariesPage : SettingsPage
     private void Lib(string name, string desc, string url, string button = "라이선스") =>
         Row("", name, desc, Btn(button, () => OpenUrl(url)));
 }
+
 
 
 

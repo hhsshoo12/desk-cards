@@ -78,6 +78,7 @@ public partial class App : Application
         _mgr = new GroupManager(config: cfg);
         _mgr.Start();
         EdgeBar.Start(_mgr);
+        if (Environment.GetEnvironmentVariable("DESKCARDS_DIAG") == "1") Ui.Post(() => SettingsWindow.Open(_mgr));
         _tray = new Tray("Desk Cards", () => Menus.ForTray(_mgr!, Quit).ShowAtCursor(), () => SettingsWindow.Open(_mgr!));
         Updater.Instance = new Updater(cfg, host);
         Updater.Instance.StartAuto();
@@ -145,3 +146,4 @@ public partial class App : Application
         catch (System.ComponentModel.Win32Exception) { } // 다른 사용자/권한의 프로세스는 기다리지 않는다.
     }
 }
+
