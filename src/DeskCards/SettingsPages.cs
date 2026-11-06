@@ -20,7 +20,8 @@ internal abstract class SettingsPage : UserControl
     private const double MaxContentWidth = 1000, SideMargin = 40; // 카드 폭은 최대 1000, 좁은 창에서도 양쪽에 40씩 둔다(Windows 설정과 같다)
 
     protected readonly SettingsPageArgs Args;
-    private readonly StackPanel _list = new() { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(0, 8, 0, 36) };
+    private readonly StackPanel _list = new() { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Center, Padding = new Thickness(0, 12, 0, 48) };
+    private readonly Border _header = new() { HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 8, 0, 0) };
     private readonly List<Action> _refreshers = new();
 
     protected GroupManager Mgr => Args.Mgr;
@@ -29,10 +30,22 @@ internal abstract class SettingsPage : UserControl
     protected SettingsPage(SettingsPageArgs args)
     {
         Args = args;
-        // 본문은 최대 폭 1000으로 가운데에 둔다. ScrollViewer 안에서 MaxWidth만 걸면 메뉴가 펼쳐질 때 옛 폭 기준으로 밀려서, 폭을 직접 정한다.
-        var wrap = new Grid { Children = { _list } };
-        wrap.SizeChanged += (_, e) => _list.Width = Math.Max(1, Math.Min(MaxContentWidth, e.NewSize.Width - 2 * SideMargin));
-        Content = new ScrollViewer { Content = wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        // Windows 설정(PowerToys 설정 앱과 같은 구성): 제목은 위에 고정하고 그 아래 카드만 스크롤한다.
+        // 폭은 최대 1000으로 가운데에 둔다. ScrollViewer 안에서 MaxWidth만 걸면 메뉴가 펼쳐질 때 옛 폭 기준으로 밀려서 폭을 직접 정한다.
+        var scroll = new ScrollViewer { Content = new Grid { Children = { _list } }, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var page = new Grid { RowSpacing = 12 };
+        page.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        page.RowDefinitions.Add(new RowDefinition());
+        Grid.SetRow(scroll, 1);
+        page.Children.Add(_header);
+        page.Children.Add(scroll);
+        page.SizeChanged += (_, e) => _list.Width = _header.Width = Math.Max(1, Math.Min(MaxContentWidth, e.NewSize.Width - 2 * SideMargin));
+        _list.ChildrenTransitions = new Microsoft.UI.Xaml.Media.Animation.TransitionCollection
+        {
+            new Microsoft.UI.Xaml.Media.Animation.EntranceThemeTransition { FromVerticalOffset = 50 },
+            new Microsoft.UI.Xaml.Media.Animation.RepositionThemeTransition { IsStaggeringEnabled = false },
+        };
+        Content = page;
         Loaded += (_, _) => { Mgr.Changed += OnMgrChanged; };
         Unloaded += (_, _) => { Mgr.Changed -= OnMgrChanged; OnUnloaded(); };
     }
@@ -61,14 +74,14 @@ internal abstract class SettingsPage : UserControl
 
     protected void Crumbs(params (string Text, SettingsPageKind? Page)[] items)
     {
-        var bar = new BreadcrumbBar { Margin = new Thickness(0, 4, 0, 12), ItemsSource = items.Select(i => i.Text).ToList() };
+        var bar = new BreadcrumbBar { ItemsSource = items.Select(i => i.Text).ToList() };
         // 제목 크기로 키운 마지막 칸을 쓰려면 템플릿이 필요하다. 기본 모양을 쓰되 글자만 키운다.
         bar.Resources["BreadcrumbBarItemThemeFontSize"] = 28.0;
         bar.ItemClicked += (_, e) =>
         {
             if (e.Index < items.Length - 1 && items[e.Index].Page is { } page) Host.Go(page);
         };
-        _list.Children.Add(bar);
+        _header.Child = bar;
     }
 
     protected void Header(string text) =>

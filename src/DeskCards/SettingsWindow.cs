@@ -64,8 +64,13 @@ internal sealed class SettingsWindow : Window
             IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed,
             IsPaneToggleButtonVisible = false,
             OpenPaneLength = 320,
+            CompactModeThresholdWidth = 1007,
+            ExpandedModeThresholdWidth = 1007,
             Content = _host,
         };
+        // Windows 설정처럼 본문을 별도 판(둥근 테두리)으로 두지 않고 Mica 배경 위에 그대로 올린다.
+        _nav.Resources["NavigationViewContentBackground"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        _nav.Resources["NavigationViewContentGridBorderBrush"] = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent);
         foreach (var (glyph, text, page) in NavItems)
             _nav.MenuItems.Add(new NavigationViewItem { Content = text, Icon = new FontIcon { Glyph = glyph }, Tag = page });
         _nav.SelectionChanged += (_, e) =>
