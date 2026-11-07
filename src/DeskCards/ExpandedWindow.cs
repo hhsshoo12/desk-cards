@@ -1,11 +1,9 @@
 using System;
 using System.Linq;
-using System.Numerics;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -34,13 +32,11 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private readonly Func<int, int, Point>? _place;
     private readonly IntPtr _anchor;
     private readonly TextBox _title;
-    private DispatcherTimer? _leaveTimer, _openTimer;
-    private Windows.Graphics.RectInt32 _final;
-    private const double GrowMs = 400;
+    private DispatcherTimer? _leaveTimer;
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
-        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") }, Motion.Enabled ? Hwnd.Backdrop.None : Hwnd.Backdrop.Acrylic)
+        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") }, systemOpenAnimation: true)
     {
         _card = card;
         _mgr = mgr;
@@ -62,7 +58,6 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Closed += (_, _) => OnClosed();
 
         PlaceNearCard();
-        PlayOpen();
         AppWindow.Show();
         Activate();
         if (hover) StartLeaveWatch();
@@ -72,91 +67,6 @@ internal sealed partial class ExpandedWindow : ToolWindow
 
     private GroupModel Group => _card.Group;
 
-    /// <summary>
-    /// 열릴 때(Windows 시작 메뉴의 폴더처럼): 카드 자리에서 작게 시작해 제 크기로 커진다(333ms, 감속).
-    /// 창과 내용이 같은 비율로 커지고, 내용은 창의 왼쪽 위에 붙여 늘 창 안에 꼭 맞는다.
-    /// 커지는 동안은 아크릴 없이 불투명한 바탕을 쓰고(크기를 바꿀 때 아크릴이 따라오지 못해 어긋난다),
-    /// 다 커진 뒤에 아크릴을 켜면서 바탕을 서서히 투명하게 해 아크릴이 비쳐 보이게 한다(167ms).
-    /// </summary>
-    private void PlayOpen()
-    {
-        if (!Motion.Enabled) return;
-        var root = (FrameworkElement)Content;
-        var visual = ElementCompositionPreview.GetElementVisual(root);
-        var final = _final;
-        double fx = final.X + final.Width / 2.0, fy = final.Y + final.Height / 2.0;
-        // 시작: 카드(또는 연 창)의 가운데, 카드 크기에 가까운 비율.
-        double sx = fx, sy = fy, from = 0.5;
-        if (Native.GetWindowRect(_anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card), out var r))
-        {
-            sx = (r.Left + r.Right) / 2.0;
-            sy = (r.Top + r.Bottom) / 2.0;
-            from = Math.Clamp(Math.Min((r.Right - r.Left) / (double)final.Width, (r.Bottom - r.Top) / (double)final.Height), 0.3, 0.8);
-        }
-        visual.CenterPoint = Vector3.Zero;
-        var tint = ((SolidColorBrush)Theme.Brush("PopupBg")).Color;
-        var cover = new SolidColorBrush(Windows.UI.Color.FromArgb(255, tint.R, tint.G, tint.B));
-        ((Control)root).Background = cover;
-        bool acrylicOn = false;
-
-        // 창은 제 크기로 두고 보이는 영역(Window Region)만 키운다. 창 크기를 프레임마다 바꾸면 내용이 한 프레임씩 늦게 따라와 어긋난다.
-        Native.GetWindowRect(Handle, out var outer);
-        Native.GetClientRect(Handle, out var client);
-        int border = Math.Max(0, ((outer.Right - outer.Left) - client.Right) / 2);
-        int top = Math.Max(0, ((outer.Bottom - outer.Top) - client.Bottom) - border);
-        int radius = (int)Math.Round(16 * Native.MonitorScaleOf(Handle));
-        // Windows가 그리는 1px 테두리는 창 영역으로 잘리지 않고 창 전체 크기로 남아 유령 사각형처럼 보이므로, 커지는 동안만 끈다.
-        SetBorderColor(Handle, DwmColorNone);
-        SetNonClientRendering(Handle, disabled: true); // 그림자·테두리를 끈다(영역으로는 잘리지 않는다)
-        void Apply(double t, double opacity)
-        {
-            if (_closing) return;
-            double s = from + (1 - from) * t;
-            double w = final.Width * s, h = final.Height * s;
-            double cx = sx + (fx - sx) * t, cy = sy + (fy - sy) * t;
-            double left = cx - w / 2 - outer.Left, topY = cy - h / 2 - outer.Top; // 창 바깥 왼쪽 위 기준
-            SetWindowRgn(Handle, CreateRoundRectRgn((int)Math.Round(left), (int)Math.Round(topY), (int)Math.Round(left + w), (int)Math.Round(topY + h), radius, radius), true);
-            visual.Offset = new Vector3((float)(left - border), (float)(topY - top), 0);
-            visual.Scale = new Vector3((float)s, (float)s, 1);
-            visual.Opacity = (float)opacity;
-        }
-        void EndRegion()
-        {
-            SetWindowRgn(Handle, IntPtr.Zero, true);
-            SetBorderColor(Handle, DwmColorDefault);
-            SetNonClientRendering(Handle, disabled: false);
-            visual.Offset = Vector3.Zero;
-        }        Apply(0, 0);
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
-        _openTimer.Tick += (_, _) =>
-        {
-            double ms = clock.Elapsed.TotalMilliseconds;
-            if (ms < GrowMs)
-            {
-                // 감속이 너무 강하면(0,0,0,1) 처음 한두 프레임에 거의 다 커져서 툭 뜨는 것처럼 보인다. 3차 ease-out으로 고르게 키운다.
-                double p = Math.Clamp(ms / GrowMs, 0, 1);
-                Apply(1 - Math.Pow(1 - p, 3), Math.Clamp(ms / 150, 0, 1));
-                return;
-            }
-            if (!acrylicOn)
-            {
-                acrylicOn = true;
-                Apply(1, 1);
-                EndRegion();
-                Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
-            }
-            double k = Motion.Decel((ms - GrowMs) / Motion.Fast);
-            cover.Color = Windows.UI.Color.FromArgb((byte)Math.Round(255 + (tint.A - 255) * k), tint.R, tint.G, tint.B);
-            if (ms >= GrowMs + Motion.Fast)
-            {
-                _openTimer?.Stop();
-                _openTimer = null;
-                ((Control)root).Background = Theme.Brush("PopupBg");
-            }
-        };
-        _openTimer.Start();
-    }
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
     /// <param name="anchor">바탕화면 카드 대신 다른 창에서 열었을 때의 창. 그 창이 있는 쪽에 뜨고 그 위에 보인다.</param>
@@ -241,8 +151,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
             var wa = Screens.FromHandle(reference).WorkArea;
             p = PixelPlacement.Beside(rect, new Rect(wa.Left, wa.Top, wa.Width, wa.Height), new Size(root.Width, root.Height), scale, centered: true);
         }
-        _final = new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h);
-        Resize(_final);
+        Resize(new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h));
         Hwnd.SetZOrder(Handle, _mgr.Editing || _anchor != IntPtr.Zero ? Hwnd.Topmost : IntPtr.Zero);
     }
 
@@ -300,18 +209,10 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Ui.Post(Close);
     }
 
-    private static void SetNonClientRendering(IntPtr hwnd, bool disabled) { uint policy = disabled ? 1u : 0u; DwmSetWindowAttribute(hwnd, 2, ref policy, sizeof(uint)); } // DWMWA_NCRENDERING_POLICY: 1=끔, 0=창 스타일대로
-    private const uint DwmColorNone = 0xFFFFFFFE, DwmColorDefault = 0xFFFFFFFF;
-    private static void SetBorderColor(IntPtr hwnd, uint color) => DwmSetWindowAttribute(hwnd, 34, ref color, sizeof(uint));
-    [System.Runtime.InteropServices.DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref uint value, int size);
-    [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hwnd, IntPtr rgn, bool redraw);
-
     private void OnClosed()
     {
         Group.Changed -= Rebuild;
         _leaveTimer?.Stop();
-        _openTimer?.Stop();
         if (_current == this) _current = null;
     }
 }

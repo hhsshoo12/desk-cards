@@ -11,7 +11,7 @@ namespace DeskCards;
 /// </summary>
 internal abstract class ToolWindow : Window
 {
-    protected ToolWindow(string title, FrameworkElement content, Hwnd.Backdrop backdrop = Hwnd.Backdrop.Acrylic, bool topmost = true)
+    protected ToolWindow(string title, FrameworkElement content, Hwnd.Backdrop backdrop = Hwnd.Backdrop.Acrylic, bool topmost = true, bool systemOpenAnimation = false)
     {
         Title = title;
         ExtendsContentIntoTitleBar = true;
@@ -19,7 +19,7 @@ internal abstract class ToolWindow : Window
         aw.TitleBar.PreferredHeightOption = TitleBarHeightOption.Collapsed;
         if (aw.Presenter is OverlappedPresenter p)
         {
-            p.SetBorderAndTitleBar(true, false);
+            // 캡션 스타일이 있어야 Windows(DWM)가 열 때 기본 확대·페이드 애니메이션을 배경·아크릴까지 함께 해 준다.`n            p.SetBorderAndTitleBar(true, systemOpenAnimation);
             p.IsResizable = false;
             p.IsMaximizable = false;
             p.IsMinimizable = false;
