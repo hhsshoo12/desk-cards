@@ -132,6 +132,56 @@ internal sealed class LayeredWindow : IDisposable
         return pixels;
     }
 
+    private IntPtr _srcDib;
+    private int _srcW, _srcH;
+
+    /// <summary>나중에 <see cref="DrawScaled"/>로 줄여 그릴 원본 그림(미리 곱한 BGRA, 위에서 아래로).</summary>
+    public void SetSource(byte[] pixels, int w, int h)
+    {
+        if (_disposed || w <= 0 || h <= 0 || pixels.Length < w * h * 4) return;
+        var screenDc = Native.GetDC(IntPtr.Zero);
+        try
+        {
+            var info = new Native.BITMAPINFOHEADER { biSize = (uint)Marshal.SizeOf<Native.BITMAPINFOHEADER>(), biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+            var bitmap = CreateDIBSection(screenDc, ref info, 0, out var bits, IntPtr.Zero, 0);
+            if (bitmap == IntPtr.Zero) return;
+            Marshal.Copy(pixels, 0, bits, w * h * 4);
+            if (_srcDib != IntPtr.Zero) Native.DeleteObject(_srcDib);
+            _srcDib = bitmap; _srcW = w; _srcH = h;
+        }
+        finally { Native.ReleaseDC(IntPtr.Zero, screenDc); }
+    }
+
+    /// <summary>원본 그림을 (x, y, w, h)(물리 픽셀)에 맞춰 줄이거나 늘려 보여 준다. alpha는 전체 투명도(0~255).</summary>
+    public void DrawScaled(int x, int y, int w, int h, byte alpha)
+    {
+        if (_disposed || _srcDib == IntPtr.Zero || w <= 0 || h <= 0) return;
+        var screenDc = Native.GetDC(IntPtr.Zero);
+        IntPtr srcDc = CreateCompatibleDC(screenDc), dstDc = CreateCompatibleDC(screenDc);
+        try
+        {
+            var info = new Native.BITMAPINFOHEADER { biSize = (uint)Marshal.SizeOf<Native.BITMAPINFOHEADER>(), biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+            var dst = CreateDIBSection(screenDc, ref info, 0, out _, IntPtr.Zero, 0);
+            if (dst == IntPtr.Zero) return;
+            var oldSrc = SelectObject(srcDc, _srcDib);
+            var oldDst = SelectObject(dstDc, dst);
+            SetStretchBltMode(dstDc, 4 /* HALFTONE */);
+            var copy = new BLENDFUNCTION { BlendOp = 0, SourceConstantAlpha = 255, AlphaFormat = 1 };
+            AlphaBlend(dstDc, 0, 0, w, h, srcDc, 0, 0, _srcW, _srcH, copy);
+            var pos = new Native.POINT { X = x, Y = y };
+            var size = new SIZE { cx = w, cy = h };
+            var from = new Native.POINT();
+            var blend = new BLENDFUNCTION { BlendOp = 0, SourceConstantAlpha = alpha, AlphaFormat = 1 };
+            UpdateLayeredWindow(_hwnd, screenDc, ref pos, ref size, dstDc, ref from, 0, ref blend, 2);
+            SelectObject(srcDc, oldSrc);
+            SelectObject(dstDc, oldDst);
+            Native.DeleteObject(dst);
+        }
+        finally { DeleteDC(srcDc); DeleteDC(dstDc); Native.ReleaseDC(IntPtr.Zero, screenDc); }
+    }
+
+    [DllImport("msimg32.dll")] private static extern bool AlphaBlend(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, int sw, int sh, BLENDFUNCTION blend);
+    [DllImport("gdi32.dll")] private static extern int SetStretchBltMode(IntPtr dc, int mode);
     public void Dispose()
     {
         if (_disposed) return;
@@ -139,6 +189,7 @@ internal sealed class LayeredWindow : IDisposable
         _subclass?.Dispose();
         if (_hwnd != IntPtr.Zero) Native.DestroyWindow(_hwnd);
         if (_dib != IntPtr.Zero) Native.DeleteObject(_dib);
+        if (_srcDib != IntPtr.Zero) Native.DeleteObject(_srcDib);
         if (_memDc != IntPtr.Zero) DeleteDC(_memDc);
     }
 

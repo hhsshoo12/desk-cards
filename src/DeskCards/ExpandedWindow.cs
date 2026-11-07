@@ -71,12 +71,15 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private GroupModel Group => _card.Group;
 
     private DispatcherTimer? _openTimer;
+    private LayeredWindow? _ghost;
+    private Windows.Graphics.RectInt32 _final;
 
     /// <summary>
-    /// 열릴 때: 창은 제 크기로 둔 채 창 전체(배경·아크릴 포함)를 투명도로 페이드(167ms)하고,
-    /// 내용은 0.94배에서 1배로 커진다(250ms). 창 크기를 바꾸지 않으므로 어긋나는 것이 없다.
+    /// 열릴 때: 진짜 창은 투명하게 제 자리에 두고, 그 모습을 그림으로 떠서 별도의 그림 창(DWM이 평소처럼 합성)이
+    /// 카드 자리에서 작게 시작해 커지게 한다(333ms). 다 커지면 진짜 창(아크릴)을 페이드로 드러내고 그림 창을 걷는다(167ms).
+    /// 진짜 창은 크기·영역·DWM 설정을 건드리지 않는다.
     /// </summary>
-    private void PlayOpen()
+    private async void PlayOpen()
     {
         if (!Motion.Enabled) return;
         var hwnd = Handle;
@@ -84,30 +87,96 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_LAYERED));
         SetLayeredWindowAttributes(hwnd, 0, 0, 2);
 
-        var root = (FrameworkElement)Content;
-        var visual = ElementCompositionPreview.GetElementVisual(root);
-        visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
-        visual.Scale = new Vector3(0.94f, 0.94f, 1);
-
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
-        _openTimer.Tick += (_, _) =>
+        void Restore()
         {
-            double ms = clock.Elapsed.TotalMilliseconds;
-            double alpha = Motion.Decel(ms / Motion.Fast), grow = Motion.Decel(ms / Motion.Normal);
-            SetLayeredWindowAttributes(hwnd, 0, (byte)Math.Round(255 * alpha), 2);
-            visual.Scale = new Vector3((float)(0.94 + 0.06 * grow), (float)(0.94 + 0.06 * grow), 1);
-            if (ms < Motion.Normal) return;
-            _openTimer?.Stop();
-            _openTimer = null;
-            visual.Scale = Vector3.One;
-            // 끝나면 레이어드 스타일을 벗겨 평소 창으로 돌려놓는다.
+            _ghost?.Dispose();
+            _ghost = null;
             long now = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
             Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(now & ~Native.WS_EX_LAYERED));
-        };
-        _openTimer.Start();
+        }
+
+        try
+        {
+            await System.Threading.Tasks.Task.Delay(40); // 창이 화면에 올라와 내용이 그려지길 기다린다.
+            if (_closing) return;
+            var root = (FrameworkElement)Content;
+            int pw = _final.Width, ph = _final.Height;
+            var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
+            await rtb.RenderAsync(root, pw, ph);
+            if (_closing) return;
+            var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await rtb.GetPixelsAsync());
+            BakeGlass(pixels, pw, ph);
+
+            _ghost = new LayeredWindow(topmost: true);
+            _ghost.SetSource(pixels, pw, ph);
+            double fx = _final.X + pw / 2.0, fy = _final.Y + ph / 2.0, sx = fx, sy = fy, from = 0.5;
+            if (Native.GetWindowRect(_anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card), out var r))
+            {
+                sx = (r.Left + r.Right) / 2.0;
+                sy = (r.Top + r.Bottom) / 2.0;
+                from = Math.Clamp(Math.Min((r.Right - r.Left) / (double)pw, (r.Bottom - r.Top) / (double)ph), 0.3, 0.8);
+            }
+            void Frame(double t, byte alpha)
+            {
+                double s = from + (1 - from) * t;
+                int w = Math.Max(1, (int)Math.Round(pw * s)), h = Math.Max(1, (int)Math.Round(ph * s));
+                double cx = sx + (fx - sx) * t, cy = sy + (fy - sy) * t;
+                _ghost!.DrawScaled((int)Math.Round(cx - w / 2.0), (int)Math.Round(cy - h / 2.0), w, h, alpha);
+            }
+            Frame(0, 0);
+            _ghost.Show();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
+            _openTimer.Tick += (_, _) =>
+            {
+                if (_closing || _ghost == null) { _openTimer?.Stop(); _openTimer = null; return; }
+                double ms = clock.Elapsed.TotalMilliseconds;
+                if (ms < Motion.Slow)
+                {
+                    Frame(Motion.Decel(ms / Motion.Slow), (byte)Math.Round(255 * Math.Clamp(ms / 100, 0, 1)));
+                    return;
+                }
+                double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
+                Frame(1, (byte)Math.Round(255 * (1 - k)));
+                SetLayeredWindowAttributes(hwnd, 0, (byte)Math.Round(255 * k), 2);
+                if (ms < Motion.Slow + Motion.Fast) return;
+                _openTimer?.Stop();
+        _ghost?.Dispose();
+                _openTimer = null;
+                Restore();
+            };
+            _openTimer.Start();
+        }
+        catch
+        {
+            // 그림을 뜨지 못하면 애니메이션 없이 바로 보여 준다.
+            SetLayeredWindowAttributes(hwnd, 0, 255, 2);
+            Restore();
+        }
     }
 
+    /// <summary>
+    /// 떠 낸 그림(미리 곱한 BGRA)을 아크릴 비슷한 반투명 바탕 위에 올리고 모서리를 둥글게 깎는다.
+    /// 진짜 아크릴(흐림)은 그림에 담을 수 없어서, 같은 색조의 거의 불투명한 바탕을 깐다.
+    /// </summary>
+    private void BakeGlass(byte[] px, int w, int h)
+    {
+        var tint = ((Microsoft.UI.Xaml.Media.SolidColorBrush)Theme.Brush("PopupBg")).Color;
+        const int baseAlpha = 0xEE;
+        int br = tint.R * baseAlpha / 255, bg = tint.G * baseAlpha / 255, bb = tint.B * baseAlpha / 255;
+        double r = 8 * Native.MonitorScaleOf(Handle);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int i = (y * w + x) * 4, inv = 255 - px[i + 3];
+                px[i] = (byte)Math.Min(255, px[i] + bb * inv / 255);
+                px[i + 1] = (byte)Math.Min(255, px[i + 1] + bg * inv / 255);
+                px[i + 2] = (byte)Math.Min(255, px[i + 2] + br * inv / 255);
+                px[i + 3] = (byte)Math.Min(255, px[i + 3] + baseAlpha * inv / 255);
+                double dx = Math.Max(0, Math.Max(r - x, x - (w - 1 - r))), dy = Math.Max(0, Math.Max(r - y, y - (h - 1 - r)));
+                if (dx * dx + dy * dy > r * r) px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0;
+            }
+    }
     [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
@@ -194,7 +263,8 @@ internal sealed partial class ExpandedWindow : ToolWindow
             var wa = Screens.FromHandle(reference).WorkArea;
             p = PixelPlacement.Beside(rect, new Rect(wa.Left, wa.Top, wa.Width, wa.Height), new Size(root.Width, root.Height), scale, centered: true);
         }
-        Resize(new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h));
+        _final = new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h);
+        Resize(_final);
         Hwnd.SetZOrder(Handle, _mgr.Editing || _anchor != IntPtr.Zero ? Hwnd.Topmost : IntPtr.Zero);
     }
 
@@ -257,6 +327,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Group.Changed -= Rebuild;
         _leaveTimer?.Stop();
         _openTimer?.Stop();
+        _ghost?.Dispose();
         if (_current == this) _current = null;
     }
 }
