@@ -107,6 +107,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
         int radius = (int)Math.Round(16 * Native.MonitorScaleOf(Handle));
         // Windows가 그리는 1px 테두리는 창 영역으로 잘리지 않고 창 전체 크기로 남아 유령 사각형처럼 보이므로, 커지는 동안만 끈다.
         SetBorderColor(Handle, DwmColorNone);
+        SetNonClientRendering(Handle, disabled: true); // 그림자·테두리를 끈다(영역으로는 잘리지 않는다)
         void Apply(double t, double opacity)
         {
             if (_closing) return;
@@ -123,6 +124,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
         {
             SetWindowRgn(Handle, IntPtr.Zero, true);
             SetBorderColor(Handle, DwmColorDefault);
+            SetNonClientRendering(Handle, disabled: false);
             visual.Offset = Vector3.Zero;
         }        Apply(0, 0);
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -298,6 +300,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Ui.Post(Close);
     }
 
+    private static void SetNonClientRendering(IntPtr hwnd, bool disabled) { uint policy = disabled ? 1u : 0u; DwmSetWindowAttribute(hwnd, 2, ref policy, sizeof(uint)); } // DWMWA_NCRENDERING_POLICY: 1=끔, 0=창 스타일대로
     private const uint DwmColorNone = 0xFFFFFFFE, DwmColorDefault = 0xFFFFFFFF;
     private static void SetBorderColor(IntPtr hwnd, uint color) => DwmSetWindowAttribute(hwnd, 34, ref color, sizeof(uint));
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref uint value, int size);
