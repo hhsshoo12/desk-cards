@@ -36,6 +36,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private readonly TextBox _title;
     private DispatcherTimer? _leaveTimer, _openTimer;
     private Windows.Graphics.RectInt32 _final;
+    private const double GrowMs = 400;
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
@@ -126,9 +127,11 @@ internal sealed partial class ExpandedWindow : ToolWindow
         _openTimer.Tick += (_, _) =>
         {
             double ms = clock.Elapsed.TotalMilliseconds;
-            if (ms < Motion.Slow)
+            if (ms < GrowMs)
             {
-                Apply(Motion.Decel(ms / Motion.Slow), Motion.Decel(ms / Motion.Fast));
+                // 감속이 너무 강하면(0,0,0,1) 처음 한두 프레임에 거의 다 커져서 툭 뜨는 것처럼 보인다. 3차 ease-out으로 고르게 키운다.
+                double p = Math.Clamp(ms / GrowMs, 0, 1);
+                Apply(1 - Math.Pow(1 - p, 3), Math.Clamp(ms / 150, 0, 1));
                 return;
             }
             if (!acrylicOn)
@@ -138,9 +141,9 @@ internal sealed partial class ExpandedWindow : ToolWindow
                 EndRegion();
                 Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
             }
-            double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
+            double k = Motion.Decel((ms - GrowMs) / Motion.Fast);
             cover.Color = Windows.UI.Color.FromArgb((byte)Math.Round(255 + (tint.A - 255) * k), tint.R, tint.G, tint.B);
-            if (ms >= Motion.Slow + Motion.Fast)
+            if (ms >= GrowMs + Motion.Fast)
             {
                 _openTimer?.Stop();
                 _openTimer = null;
