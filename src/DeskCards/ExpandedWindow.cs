@@ -105,10 +105,13 @@ internal sealed partial class ExpandedWindow : ToolWindow
             await rtb.RenderAsync(root, pw, ph);
             if (_closing) return;
             var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await rtb.GetPixelsAsync());
-            BakeGlass(pixels, pw, ph);
+            // 떠 낸 그림의 실제 크기(요청한 크기와 다를 수 있다)를 쓴다.
+            int bw = rtb.PixelWidth, bh = rtb.PixelHeight;
+            if (bw <= 0 || bh <= 0 || pixels.Length < bw * bh * 4) throw new InvalidOperationException();
+            BakeGlass(pixels, bw, bh);
 
             _ghost = new LayeredWindow(topmost: true);
-            _ghost.SetSource(pixels, pw, ph);
+            _ghost.SetSource(pixels, bw, bh);
             double fx = _final.X + pw / 2.0, fy = _final.Y + ph / 2.0, sx = fx, sy = fy, from = 0.5;
             if (Native.GetWindowRect(_anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card), out var r))
             {
