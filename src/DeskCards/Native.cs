@@ -104,40 +104,6 @@ internal static partial class Native
     [DllImport("shell32.dll")]
     private static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
 
-    /// <summary>작업 표시줄이 붙은 가장자리. 알 수 없으면 null.</summary>
-    public static ScreenEdge? TaskbarEdge()
-    {
-        const uint ABM_GETTASKBARPOS = 5;
-        var data = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>() };
-        if (SHAppBarMessage(ABM_GETTASKBARPOS, ref data) == IntPtr.Zero || data.uEdge > 3) return null;
-        return (ScreenEdge)data.uEdge;
-    }
-
-    /// <summary>
-    /// 이 디스플레이에서 작업 표시줄이 붙은 가장자리. 작업 영역이 화면보다 좁은 쪽으로 알아내고,
-    /// 자동 숨기기라 좁아지지 않았으면 주 작업 표시줄의 가장자리로 본다.
-    /// </summary>
-    public static ScreenEdge? TaskbarEdgeOn(Screens.Monitor screen)
-    {
-        var b = screen.Bounds;
-        var wa = screen.WorkArea;
-        if (wa.Bottom < b.Bottom) return ScreenEdge.Bottom;
-        if (wa.Top > b.Top) return ScreenEdge.Top;
-        if (wa.Left > b.Left) return ScreenEdge.Left;
-        if (wa.Right < b.Right) return ScreenEdge.Right;
-        return TaskbarEdge();
-    }
-
-    [DllImport("shell32.dll")]
-    private static extern int SHQueryUserNotificationState(out int state);
-
-    /// <summary>전체 화면 게임·영상·발표 중인지. 이때는 카드 바를 열지 않는다.</summary>
-    public static bool IsFullScreenBusy()
-    {
-        // 2 = 전체 화면 앱, 3 = Direct3D 전체 화면, 4 = 프레젠테이션 모드
-        return SHQueryUserNotificationState(out int state) == 0 && state is 2 or 3 or 4;
-    }
-
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 

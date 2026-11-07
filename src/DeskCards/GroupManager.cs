@@ -31,8 +31,8 @@ internal sealed partial class GroupManager
     public string Root { get; }
     public bool IsShuttingDown => _shuttingDown;
 
-    /// <summary>바탕화면에 떠 있는 카드(카드 바 전용 그룹은 빼고).</summary>
-    public IEnumerable<CardWindow> AllCards => _cards.Values.Where(c => !IsBarOnly(c.Group.Name)).Cast<CardWindow>();
+    /// <summary>바탕화면에 떠 있는 카드.</summary>
+    public IEnumerable<CardWindow> AllCards => _cards.Values.Cast<CardWindow>();
 
     /// <summary>폴더 카드 목록, 이름 순.</summary>
     public IReadOnlyList<CardWindow> Cards =>
@@ -160,8 +160,7 @@ internal sealed partial class GroupManager
         group.Changed += RaiseChanged;
         var card = new CardWindow(group, this);
         _cards[group.Name] = card;
-        // 카드 바 전용 그룹은 바탕화면에 띄우지 않는다(바가 이 카드의 그룹·모양만 쓴다).
-        if (!IsBarOnly(group.Name)) PlaceAndShow(card, null);
+        PlaceAndShow(card, null);
         return card;
     }
 

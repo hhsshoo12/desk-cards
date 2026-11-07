@@ -11,10 +11,3 @@ internal static class BalloonTip
     public static void Show(Native.RECT target, Tip content) { }
     public static void CloseCurrent() { }
 }
-
-internal static class EdgeBar
-{
-    public static void Start(GroupManager mgr) { }
-    public static void Stop() { }
-}
-

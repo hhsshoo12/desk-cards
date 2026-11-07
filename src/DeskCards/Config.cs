@@ -40,34 +40,6 @@ internal sealed class Config
 
     public const int HoverDelayMin = 0, HoverDelayMax = 1000, HoverDelayDefault = 400;
 
-    /// <summary>카드 바: 조합키를 누른 채 화면 가장자리에 마우스를 대고 있으면 나오는 카드 줄.</summary>
-    public bool BarEnabled { get; set; } = true;
-
-    /// <summary>카드 바에 놓은 카드(비어 있으면 빈 바). 위치·크기는 바 두께 단위라 바 두께·모니터가 바뀌어도 같은 모양이다.</summary>
-    public List<BarItem> BarItems { get; set; } = new();
-
-    /// <summary>바탕화면에는 없고 카드 바에만 있는 그룹 이름.</summary>
-    public List<string> BarOnlyGroups { get; set; } = new();
-
-    /// <summary>가장자리에 대고 있어야 하는 시간(ms, 0~2000, 0.1초 단위). 이 동안 커서 옆 게이지가 한 바퀴 돈다.</summary>
-    public int BarDelay { get; set; } = 500;
-
-    /// <summary>따로 정하지 않은 디스플레이에서 여는 가장자리(마지막으로 고른 곳).</summary>
-    public ScreenEdge BarEdge { get; set; } = ScreenEdge.Right;
-
-    /// <summary>디스플레이별 여는 가장자리. 디스플레이 이름(Screen.DeviceName) → 가장자리, null이면 그 디스플레이에서는 열지 않음.</summary>
-    public Dictionary<string, ScreenEdge?> BarEdges { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>바를 여는 조합키(가상 키 코드, 예: Alt + Shift). 설정에서 직접 눌러서 정한다.</summary>
-    public List<int> BarKeys { get; set; } = KeyCombo.Default.ToList();
-
-    /// <summary>바 두께. 모니터 작업 영역의 %(10~33, 3분의 1까지).</summary>
-    public int BarSize { get; set; } = BarSizeMax;
-
-    /// <summary>인식 영역: 가장자리에서 이만큼 안쪽까지 대고 있어도 된다(0.1% 단위, 0 = 딱 붙었을 때만 ~ 25 = 2.5%).</summary>
-    public int BarZone { get; set; }
-
-    public const int BarDelayMax = 2000, BarSizeMin = 10, BarSizeMax = 33, BarZoneMax = 25;
-
     /// <summary>미리보기 칸 하나의 기준 크기(DIP). 처음 실행 때 바탕화면 아이콘 간격으로 정하고 고정한다.</summary>
     public double CellSize { get; set; }
 
@@ -138,20 +110,7 @@ internal sealed class Config
         if (!double.IsFinite(cfg.DefaultZoom) || cfg.DefaultZoom <= 0) cfg.DefaultZoom = 0;
         else cfg.DefaultZoom = Math.Clamp(cfg.DefaultZoom, CardLayout.MinZoom, CardLayout.MaxZoom);
         cfg.HiddenTips = cfg.HiddenTips?.Where(t => !string.IsNullOrEmpty(t)).Distinct().ToList() ?? new();
-        cfg.BarItems = (cfg.BarItems ?? new())
-            .Where(i => i != null && !string.IsNullOrEmpty(i.Group) && double.IsFinite(i.X) && double.IsFinite(i.Y) && double.IsFinite(i.W) && i.W > 0)
-            .GroupBy(i => i.Group, StringComparer.OrdinalIgnoreCase).Select(g => g.First()).ToList();
-        cfg.BarOnlyGroups = cfg.BarOnlyGroups?.Where(n => !string.IsNullOrEmpty(n)).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? new();
         cfg.HoverExpandDelay = NormalizeHoverDelay(cfg.HoverExpandDelay);
-        cfg.BarDelay = Math.Clamp((int)Math.Round(cfg.BarDelay / 100.0) * 100, 0, BarDelayMax);
-        cfg.BarSize = Math.Clamp(cfg.BarSize, BarSizeMin, BarSizeMax);
-        cfg.BarZone = Math.Clamp(cfg.BarZone, 0, BarZoneMax);
-        if (!Enum.IsDefined(cfg.BarEdge)) cfg.BarEdge = ScreenEdge.Right;
-        var edges = new Dictionary<string, ScreenEdge?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (display, edge) in cfg.BarEdges ?? new())
-            if (!string.IsNullOrEmpty(display) && (edge == null || Enum.IsDefined(edge.Value))) edges[display] = edge;
-        cfg.BarEdges = edges;
-        cfg.BarKeys = KeyCombo.Clean(cfg.BarKeys);
     }
 
     public void Save() => TrySave();
@@ -192,20 +151,6 @@ internal sealed class Config
         }
     }
 }
-
-/// <summary>카드 바에 놓은 카드 하나. X·Y(왼쪽 위)와 W(너비)는 바 두께를 1로 친 값이다.</summary>
-internal sealed class BarItem
-{
-    public string Group { get; set; } = "";
-    public double X { get; set; }
-    public double Y { get; set; }
-    public double W { get; set; } = 0.8;
-
-    public BarItem Clone() => new() { Group = Group, X = X, Y = Y, W = W };
-}
-
-/// <summary>화면 가장자리. 값은 Windows 앱바(ABE_*)와 같다.</summary>
-internal enum ScreenEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
 
 /// <summary>
 /// 카드 모양. 미리보기 칸 수(가로×세로)가 카드 비율을 정하고, Zoom은 그 모양 그대로 키우거나 줄이는 배율이다.

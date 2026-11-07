@@ -77,7 +77,6 @@ public partial class App : Application
 
         _mgr = new GroupManager(config: cfg);
         _mgr.Start();
-        EdgeBar.Start(_mgr);
         if (Environment.GetEnvironmentVariable("DESKCARDS_DIAG") == "1") Ui.Post(() => SettingsWindow.Open(_mgr));
         _tray = new Tray("Desk Cards", () => Menus.ForTray(_mgr!, Quit).ShowAtCursor(), () => SettingsWindow.Open(_mgr!));
         Updater.Instance = new Updater(cfg, host);
@@ -100,7 +99,6 @@ public partial class App : Application
     {
         Ui.ShuttingDown = true;
         Updater.Instance?.Stop();
-        EdgeBar.Stop();
         _stopListener.Set();
         _listener?.Join();
         _showSettings?.Dispose();

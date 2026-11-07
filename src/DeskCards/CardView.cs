@@ -12,7 +12,7 @@ namespace DeskCards;
 
 /// <summary>
 /// 카드 한 장의 모양과 조작: 아이콘 칸(넘치면 마지막 칸이 더보기), 이름, 클릭 실행·끌어 꺼내기·우클릭 메뉴.
-/// 바탕화면 카드(CardWindow)와 카드 바(EdgeBar)가 같이 쓴다. 크기는 DIP로 그리고, 확대는 쓰는 쪽이 칸 크기에 곱해서 넘긴다.
+/// 바탕화면 카드(CardWindow)가 쓴다. 크기는 DIP로 그리고, 확대는 쓰는 쪽이 칸 크기에 곱해서 넘긴다.
 /// </summary>
 internal sealed class CardView : Grid
 {

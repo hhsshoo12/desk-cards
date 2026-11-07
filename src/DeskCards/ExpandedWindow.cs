@@ -69,7 +69,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
-    /// <param name="anchor">바탕화면 카드 대신 이 창(카드 바)에서 열었을 때의 창. 그 창이 있는 쪽에 뜨고 그 위에 보인다.</param>
+    /// <param name="anchor">바탕화면 카드 대신 다른 창에서 열었을 때의 창. 그 창이 있는 쪽에 뜨고 그 위에 보인다.</param>
     public static void Open(CardWindow card, GroupManager mgr, bool editTitle = false, bool hover = false,
         Func<int, int, Point>? place = null, IntPtr anchor = default)
     {

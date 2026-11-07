@@ -62,63 +62,6 @@ internal sealed partial class GroupManager
     /// <summary>숨긴 안내를 모두 다시 보이게 한다.</summary>
     public void ShowAllTips() => Store(_cfg.HiddenTips.Count > 0, () => _cfg.HiddenTips.Clear());
 
-    // ----- 카드 바 -----
-
-    public bool BarEnabled { get => _cfg.BarEnabled; set => Store(_cfg.BarEnabled != value, () => _cfg.BarEnabled = value); }
-
-    public int BarDelay
-    {
-        get => _cfg.BarDelay;
-        set
-        {
-            value = Math.Clamp((int)Math.Round(value / 100.0) * 100, 0, Config.BarDelayMax);
-            Store(_cfg.BarDelay != value, () => _cfg.BarDelay = value);
-        }
-    }
-
-    /// <summary>이 디스플레이에서 여는 가장자리. null이면 이 디스플레이에서는 열지 않는다.</summary>
-    public ScreenEdge? BarEdgeFor(string display) =>
-        _cfg.BarEdges.TryGetValue(display, out var edge) ? edge : _cfg.BarEdge;
-
-    /// <summary>디스플레이별 가장자리를 정한다. 고른 가장자리는 처음 보는 디스플레이의 기본값도 된다.</summary>
-    public void SetBarEdge(string display, ScreenEdge? edge)
-    {
-        if (_cfg.BarEdges.TryGetValue(display, out var old) && old == edge) return;
-        _cfg.BarEdges[display] = edge;
-        if (edge is { } e) _cfg.BarEdge = e;
-        _cfg.Save();
-        RaiseChanged();
-    }
-    public IReadOnlyList<int> BarKeys
-    {
-        get => _cfg.BarKeys;
-        set
-        {
-            var keys = KeyCombo.Clean(value);
-            Store(!keys.SequenceEqual(_cfg.BarKeys), () => _cfg.BarKeys = keys);
-        }
-    }
-
-    public int BarSize
-    {
-        get => _cfg.BarSize;
-        set
-        {
-            value = Math.Clamp(value, Config.BarSizeMin, Config.BarSizeMax);
-            Store(_cfg.BarSize != value, () => _cfg.BarSize = value);
-        }
-    }
-
-    public int BarZone
-    {
-        get => _cfg.BarZone;
-        set
-        {
-            value = Math.Clamp(value, 0, Config.BarZoneMax);
-            Store(_cfg.BarZone != value, () => _cfg.BarZone = value);
-        }
-    }
-
     /// <summary>바뀌었을 때만 적용하고 저장한 뒤 알린다.</summary>
     private void Store(bool changed, Action apply)
     {

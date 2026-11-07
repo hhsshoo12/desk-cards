@@ -195,7 +195,7 @@ internal static class FileOps
         catch { }
     }
 
-    /// <summary>항목을 끌어내는 중인지(카드 바가 그동안 들어가지 않게).</summary>
+    /// <summary>항목을 끌어내는 중인지.</summary>
     public static bool Dragging { get; private set; }
 
     public static async Task DragOut(UIElement source, string path, PointerPoint point)
