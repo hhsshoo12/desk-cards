@@ -97,17 +97,30 @@ internal sealed partial class ExpandedWindow : ToolWindow
         var cover = new SolidColorBrush(Windows.UI.Color.FromArgb(255, tint.R, tint.G, tint.B));
         ((Control)root).Background = cover;
         bool acrylicOn = false;
+
+        // 창은 제 크기로 두고 보이는 영역(Window Region)만 키운다. 창 크기를 프레임마다 바꾸면 내용이 한 프레임씩 늦게 따라와 어긋난다.
+        Native.GetWindowRect(Handle, out var outer);
+        Native.GetClientRect(Handle, out var client);
+        int border = Math.Max(0, ((outer.Right - outer.Left) - client.Right) / 2);
+        int top = Math.Max(0, ((outer.Bottom - outer.Top) - client.Bottom) - border);
+        int radius = (int)Math.Round(16 * Native.MonitorScaleOf(Handle));
         void Apply(double t, double opacity)
         {
             if (_closing) return;
             double s = from + (1 - from) * t;
-            int w = Math.Max(1, (int)Math.Round(final.Width * s)), h = Math.Max(1, (int)Math.Round(final.Height * s));
+            double w = final.Width * s, h = final.Height * s;
             double cx = sx + (fx - sx) * t, cy = sy + (fy - sy) * t;
-            Resize(new Windows.Graphics.RectInt32((int)Math.Round(cx - w / 2.0), (int)Math.Round(cy - h / 2.0), w, h));
+            double left = cx - w / 2 - outer.Left, topY = cy - h / 2 - outer.Top; // 창 바깥 왼쪽 위 기준
+            SetWindowRgn(Handle, CreateRoundRectRgn((int)Math.Round(left), (int)Math.Round(topY), (int)Math.Round(left + w), (int)Math.Round(topY + h), radius, radius), true);
+            visual.Offset = new Vector3((float)(left - border), (float)(topY - top), 0);
             visual.Scale = new Vector3((float)s, (float)s, 1);
             visual.Opacity = (float)opacity;
         }
-        Apply(0, 0);
+        void EndRegion()
+        {
+            SetWindowRgn(Handle, IntPtr.Zero, true);
+            visual.Offset = Vector3.Zero;
+        }        Apply(0, 0);
         var clock = System.Diagnostics.Stopwatch.StartNew();
         _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
         _openTimer.Tick += (_, _) =>
@@ -122,6 +135,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
             {
                 acrylicOn = true;
                 Apply(1, 1);
+                EndRegion();
                 Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
             }
             double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
@@ -277,6 +291,9 @@ internal sealed partial class ExpandedWindow : ToolWindow
         _closing = true;
         Ui.Post(Close);
     }
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")] private static extern IntPtr CreateRoundRectRgn(int l, int t, int r, int b, int w, int h);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int SetWindowRgn(IntPtr hwnd, IntPtr rgn, bool redraw);
 
     private void OnClosed()
     {
