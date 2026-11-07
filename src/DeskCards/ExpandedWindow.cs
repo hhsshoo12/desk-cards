@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
+using System.Numerics;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -36,7 +38,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
-        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") }, systemOpenAnimation: true)
+        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") })
     {
         _card = card;
         _mgr = mgr;
@@ -58,6 +60,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Closed += (_, _) => OnClosed();
 
         PlaceNearCard();
+        PlayOpen();
         AppWindow.Show();
         Activate();
         if (hover) StartLeaveWatch();
@@ -66,6 +69,46 @@ internal sealed partial class ExpandedWindow : ToolWindow
     }
 
     private GroupModel Group => _card.Group;
+
+    private DispatcherTimer? _openTimer;
+
+    /// <summary>
+    /// 열릴 때: 창은 제 크기로 둔 채 창 전체(배경·아크릴 포함)를 투명도로 페이드(167ms)하고,
+    /// 내용은 0.94배에서 1배로 커진다(250ms). 창 크기를 바꾸지 않으므로 어긋나는 것이 없다.
+    /// </summary>
+    private void PlayOpen()
+    {
+        if (!Motion.Enabled) return;
+        var hwnd = Handle;
+        long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
+        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_LAYERED));
+        SetLayeredWindowAttributes(hwnd, 0, 0, 2);
+
+        var root = (FrameworkElement)Content;
+        var visual = ElementCompositionPreview.GetElementVisual(root);
+        visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
+        visual.Scale = new Vector3(0.94f, 0.94f, 1);
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
+        _openTimer.Tick += (_, _) =>
+        {
+            double ms = clock.Elapsed.TotalMilliseconds;
+            double alpha = Motion.Decel(ms / Motion.Fast), grow = Motion.Decel(ms / Motion.Normal);
+            SetLayeredWindowAttributes(hwnd, 0, (byte)Math.Round(255 * alpha), 2);
+            visual.Scale = new Vector3((float)(0.94 + 0.06 * grow), (float)(0.94 + 0.06 * grow), 1);
+            if (ms < Motion.Normal) return;
+            _openTimer?.Stop();
+            _openTimer = null;
+            visual.Scale = Vector3.One;
+            // 끝나면 레이어드 스타일을 벗겨 평소 창으로 돌려놓는다.
+            long now = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
+            Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(now & ~Native.WS_EX_LAYERED));
+        };
+        _openTimer.Start();
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
@@ -213,6 +256,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
     {
         Group.Changed -= Rebuild;
         _leaveTimer?.Stop();
+        _openTimer?.Stop();
         if (_current == this) _current = null;
     }
 }
