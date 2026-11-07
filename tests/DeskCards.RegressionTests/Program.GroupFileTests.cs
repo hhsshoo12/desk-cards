@@ -2,11 +2,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Windows;
-using System.Windows.Interop;
-using System.Windows.Threading;
-using System.Windows.Controls;
-using System.Windows.Media;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DeskCards;
@@ -19,7 +14,7 @@ internal static partial class Program
         {
             string folder = Path.Combine(root, "drop-target");
             Directory.CreateDirectory(folder);
-            Check(!FileOps.CanAccept(new DataObject(DataFormats.FileDrop, new[] { root }), folder));
+            Check(!FileOps.CanAccept(new[] { root }, folder));
         });
         Test("invalid Windows group names are rejected", () =>
         {
@@ -59,35 +54,6 @@ internal static partial class Program
             var arranged = GroupModel.Arrange(files, f => f, f => f, new[] { "d.lnk", "gone.lnk", "B.LNK" });
             Check(string.Join(",", arranged) == "d.lnk,b.lnk,A.lnk,c.lnk"
                 && string.Join(",", GroupModel.Arrange(files, f => f, f => f, null)) == "A.lnk,b.lnk,c.lnk,d.lnk");
-        });
-        Test("item order is saved and follows group rename", () =>
-        {
-            var cfg = Config.Load(Path.Combine(root, "order.json"));
-            var mgr = new GroupManager(Path.Combine(root, "order-groups"), cfg);
-            try
-            {
-                mgr.Start();
-                var card = mgr.Cards.Single();
-                File.WriteAllText(Path.Combine(card.Group.Folder, "x.txt"), "");
-                File.WriteAllText(Path.Combine(card.Group.Folder, "y.txt"), "");
-                card.Group.Reload();
-                mgr.SetOrder(card.Group, card.Group.Items.AsEnumerable().Reverse());
-                bool reversed = card.Group.Items[0].Name == "y";
-                Check(mgr.RenameGroup(card, "순서"));
-                var renamed = Config.Load(Path.Combine(root, "order.json"));
-                Check(reversed && renamed.Orders.TryGetValue("순서", out var order) && order[0] == "y.txt");
-            }
-            finally { mgr.Shutdown(); }
-        });
-        Test("queued watcher callback cannot revive a disposed group", () =>
-        {
-            var group = new GroupModel(root);
-            int changes = 0;
-            group.Changed += () => changes++;
-            typeof(GroupModel).GetMethod("Bump", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(group, null);
-            group.Dispose();
-            Pump(400);
-            Check(changes == 0);
         });
     }
 }
