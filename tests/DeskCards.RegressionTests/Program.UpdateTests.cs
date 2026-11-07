@@ -103,7 +103,7 @@ internal static partial class Program
             Downloaded(f, cfg);
             Check(Updater.ApplyPending(cfg, f.Host(), new Version(0, 2, 1)));
             string exe = Path.Combine(f.Install, "DeskCards.exe");
-            Check(File.ReadAllText(exe) == "new app" && File.ReadAllText(exe + ".old") == "old app");
+            Check(File.ReadAllText(exe) == "new app" && !File.Exists(exe + ".old"));
             Check(f.Relaunched == exe && f.Registered == new Version(0, 2, 10) && cfg.PendingUpdate == null);
             UpdatePackage.Cleanup(f.Install, new Version(0, 2, 10));
             Check(!File.Exists(exe + ".old") && !Directory.Exists(Path.Combine(f.Install, "update")));

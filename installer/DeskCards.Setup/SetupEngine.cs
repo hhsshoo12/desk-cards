@@ -24,7 +24,7 @@ internal sealed class SetupEngine
     {
         var package = Package ?? throw new SetupFailure("설치기에 앱이 들어 있지 않아요", false);
         string temp = Path.Combine(_env.TempDir, "DeskCards-Setup-" + Guid.NewGuid().ToString("N"));
-        string stage = Path.Combine(temp, "stage"), old = _env.AppExe + ".old";
+        string stage = Path.Combine(temp, "stage");
         string step = "설치 준비";
         var rollback = new InstallRollback();
         void Step(string value) { step = value; _log.Write(value); status(value); }
@@ -40,11 +40,11 @@ internal sealed class SetupEngine
             // The UI cannot cancel or close from this point through registration.
             Step("앱 종료"); AppStopper.Stop(_processes, _env.AppExe);
             Step("파일 교체");
-            ReplaceApp(stage, old, package.Version, rollback);
+            ReplaceApp(stage, package.Version, rollback);
             RegisterInstall(stage, options, version, Step);
             Step("정리"); Registration.RemoveOldRun();
-            if (rollback.backedUp) File.Delete(old);
-            rollback.backedUp = false;
+            rollback.swap?.Commit();
+            rollback.swap = null;
             Step("설치 완료");
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -54,7 +54,7 @@ internal sealed class SetupEngine
             _log.Write(step + " 실패", ex);
             try
             {
-                RollbackInstall(old, rollback);
+                RollbackInstall(rollback);
             }
             catch (Exception recoveryError)
             {
@@ -72,7 +72,8 @@ internal sealed class SetupEngine
 
     private sealed class InstallRollback
     {
-        public bool backedUp, replaced, createdDirectory, versionReplaced;
+        public bool replaced, createdDirectory, versionReplaced;
+        public Shared.AppFiles.Swap? swap;
         public byte[]? oldVersion;
     }
 
@@ -87,7 +88,7 @@ internal sealed class SetupEngine
         return version;
     }
 
-    private void ReplaceApp(string stage, string old, Version version, InstallRollback rollback)
+    private void ReplaceApp(string stage, Version version, InstallRollback rollback)
     {
         if (!Directory.Exists(_env.InstallDir))
         {
@@ -95,15 +96,14 @@ internal sealed class SetupEngine
             // TEMP may be on another volume: copy first, with rollback confined to these new files.
             Directory.CreateDirectory(_env.InstallDir); rollback.createdDirectory = true;
             CopyDirectory(stage, _env.InstallDir); rollback.replaced = true;
+            Shared.AppFiles.Write(_env.InstallDir, Shared.AppFiles.Enumerate(stage));
         }
         else
         {
             if (File.Exists(Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name))) rollback.oldVersion = File.ReadAllBytes(Path.Combine(_env.InstallDir, Shared.InstalledVersionFile.Name));
-            // 앱이 스스로 업데이트하고 남긴 .old가 있으면 먼저 치운다.
-            DeleteFile(old);
-            if (File.Exists(_env.AppExe)) { File.Move(_env.AppExe, old); rollback.backedUp = true; }
+            // 옛 파일은 .old로 비키고 새 파일을 넣는다(앱이 스스로 업데이트하고 남긴 .old는 그때 치운다).
+            rollback.swap = Shared.AppFiles.Swap.Apply(_env.InstallDir, stage);
             rollback.replaced = true;
-            File.Copy(Path.Combine(stage, "DeskCards.exe"), _env.AppExe);
             Shared.InstalledVersionFile.Write(_env.InstallDir, Shared.InstalledVersionFile.Read(stage, version));
             rollback.versionReplaced = true;
         }
@@ -123,9 +123,9 @@ internal sealed class SetupEngine
         Step("자동 실행"); Registration.SetAutoStart(options.AutoStart);
     }
 
-    private void RollbackInstall(string old, InstallRollback rollback)
+    private void RollbackInstall(InstallRollback rollback)
     {
-        if (rollback.backedUp) { File.Delete(_env.AppExe); File.Move(old, _env.AppExe); _log.Write("기존 앱 복구"); }
+        if (rollback.swap != null) { rollback.swap.Rollback(); rollback.swap = null; _log.Write("기존 앱 복구"); }
         else if (rollback.createdDirectory) { SetupEnvironment.DeleteTree(_env.InstallDir, Path.GetDirectoryName(_env.InstallDir)!); }
         else if (rollback.replaced) File.Delete(_env.AppExe);
         if (rollback.versionReplaced)
@@ -165,7 +165,8 @@ internal sealed class SetupEngine
             Step("바로가기 삭제"); DeleteFile(_env.MenuLink); DeleteFile(_env.DesktopLink);
             Step("자동 실행 해제"); Registration.RemoveStartup();
             Step("앱 파일 삭제");
-            foreach (string name in new[] { "DeskCards.exe", "DeskCards.exe.old", "DeskFolders.exe", "uninstall.exe", Shared.InstalledVersionFile.Name }) DeleteFile(Path.Combine(_env.InstallDir, name));
+            if (Directory.Exists(_env.InstallDir)) Shared.AppFiles.Remove(_env.InstallDir);
+            foreach (string name in new[] { "DeskFolders.exe", "uninstall.exe", Shared.InstalledVersionFile.Name }) DeleteFile(Path.Combine(_env.InstallDir, name));
             // 앱 자체 업데이트가 받아 둔 파일(update\)
             SetupEnvironment.DeleteTree(Path.Combine(_env.InstallDir, "update"), _env.InstallDir);
             Step("설치된 앱 등록 삭제"); Registration.Delete(Registration.UninstallKey);

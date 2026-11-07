@@ -33,7 +33,6 @@ internal static class UpdatePackage
 
     public static string StageRoot(string installDir) => Path.Combine(installDir, "update");
     public static string StageDir(string installDir, Version v) => Path.Combine(StageRoot(installDir), v.ToString(3));
-    public static string OldExe(string installDir) => Path.Combine(installDir, ExeName + ".old");
 
     /// <summary>GitHub 릴리스 목록에서 가장 높은 app-vX.Y.Z(초안·시험판 제외, 파일 둘 다 있는 것). 없으면 null.</summary>
     public static AppRelease? Latest(string json)
@@ -106,35 +105,22 @@ internal static class UpdatePackage
     }
 
     /// <summary>
-    /// 받아 둔 버전으로 바꿔 끼운다. DeskCards.exe → DeskCards.exe.old, update\&lt;버전&gt;\DeskCards.exe → DeskCards.exe.
-    /// 받아 둔 제거기(uninstall.exe)가 있으면 그것도 바꾼다.
-    /// 받아 둔 파일이 없으면 false. 옮기다 실패하면 원래 exe를 되돌리고 예외를 던진다.
+    /// 받아 둔 버전으로 바꿔 끼운다. 설치 폴더의 앱 파일을 모두 .old로 비키고(실행 중인 파일도 이름은 바꿀 수 있다)
+    /// update\<버전>\의 파일을 넣은 뒤 버전 표식을 쓴다. 받아 둔 제거기(uninstall.exe)가 있으면 그것도 바꾼다.
+    /// 받아 둔 파일이 없으면 false. 옮기다 실패하면 원래 파일을 되돌리고 예외를 던진다.
     /// </summary>
     public static bool Apply(string installDir, Version version)
     {
-        string staged = Path.Combine(StageDir(installDir, version), ExeName);
-        if (!File.Exists(staged)) return false;
-        byte[] metadata = Shared.InstalledVersionFile.Read(StageDir(installDir, version), version);
-        string exe = Path.Combine(installDir, ExeName), old = OldExe(installDir);
-        if (File.Exists(old)) File.Delete(old);
-        File.Move(exe, old);
-        bool moved = false;
-        try
-        {
-            File.Move(staged, exe);
-            moved = true;
-            Shared.InstalledVersionFile.Write(installDir, metadata);
-        }
-        catch
-        {
-            if (moved) File.Move(exe, staged);
-            File.Move(old, exe);
-            throw;
-        }
-        ReplaceUninstaller(installDir, StageDir(installDir, version));
+        string stage = StageDir(installDir, version);
+        if (!File.Exists(Path.Combine(stage, ExeName))) return false;
+        byte[] metadata = Shared.InstalledVersionFile.Read(stage, version);
+        var swap = Shared.AppFiles.Swap.Apply(installDir, stage);
+        try { Shared.InstalledVersionFile.Write(installDir, metadata); }
+        catch { swap.Rollback(); throw; }
+        swap.Commit();
+        ReplaceUninstaller(installDir, stage);
         return true;
     }
-
     /// <summary>
     /// 받아 둔 버전에 제거기가 있으면 같이 바꾼다. 제거기가 앱과 같은 버전이어야 새 버전이 만든 파일까지 지운다.
     /// 제거기를 바꾸지 못해도(실행 중 등) 앱 업데이트는 그대로 두고 이전 제거기를 쓴다.
@@ -163,7 +149,7 @@ internal static class UpdatePackage
     public static void Cleanup(string installDir, Version current)
     {
         ReplaceUninstaller(installDir, StageDir(installDir, current));
-        try { File.Delete(OldExe(installDir)); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        Shared.AppFiles.CleanLeftovers(installDir);
         DeleteStage(installDir);
     }
 

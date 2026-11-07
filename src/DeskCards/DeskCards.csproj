@@ -28,6 +28,7 @@
   <ItemGroup>
     <Compile Include="../Shared/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />
+    <Compile Include="../Shared/AppFiles.cs" Link="AppFiles.cs" />
     <InternalsVisibleTo Include="DeskCards.RegressionTests" />    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />

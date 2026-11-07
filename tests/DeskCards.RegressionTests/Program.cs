@@ -23,6 +23,7 @@ internal static partial class Program
         ConfigurationTests(root);
         GroupFileTests(root);
         UpdateTests(root);
+        FolderSwapTests(root);
         Console.WriteLine($"Failures: {_failed}");
         return _failed == 0 ? 0 : 1;
     }
