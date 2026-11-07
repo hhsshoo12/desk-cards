@@ -39,7 +39,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
-        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") })
+        : base("Desk Cards", new UserControl { Background = Theme.Brush("PopupBg") }, Motion.Enabled ? Hwnd.Backdrop.None : Hwnd.Backdrop.Acrylic)
     {
         _card = card;
         _mgr = mgr;
@@ -74,6 +74,8 @@ internal sealed partial class ExpandedWindow : ToolWindow
     /// <summary>
     /// 열릴 때(Windows 시작 메뉴의 폴더처럼): 카드 자리에서 작게 시작해 제 크기로 커진다(333ms, 감속).
     /// 창과 내용이 같은 비율로 커지고, 내용은 창의 왼쪽 위에 붙여 늘 창 안에 꼭 맞는다.
+    /// 커지는 동안은 아크릴 없이 불투명한 바탕을 쓰고(크기를 바꿀 때 아크릴이 따라오지 못해 어긋난다),
+    /// 다 커진 뒤에 아크릴을 켜면서 바탕을 서서히 투명하게 해 아크릴이 비쳐 보이게 한다(167ms).
     /// </summary>
     private void PlayOpen()
     {
@@ -91,6 +93,10 @@ internal sealed partial class ExpandedWindow : ToolWindow
             from = Math.Clamp(Math.Min((r.Right - r.Left) / (double)final.Width, (r.Bottom - r.Top) / (double)final.Height), 0.3, 0.8);
         }
         visual.CenterPoint = Vector3.Zero;
+        var tint = ((SolidColorBrush)Theme.Brush("PopupBg")).Color;
+        var cover = new SolidColorBrush(Windows.UI.Color.FromArgb(255, tint.R, tint.G, tint.B));
+        ((Control)root).Background = cover;
+        bool acrylicOn = false;
         void Apply(double t, double opacity)
         {
             if (_closing) return;
@@ -107,8 +113,25 @@ internal sealed partial class ExpandedWindow : ToolWindow
         _openTimer.Tick += (_, _) =>
         {
             double ms = clock.Elapsed.TotalMilliseconds;
-            Apply(Motion.Decel(ms / Motion.Slow), Motion.Decel(ms / Motion.Fast));
-            if (ms >= Motion.Slow) { _openTimer?.Stop(); _openTimer = null; Apply(1, 1); }
+            if (ms < Motion.Slow)
+            {
+                Apply(Motion.Decel(ms / Motion.Slow), Motion.Decel(ms / Motion.Fast));
+                return;
+            }
+            if (!acrylicOn)
+            {
+                acrylicOn = true;
+                Apply(1, 1);
+                Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+            }
+            double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
+            cover.Color = Windows.UI.Color.FromArgb((byte)Math.Round(255 + (tint.A - 255) * k), tint.R, tint.G, tint.B);
+            if (ms >= Motion.Slow + Motion.Fast)
+            {
+                _openTimer?.Stop();
+                _openTimer = null;
+                ((Control)root).Background = Theme.Brush("PopupBg");
+            }
         };
         _openTimer.Start();
     }
