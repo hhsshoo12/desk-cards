@@ -36,7 +36,6 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private readonly TextBox _title;
     private DispatcherTimer? _leaveTimer, _openTimer;
     private Windows.Graphics.RectInt32 _final;
-    private const double OpenFrom = 0.7;
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
@@ -73,8 +72,8 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private GroupModel Group => _card.Group;
 
     /// <summary>
-    /// 열릴 때: 창과 내용이 함께 0.7배에서 1배로 커지며(250ms) 나타난다(내용은 167ms에 페이드).
-    /// 곡선은 Fluent 감속. 창 테두리·배경까지 같이 커지므로 "딱" 뜨지 않는다.
+    /// 열릴 때(Windows 시작 메뉴의 폴더처럼): 카드 자리에서 작게 시작해 제 크기로 커진다(333ms, 감속).
+    /// 창과 내용이 같은 비율로 커지고, 내용은 창의 왼쪽 위에 붙여 늘 창 안에 꼭 맞는다.
     /// </summary>
     private void PlayOpen()
     {
@@ -82,24 +81,34 @@ internal sealed partial class ExpandedWindow : ToolWindow
         var root = (FrameworkElement)Content;
         var visual = ElementCompositionPreview.GetElementVisual(root);
         var final = _final;
-        double cx = final.X + final.Width / 2.0, cy = final.Y + final.Height / 2.0;
-        void Apply(double s, double opacity)
+        double fx = final.X + final.Width / 2.0, fy = final.Y + final.Height / 2.0;
+        // 시작: 카드(또는 연 창)의 가운데, 카드 크기에 가까운 비율.
+        double sx = fx, sy = fy, from = 0.5;
+        if (Native.GetWindowRect(_anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card), out var r))
+        {
+            sx = (r.Left + r.Right) / 2.0;
+            sy = (r.Top + r.Bottom) / 2.0;
+            from = Math.Clamp(Math.Min((r.Right - r.Left) / (double)final.Width, (r.Bottom - r.Top) / (double)final.Height), 0.3, 0.8);
+        }
+        visual.CenterPoint = Vector3.Zero;
+        void Apply(double t, double opacity)
         {
             if (_closing) return;
+            double s = from + (1 - from) * t;
             int w = Math.Max(1, (int)Math.Round(final.Width * s)), h = Math.Max(1, (int)Math.Round(final.Height * s));
+            double cx = sx + (fx - sx) * t, cy = sy + (fy - sy) * t;
             Resize(new Windows.Graphics.RectInt32((int)Math.Round(cx - w / 2.0), (int)Math.Round(cy - h / 2.0), w, h));
-            visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
             visual.Scale = new Vector3((float)s, (float)s, 1);
             visual.Opacity = (float)opacity;
         }
-        Apply(OpenFrom, 0);
+        Apply(0, 0);
         var clock = System.Diagnostics.Stopwatch.StartNew();
         _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
         _openTimer.Tick += (_, _) =>
         {
             double ms = clock.Elapsed.TotalMilliseconds;
-            Apply(OpenFrom + (1 - OpenFrom) * Motion.Decel(ms / Motion.Normal), Motion.Decel(ms / Motion.Fast));
-            if (ms >= Motion.Normal) { _openTimer?.Stop(); _openTimer = null; Apply(1, 1); }
+            Apply(Motion.Decel(ms / Motion.Slow), Motion.Decel(ms / Motion.Fast));
+            if (ms >= Motion.Slow) { _openTimer?.Stop(); _openTimer = null; Apply(1, 1); }
         };
         _openTimer.Start();
     }
