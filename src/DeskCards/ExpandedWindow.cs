@@ -34,7 +34,9 @@ internal sealed partial class ExpandedWindow : ToolWindow
     private readonly Func<int, int, Point>? _place;
     private readonly IntPtr _anchor;
     private readonly TextBox _title;
-    private DispatcherTimer? _leaveTimer;
+    private DispatcherTimer? _leaveTimer, _openTimer;
+    private Windows.Graphics.RectInt32 _final;
+    private const double OpenFrom = 0.7;
     private bool _entered, _busy, _closing, _committing;
 
     private ExpandedWindow(CardWindow card, GroupManager mgr, bool editTitle, bool hover, Func<int, int, Point>? place, IntPtr anchor)
@@ -60,9 +62,9 @@ internal sealed partial class ExpandedWindow : ToolWindow
         Closed += (_, _) => OnClosed();
 
         PlaceNearCard();
+        PlayOpen();
         AppWindow.Show();
         Activate();
-        PlayOpen();
         if (hover) StartLeaveWatch();
         if (editTitle) { _title.Focus(FocusState.Programmatic); _title.SelectAll(); }
         else ((Control)Content).Focus(FocusState.Programmatic);
@@ -70,27 +72,37 @@ internal sealed partial class ExpandedWindow : ToolWindow
 
     private GroupModel Group => _card.Group;
 
-    /// <summary>열릴 때: 내용이 0.94배에서 1배로 커지며(250ms) 나타난다(167ms). 곡선은 Fluent 감속.</summary>
+    /// <summary>
+    /// 열릴 때: 창과 내용이 함께 0.7배에서 1배로 커지며(250ms) 나타난다(내용은 167ms에 페이드).
+    /// 곡선은 Fluent 감속. 창 테두리·배경까지 같이 커지므로 "딱" 뜨지 않는다.
+    /// </summary>
     private void PlayOpen()
     {
         if (!Motion.Enabled) return;
         var root = (FrameworkElement)Content;
         var visual = ElementCompositionPreview.GetElementVisual(root);
-        var compositor = visual.Compositor;
-        visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
-        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0, 0), new Vector2(0, 1));
-        var scale = compositor.CreateVector3KeyFrameAnimation();
-        scale.InsertKeyFrame(0, new Vector3(0.94f, 0.94f, 1));
-        scale.InsertKeyFrame(1, Vector3.One, ease);
-        scale.Duration = TimeSpan.FromMilliseconds(Motion.Normal);
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(0, 0);
-        fade.InsertKeyFrame(1, 1, ease);
-        fade.Duration = TimeSpan.FromMilliseconds(Motion.Fast);
-        visual.StartAnimation("Scale", scale);
-        visual.StartAnimation("Opacity", fade);
+        var final = _final;
+        double cx = final.X + final.Width / 2.0, cy = final.Y + final.Height / 2.0;
+        void Apply(double s, double opacity)
+        {
+            if (_closing) return;
+            int w = Math.Max(1, (int)Math.Round(final.Width * s)), h = Math.Max(1, (int)Math.Round(final.Height * s));
+            Resize(new Windows.Graphics.RectInt32((int)Math.Round(cx - w / 2.0), (int)Math.Round(cy - h / 2.0), w, h));
+            visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
+            visual.Scale = new Vector3((float)s, (float)s, 1);
+            visual.Opacity = (float)opacity;
+        }
+        Apply(OpenFrom, 0);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        _openTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(8) };
+        _openTimer.Tick += (_, _) =>
+        {
+            double ms = clock.Elapsed.TotalMilliseconds;
+            Apply(OpenFrom + (1 - OpenFrom) * Motion.Decel(ms / Motion.Normal), Motion.Decel(ms / Motion.Fast));
+            if (ms >= Motion.Normal) { _openTimer?.Stop(); _openTimer = null; Apply(1, 1); }
+        };
+        _openTimer.Start();
     }
-
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
     /// <param name="anchor">바탕화면 카드 대신 다른 창에서 열었을 때의 창. 그 창이 있는 쪽에 뜨고 그 위에 보인다.</param>
@@ -175,7 +187,8 @@ internal sealed partial class ExpandedWindow : ToolWindow
             var wa = Screens.FromHandle(reference).WorkArea;
             p = PixelPlacement.Beside(rect, new Rect(wa.Left, wa.Top, wa.Width, wa.Height), new Size(root.Width, root.Height), scale, centered: true);
         }
-        Resize(new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h));
+        _final = new Windows.Graphics.RectInt32((int)Math.Round(p.X), (int)Math.Round(p.Y), w, h);
+        Resize(_final);
         Hwnd.SetZOrder(Handle, _mgr.Editing || _anchor != IntPtr.Zero ? Hwnd.Topmost : IntPtr.Zero);
     }
 
@@ -237,6 +250,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
     {
         Group.Changed -= Rebuild;
         _leaveTimer?.Stop();
+        _openTimer?.Stop();
         if (_current == this) _current = null;
     }
 }
