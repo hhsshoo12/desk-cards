@@ -84,7 +84,7 @@ internal static class AppFiles
             File.Delete(Path.Combine(installDir, rel + ".old"));
         }
         File.Delete(ManifestPath(installDir));
-        foreach (string dir in rels.Select(r => Path.GetDirectoryName(r)).Where(d => !string.IsNullOrEmpty(d)).Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(d => d!.Length))
+        foreach (string? dir in rels.Select(r => Path.GetDirectoryName(r)).Where(d => !string.IsNullOrEmpty(d)).Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(d => d!.Length))
             for (string? d = dir; !string.IsNullOrEmpty(d); d = Path.GetDirectoryName(d))
             {
                 string full = Path.Combine(installDir, d);

@@ -89,7 +89,7 @@ internal abstract class SettingsPage : UserControl
 
     protected SettingsCard Row(string glyph, string header, string? description = null, UIElement? control = null, Action? onClick = null)
     {
-        var card = new SettingsCard { Header = header, Description = description, HeaderIcon = new FontIcon { Glyph = glyph }, Content = control };
+        var card = new SettingsCard { Header = header, Description = description!, HeaderIcon = new FontIcon { Glyph = glyph }, Content = control };
         if (onClick != null)
         {
             card.IsClickEnabled = true;
