@@ -1,9 +1,11 @@
 using System;
 using System.Linq;
+using System.Numerics;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
@@ -60,12 +62,34 @@ internal sealed partial class ExpandedWindow : ToolWindow
         PlaceNearCard();
         AppWindow.Show();
         Activate();
+        PlayOpen();
         if (hover) StartLeaveWatch();
         if (editTitle) { _title.Focus(FocusState.Programmatic); _title.SelectAll(); }
         else ((Control)Content).Focus(FocusState.Programmatic);
     }
 
     private GroupModel Group => _card.Group;
+
+    /// <summary>열릴 때: 내용이 0.94배에서 1배로 커지며(250ms) 나타난다(167ms). 곡선은 Fluent 감속.</summary>
+    private void PlayOpen()
+    {
+        if (!Motion.Enabled) return;
+        var root = (FrameworkElement)Content;
+        var visual = ElementCompositionPreview.GetElementVisual(root);
+        var compositor = visual.Compositor;
+        visual.CenterPoint = new Vector3((float)(root.Width / 2), (float)(root.Height / 2), 0);
+        var ease = compositor.CreateCubicBezierEasingFunction(new Vector2(0, 0), new Vector2(0, 1));
+        var scale = compositor.CreateVector3KeyFrameAnimation();
+        scale.InsertKeyFrame(0, new Vector3(0.94f, 0.94f, 1));
+        scale.InsertKeyFrame(1, Vector3.One, ease);
+        scale.Duration = TimeSpan.FromMilliseconds(Motion.Normal);
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        fade.InsertKeyFrame(0, 0);
+        fade.InsertKeyFrame(1, 1, ease);
+        fade.Duration = TimeSpan.FromMilliseconds(Motion.Fast);
+        visual.StartAnimation("Scale", scale);
+        visual.StartAnimation("Opacity", fade);
+    }
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>

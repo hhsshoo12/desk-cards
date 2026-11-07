@@ -135,10 +135,53 @@ internal abstract class SettingsPage : UserControl
             minus.IsEnabled = v > min;
             plus.IsEnabled = v < max;
         }
-        minus.Click += (_, _) => { set(Math.Max(min, get() - step)); Refresh(); };
-        plus.Click += (_, _) => { set(Math.Min(max, get() + step)); Refresh(); };
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { minus, value, plus } };
-        Refresh();
+        void Step(int delta)
+        {
+            int next = Math.Clamp(get() + delta, min, max);
+            if (next != get()) set(next);
+            Refresh();
+        }
+        minus.Click += (_, _) => Step(-step);
+        plus.Click += (_, _) => Step(step);
+
+        // 값을 좌우로 끌면 12px마다 한 단계씩 바뀌고(오른쪽이 +), 마우스 휠은 한 칸(120)마다 한 단계씩 바뀐다.
+        const double pixelsPerStep = 12;
+        double startX = 0;
+        int startValue = 0;
+        bool dragging = false;
+        var grip = new GripBorder { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent), Padding = new Thickness(4, 0, 4, 0), Children = { value } };
+        grip.PointerPressed += (_, e) =>
+        {
+            dragging = grip.CapturePointer(e.Pointer);
+            startX = e.GetCurrentPoint(grip).Position.X;
+            startValue = get();
+            e.Handled = true;
+        };
+        grip.PointerMoved += (_, e) =>
+        {
+            if (!dragging) return;
+            int delta = (int)Math.Truncate((e.GetCurrentPoint(grip).Position.X - startX) / pixelsPerStep) * step;
+            int target = Math.Clamp(startValue + delta, min, max);
+            if (target != get()) set(target);
+            Refresh();
+        };
+        grip.PointerReleased += (_, e) => { dragging = false; grip.ReleasePointerCapture(e.Pointer); };
+        grip.PointerCaptureLost += (_, _) => dragging = false;
+
+        int wheel = 0;
+        void OnWheel(object s, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+        {
+            e.Handled = true;
+            wheel += e.GetCurrentPoint((UIElement)s).Properties.MouseWheelDelta;
+            while (Math.Abs(wheel) >= 120)
+            {
+                Step(wheel > 0 ? step : -step);
+                wheel -= Math.Sign(wheel) * 120;
+            }
+        }
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent), Children = { minus, grip, plus } };
+        panel.PointerWheelChanged += OnWheel;
+        panel.PointerExited += (_, _) => wheel = 0;        Refresh();
         OnRefresh(Refresh);
         return panel;
     }
@@ -452,6 +495,8 @@ internal sealed class LibrariesPage : SettingsPage
         Row("", name, desc, Btn(button, () => OpenUrl(url)));
 }
 
-
-
-
+/// <summary>좌우로 끌 수 있는 값 칸(마우스 포인터가 좌우 화살표로 바뀐다).</summary>
+internal sealed class GripBorder : Grid
+{
+    public GripBorder() => ProtectedCursor = Microsoft.UI.Input.InputSystemCursor.Create(Microsoft.UI.Input.InputSystemCursorShape.SizeWestEast);
+}
