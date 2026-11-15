@@ -98,7 +98,10 @@ internal sealed class BarWindow : Window
         return b;
     }
 
-    public IntPtr HandleValue => new WindowInteropHelper(this).Handle;
+    private volatile IntPtr _handle;
+
+    /// <summary>창 핸들(다른 스레드에서 읽어도 안전하게 창이 만들어질 때 적어 둔다).</summary>
+    public IntPtr HandleValue => _handle;
 
     private bool Side => _o.Edge is 0 or 2;
 
@@ -222,6 +225,7 @@ internal sealed class BarWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         var hwnd = new WindowInteropHelper(this).Handle;
+        _handle = hwnd;
         long style = GetWindowLongPtr(hwnd, -16).ToInt64();
         SetWindowLongPtr(hwnd, -16, new IntPtr(style & ~0x00080000L)); // WS_SYSMENU 제거
         long ex = GetWindowLongPtr(hwnd, -20).ToInt64();

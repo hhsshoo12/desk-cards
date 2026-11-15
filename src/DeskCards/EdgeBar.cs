@@ -133,22 +133,14 @@ internal static class EdgeBar
             if (hover && ExpandedWindow.IsOpenFor(card)) return;
             ExpandedWindow.Open(card, Mgr, hover: hover, anchor: View.Handle, place: (w, h) =>
             {
-                int gap = (int)Math.Round(Gap * Scale);
+                // 시작 메뉴 폴더처럼 누른 카드 자리 가운데에 바 안쪽으로 펼친다(바보다 크면 바 가운데, 화면 밖으로는 나가지 않게).
                 double cx = (cardRect.Left + cardRect.Right) / 2.0, cy = (cardRect.Top + cardRect.Bottom) / 2.0;
-                double x = Edge switch
-                {
-                    ScreenEdge.Left => Final.Right + gap,
-                    ScreenEdge.Right => Final.Left - gap - w,
-                    _ => cx - w / 2,
-                };
-                double y = Edge switch
-                {
-                    ScreenEdge.Top => Final.Bottom + gap,
-                    ScreenEdge.Bottom => Final.Top - gap - h,
-                    _ => cy - h / 2,
-                };
-                x = Math.Clamp(x, WorkArea.Left + gap, Math.Max(WorkArea.Left + gap, WorkArea.Right - gap - w));
-                y = Math.Clamp(y, WorkArea.Top + gap, Math.Max(WorkArea.Top + gap, WorkArea.Bottom - gap - h));
+                double x = Math.Clamp(cx - w / 2.0, Final.Left, Math.Max(Final.Left, Final.Right - w));
+                double y = Math.Clamp(cy - h / 2.0, Final.Top, Math.Max(Final.Top, Final.Bottom - h));
+                if (w > Final.Width) x = (Final.Left + Final.Right - w) / 2.0;
+                if (h > Final.Height) y = (Final.Top + Final.Bottom - h) / 2.0;
+                x = Math.Clamp(x, WorkArea.Left, Math.Max(WorkArea.Left, WorkArea.Right - w));
+                y = Math.Clamp(y, WorkArea.Top, Math.Max(WorkArea.Top, WorkArea.Bottom - h));
                 return new Windows.Foundation.Point(x, y);
             });
         });
