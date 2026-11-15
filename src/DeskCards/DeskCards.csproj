@@ -24,6 +24,10 @@
     <RootNamespace>DeskCards</RootNamespace>
     <!-- 단일 인스턴스·업데이트 재실행 처리를 위해 Main을 직접 쓴다(Program.cs). -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+  
+    <!-- 웹 카드 창은 WPF 라이브러리(DeskCards.Expanded)의 관리형 WebView2를 쓴다. WinAppSDK가 켜는 WinRT판(같은 이름의 Core.dll)과 게시에서 겹치므로 끈다. -->
+    <WebView2UseWinRT>false</WebView2UseWinRT>
+    <WebView2EnableCsWinRTProjection>false</WebView2EnableCsWinRTProjection>
   </PropertyGroup>
 
   <ItemGroup>
