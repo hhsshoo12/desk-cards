@@ -9,7 +9,7 @@ using Microsoft.UI.Xaml.Media.Animation;
 namespace DeskCards;
 
 /// <summary>설정 창의 페이지. 왼쪽 메뉴에 있는 것이 맨 위(카드·일반·정보)이고, 나머지는 그 아래 하위 페이지다.</summary>
-internal enum SettingsPageKind { Cards, FolderCards, Card, General, About, DevInfo, Libraries }
+internal enum SettingsPageKind { Cards, FolderCards, Card, Bar, BarKeys, General, About, DevInfo, Libraries }
 
 /// <summary>페이지가 만들어질 때 받는 값.</summary>
 internal sealed record SettingsPageArgs(SettingsWindow Host, GroupManager Mgr, CardWindow? Card);
@@ -24,6 +24,7 @@ internal sealed class SettingsWindow : Window
     private static readonly (string Glyph, string Text, SettingsPageKind Page)[] NavItems =
     {
         ("", "카드", SettingsPageKind.Cards),
+        ("\uE8A7", "카드 바", SettingsPageKind.Bar),
         ("", "일반", SettingsPageKind.General),
         ("", "정보", SettingsPageKind.About),
     };
@@ -33,6 +34,8 @@ internal sealed class SettingsWindow : Window
         [SettingsPageKind.Cards] = a => new CardsPage(a),
         [SettingsPageKind.FolderCards] = a => new FolderCardsPage(a),
         [SettingsPageKind.Card] = a => new CardPage(a),
+        [SettingsPageKind.Bar] = a => new BarPage(a),
+        [SettingsPageKind.BarKeys] = a => new BarKeysPage(a),
         [SettingsPageKind.General] = a => new GeneralPage(a),
         [SettingsPageKind.About] = a => new AboutPage(a),
         [SettingsPageKind.DevInfo] = a => new DevInfoPage(a),
@@ -132,6 +135,13 @@ internal sealed class SettingsWindow : Window
         _win.Reveal();
     }
 
+    /// <summary>설정 창을 카드 바 페이지로 연다(바 옆 설정 버튼에서).</summary>
+    public static void OpenBar(GroupManager mgr)
+    {
+        Open(mgr);
+        _win?.Go(SettingsPageKind.Bar);
+    }
+
     /// <summary>설정 창을 일반 페이지로 연다(붙이기 안내 말풍선에서).</summary>
     public static void OpenGeneral(GroupManager mgr)
     {
@@ -175,6 +185,7 @@ internal sealed class SettingsWindow : Window
     private static SettingsPageKind? ParentOf(SettingsPageKind page) => page switch
     {
         SettingsPageKind.FolderCards => SettingsPageKind.Cards,
+        SettingsPageKind.BarKeys => SettingsPageKind.Bar,
         SettingsPageKind.Card => SettingsPageKind.FolderCards,
         SettingsPageKind.DevInfo => SettingsPageKind.About,
         SettingsPageKind.Libraries => SettingsPageKind.DevInfo,

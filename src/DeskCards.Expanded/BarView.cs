@@ -27,6 +27,8 @@ public interface IBarHost
     void EditEnded();
     /// <summary>편집 중 Delete를 눌렀다(그 카드를 바에서 뺀다).</summary>
     void RemoveRequested(string group);
+    /// <summary>바 옆 설정 버튼을 눌렀다.</summary>
+    void SettingsRequested();
 }
 
 /// <summary>편집한 카드의 자리(바 두께를 1로 친 값).</summary>
@@ -41,7 +43,7 @@ public sealed record BarContent(IReadOnlyList<BarCardData> Cards, bool HoverExpa
 /// <param name="Edge">0 = 왼쪽, 1 = 위, 2 = 오른쪽, 3 = 아래.</param>
 /// <param name="Final">다 나왔을 때 자리(물리 픽셀).</param>
 /// <param name="Bounds">바가 붙는 모니터 전체(물리 픽셀). 모니터 밖으로 나간 부분은 잘라서 보여 준다.</param>
-public sealed record BarOptions(Palette Palette, int Edge, PixelRect Final, PixelRect Bounds, double Scale);
+public sealed record BarOptions(Palette Palette, int Edge, PixelRect Final, PixelRect Bounds, double Scale, PixelRect? FloatBody = null);
 
 public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom)
 {
@@ -89,6 +91,7 @@ public sealed class BarView
         public void ItemsEdited(IReadOnlyList<BarItemData> items) { }
         public void EditEnded() { }
         public void RemoveRequested(string group) { }
+        public void SettingsRequested() { }
     }
 
     public static BarView Open(IBarHost host, BarOptions options, BarContent content)

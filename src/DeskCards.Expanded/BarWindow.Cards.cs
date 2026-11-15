@@ -133,6 +133,7 @@ internal sealed partial class BarWindow
     public void BeginEdit()
     {
         _editing = true;
+        _float?.Leave();
         ApplyEditState();
         UpdateEmpty();
         Activate();
@@ -141,6 +142,7 @@ internal sealed partial class BarWindow
     public void EndEdit()
     {
         _editing = false;
+        if (!_closing && !_animating) ShowFloat();
         _active = null;
         Select(null);
         ApplyEditState();

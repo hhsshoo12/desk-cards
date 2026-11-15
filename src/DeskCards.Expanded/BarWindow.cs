@@ -84,6 +84,7 @@ internal sealed partial class BarWindow : Window
         Closed += (_, _) =>
         {
             if (_animating) CompositionTarget.Rendering -= OnFrame;
+            _float?.Close();
             _host.Closed();
         };
     }
@@ -99,6 +100,16 @@ internal sealed partial class BarWindow : Window
 
     /// <summary>창 핸들(다른 스레드에서 읽어도 안전하게 창이 만들어질 때 적어 둔다).</summary>
     public IntPtr HandleValue => _handle;
+
+    private BarFloatWindow? _float;
+
+    /// <summary>바 옆 설정 버튼을 띄운다(편집 중에는 편집 막대에 설정이 있어 숨긴다).</summary>
+    private void ShowFloat()
+    {
+        if (_o.FloatBody is not { } body || _closing || _editing) return;
+        _float ??= new BarFloatWindow(_o.Palette, _host.SettingsRequested);
+        _float.Enter(body, _o.Bounds, _o.Scale);
+    }
 
     private bool Side => _o.Edge is 0 or 2;
 
@@ -137,6 +148,7 @@ internal sealed partial class BarWindow : Window
     {
         if (_closing) return;
         _closing = true;
+        _float?.Leave();
         // 바에서 앱을 열었으면 그 앱이 앞에 있으니 그대로 두고, 아니면 원래 쓰던 창으로 돌려준다.
         if (GetForegroundWindow() == new WindowInteropHelper(this).Handle && _previous != IntPtr.Zero) SetForegroundWindow(_previous);
         Animate(1, CloseMs);
@@ -206,6 +218,7 @@ internal sealed partial class BarWindow : Window
         _animating = false;
         CompositionTarget.Rendering -= OnFrame;
         if (_closing) Close();
+        else ShowFloat();
     }
 
     /// <summary>cubic-bezier(0,0,0,1): 툭 나와서 스르륵 멈추는 감속.</summary>

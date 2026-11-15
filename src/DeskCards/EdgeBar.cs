@@ -51,7 +51,7 @@ internal static class EdgeBar
         private List<ShellEntry> _watched = new();
         private bool _pushQueued;
 
-        private const double Pad = 12, Gap = 8;
+        private const double Pad = 12, Gap = 8, BarFloat = 36;
         private bool Side => Edge is ScreenEdge.Left or ScreenEdge.Right;
         private double U => Math.Max(1, (Side ? Final.Width : Final.Height) / Scale - 2 * Pad);
         private (double W, double H) Inner => (Math.Max(1, Final.Width / Scale - 2 * Pad), Math.Max(1, Final.Height / Scale - 2 * Pad));
@@ -215,6 +215,21 @@ internal static class EdgeBar
 
         public void EditEnded() => Ui.Post(End);
 
+        public void SettingsRequested() => Ui.Post(() => SettingsWindow.OpenBar(Mgr));
+
+        /// <summary>바 옆 설정 버튼 본체의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳.</summary>
+        public Rectangle FloatBody()
+        {
+            int size = (int)Math.Round(BarFloat * Scale), gap = (int)Math.Round(Gap * Scale);
+            return Edge switch
+            {
+                ScreenEdge.Left => new(Final.Right + gap, Final.Top, size, size),
+                ScreenEdge.Right => new(Final.Left - gap - size, Final.Top, size, size),
+                ScreenEdge.Top => new(Final.Left, Final.Bottom + gap, size, size),
+                _ => new(Final.Left, Final.Top - gap - size, size, size),
+            };
+        }
+
         public void RemoveRequested(string group) => Ui.Post(() => RemoveFromBar(group));
 
         public void RemoveFromBar(string group)
@@ -294,6 +309,13 @@ internal static class EdgeBar
     {
         if (_mgr is not { IsShuttingDown: false } mgr || !mgr.BarEnabled) return false;
         if (mgr.BarItems.All(i => !string.Equals(i.Group, card.Group.Name, StringComparison.OrdinalIgnoreCase))) return false;
+        return OpenForEdit();
+    }
+
+    /// <summary>카드 바를 열고(이미 열려 있으면 그대로) 바 편집을 시작한다(설정의 "카드 바 편집" 버튼용).</summary>
+    public static bool OpenForEdit()
+    {
+        if (_mgr is not { IsShuttingDown: false } mgr || !mgr.BarEnabled) return false;
         if (_bar is { Gone: false, Closing: false } open) { open.Begin(); return true; }
         if (PlaceForEdit(mgr) is not { } place) return false;
         if (_bar is { Gone: false } closing) { closing.Gone = true; closing.End(); closing.View.CloseNow(); }
@@ -463,7 +485,7 @@ internal static class EdgeBar
         double scale = ScaleOf(screen);
         var bar = new OpenBar { Mgr = mgr, Edge = edge, Scale = scale, Bounds = screen.Bounds, WorkArea = screen.WorkArea, Final = FinalRect(screen, edge, mgr.BarSize) };
         bar.Attach();
-        bar.View = BarView.Open(bar, new BarOptions(ExpandedWindow.CurrentPalette(), (int)edge, ToPx(bar.Final), ToPx(bar.Bounds), scale), bar.Content());
+        bar.View = BarView.Open(bar, new BarOptions(ExpandedWindow.CurrentPalette(), (int)edge, ToPx(bar.Final), ToPx(bar.Bounds), scale, ToPx(bar.FloatBody())), bar.Content());
         _bar = bar;
         _lastPlace = (screen.DeviceName, edge);
     }
@@ -511,6 +533,10 @@ internal static class EdgeBar
             default: bb = b.Bottom; break;
         }
         if (pt.X >= l && pt.X < rr && pt.Y >= t && pt.Y < bb) return;
+        // 바 옆 설정 버튼 근처로 가는 중에는 바를 접지 않는다.
+        var fb = bar.FloatBody();
+        int m = (int)Math.Round(40 * bar.Scale);
+        if (pt.X >= fb.Left - m && pt.X < fb.Right + m && pt.Y >= fb.Top - m && pt.Y < fb.Bottom + m) return;
         bar.Closing = true;
         bar.View.BeginClose();
     }
