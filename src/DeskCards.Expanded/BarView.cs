@@ -26,6 +26,27 @@ public sealed class BarView
 {
     private BarWindow? _window;
 
+    /// <summary>카드 바 창을 화면 밖에서 한 번 그려 본다(첫 열림에 회색 배경이 먼저 비치지 않게).</summary>
+    public static void Warmup() => WpfThread.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+    {
+        try
+        {
+            var area = new PixelRect(-32000, -32000, -31000, -31400);
+            var w = new BarWindow(new WarmupHost(), new BarOptions(new Palette("#FFFFFFFF", "#FFC5C5C5", "#18FFFFFF", "#B82C2C2C", false), 2, area, area, 1));
+            w.ShowActivated = false;
+            w.Show();
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+            timer.Tick += (_, _) => { timer.Stop(); w.Close(); };
+            timer.Start();
+        }
+        catch { }
+    });
+
+    private sealed class WarmupHost : IBarHost
+    {
+        public void Closed() { }
+    }
+
     public static BarView Open(IBarHost host, BarOptions options)
     {
         var view = new BarView();

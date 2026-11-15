@@ -35,7 +35,11 @@ internal sealed class ExpandedWindow : IExpandedHost
     private GroupModel Group => _card.Group;
 
     /// <summary>앱을 켠 뒤 미리 WPF 쪽을 올려 두어 첫 펼침이 늦지 않게 한다.</summary>
-    public static void Warmup() => ExpandedView.Warmup();
+    public static void Warmup()
+    {
+        ExpandedView.Warmup();
+        BarView.Warmup();
+    }
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
