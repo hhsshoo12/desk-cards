@@ -49,6 +49,7 @@ internal sealed class WebCardWindow : Window
     private readonly WebView2 _web;
     private readonly Border _outline;
     private readonly Grid _root;
+    private IntPtr _zTarget;
     private bool _dragging, _editing, _closed, _movingZ, _booted;
     private int _x, _y, _w, _h; // 내용 영역(물리 픽셀)
 
@@ -139,8 +140,8 @@ internal sealed class WebCardWindow : Window
         _editing = editing;
         _outline.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         ApplyBounds();
-        if (editing) SetWindowPos(Hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010); // 어두운 막 위로
-        else SendToBottom();
+        if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
+        else SetZ(new IntPtr(1));
     }
 
     internal void SetVisible(bool visible)
@@ -151,10 +152,13 @@ internal sealed class WebCardWindow : Window
         PostEvent("visibility", visible);
     }
 
-    private void SendToBottom()
+    private void SendToBottom() => SetZ(new IntPtr(1));
+
+    private void SetZ(IntPtr after)
     {
+        _zTarget = after;
         _movingZ = true;
-        try { SetWindowPos(Hwnd, new IntPtr(1), 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010); }
+        try { SetWindowPos(Hwnd, after, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010); }
         finally { _movingZ = false; }
     }
 
@@ -162,14 +166,6 @@ internal sealed class WebCardWindow : Window
     {
         switch (msg)
         {
-            case 0x0046 when !_editing: // WM_WINDOWPOSCHANGING: 눌러도 앞으로 나오지 않게
-            {
-                var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-                if ((wp.flags & 0x0004) != 0) break;
-                if (_movingZ) wp.hwndInsertAfter = new IntPtr(1); else wp.flags |= 0x0004;
-                Marshal.StructureToPtr(wp, lParam, false);
-                break;
-            }
             case 0x0084 when _editing: // WM_NCHITTEST: 편집 띠 = 크기 조절(바깥)·끌기(안쪽)
             {
                 handled = true;
@@ -179,18 +175,23 @@ internal sealed class WebCardWindow : Window
                 handled = true;
                 return DefWindowProc(hwnd, msg, new IntPtr(1), lParam);
             case 0x0231: _dragging = true; break; // WM_ENTERSIZEMOVE
-            case 0x0046 when _editing && _dragging: // 옮기는 중: 다른 카드·가장자리에 맞춘다(크기가 그대로일 때만)
+            case 0x0046: // WM_WINDOWPOSCHANGING: 눌러도 앞으로 나오지 않게(앞뒤는 앱이 정할 때만 바뀐다), 옮기는 중이면 맞춘다
             {
                 var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-                if ((wp.flags & 0x0002) != 0 || !GetWindowRect(hwnd, out var cur) || wp.cx != cur.Right - cur.Left || wp.cy != cur.Bottom - cur.Top) break;
-                int pad = Pad;
-                var snapped = _host.Snap(_o.Id, new PixelRect(wp.x + pad, wp.y + pad, wp.x + wp.cx - pad, wp.y + wp.cy - pad));
-                wp.x = snapped.Left - pad;
-                wp.y = snapped.Top - pad;
+                if ((wp.flags & 0x0004) == 0)
+                {
+                    if (_movingZ) wp.hwndInsertAfter = _zTarget; else wp.flags |= 0x0004;
+                }
+                if (_editing && _dragging && (wp.flags & 0x0002) == 0 && GetWindowRect(hwnd, out var cur) && wp.cx == cur.Right - cur.Left && wp.cy == cur.Bottom - cur.Top)
+                {
+                    int pad = Pad;
+                    var snapped = _host.Snap(_o.Id, new PixelRect(wp.x + pad, wp.y + pad, wp.x + wp.cx - pad, wp.y + wp.cy - pad));
+                    wp.x = snapped.Left - pad;
+                    wp.y = snapped.Top - pad;
+                }
                 Marshal.StructureToPtr(wp, lParam, false);
                 break;
-            }
-            case 0x0232: // WM_EXITSIZEMOVE
+            }            case 0x0232: // WM_EXITSIZEMOVE
                 _dragging = false;
                 _host.GuidesOff();
                 ReadBounds();
