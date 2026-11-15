@@ -53,80 +53,31 @@ internal sealed class BarEditBar : ToolWindow
         var items = new StackPanel { Orientation = Orientation.Vertical, Spacing = 2 };
         var root = new Border { Padding = new Thickness(6), Background = Theme.Brush("PopupBg"), Child = items };
 
-        const double RowW = 168;
-        root.MinWidth = RowW + 12;
-        var name = new TextBlock
-        {
-            FontSize = 13,
-            Margin = new Thickness(10, 6, 10, 6),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
+        // 화면 편집 막대와 같은 단추(폭 40, 높이 36)·간격·강조색을 그대로 쓰고 세로로만 늘어놓는다. 이름은 바 안의 선택 테두리로 알 수 있어 글자는 두지 않는다.
+        var name = new TextBlock(); // 안 보이는 자리표시(선택 이름은 단추 툴팁으로)
         BarEditBar? self = null;
-
-        // 화면 편집 막대와 같은 단추(높이 36, 아이콘 16)를 세로로 늘어놓고 글자를 붙인다.
-        static Button Row(string glyph, string text, string tip, Action act, bool chevron = false)
-        {
-            var label = new TextBlock { Text = text, FontSize = 14, Margin = new Thickness(12, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center };
-            var content = new Grid { ColumnSpacing = 0 };
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            content.Children.Add(EditBar.Glyph(glyph));
-            Grid.SetColumn(label, 1);
-            content.Children.Add(label);
-            if (chevron)
-            {
-                var c = EditBar.Glyph("\uE70D", 9);
-                Grid.SetColumn(c, 2);
-                content.Children.Add(c);
-            }
-            var b = new Button
-            {
-                Content = content,
-                Height = 36,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Padding = new Thickness(12, 0, 12, 0),
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-            };
-            ToolTipService.SetToolTip(b, tip);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, tip);
-            b.Click += (_, _) => act();
-            return b;
-        }
-
-        Button gridButton = null!;
-        gridButton = Row("\uE80A", "칸 수", "미리보기 칸 수", () => self!.ShowGridFlyout(gridButton), chevron: true);
-        var rename = Row("\uE8AC", "이름 바꾸기", "이름 바꾸기", () => { if (o.Selected is { } g) o.Rename(g); });
-        var remove = Row("\uE738", "카드 바에서 빼기", "카드 바에서 빼기 (Delete)", () => { if (o.Selected is { } g) o.RemoveFromBar(g); });
+        var gridButton = EditBar.Btn("\uE80A", "미리보기 칸 수", () => { });
+        gridButton.Content = EditBar.GridContent();
+        gridButton.Click += (_, _) => self!.ShowGridFlyout(gridButton);
+        var rename = EditBar.Btn("\uE8AC", "이름 바꾸기", () => { if (o.Selected is { } g) o.Rename(g); });
+        var remove = EditBar.Btn("\uE738", "카드 바에서 빼기 (Delete)", () => { if (o.Selected is { } g) o.RemoveFromBar(g); });
         var cardButtons = new[] { rename, gridButton, remove };
 
-        items.Children.Add(Row("\uE710", "카드 넣기", "카드 넣기", o.ShowAddMenu));
+        items.Children.Add(EditBar.Btn("\uE710", "카드 넣기", o.ShowAddMenu));
         items.Children.Add(EditBar.Sep2());
-        items.Children.Add(name);
         foreach (var b in cardButtons) items.Children.Add(b);
         items.Children.Add(EditBar.Sep2());
-        items.Children.Add(Row("\uE713", "설정", "설정", () => SettingsWindow.Open(mgr, null)));
-        var doneContent = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Children =
-            {
-                EditBar.Glyph("\uE73E", 14),
-                new TextBlock { Text = "완료", FontSize = 14, Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center },
-            },
-        };
+        items.Children.Add(EditBar.Btn("\uE713", "설정", () => SettingsWindow.Open(mgr, null)));
         var done = new Button
         {
-            Content = doneContent,
+            Content = EditBar.Glyph("\uE73E", 14),
             Height = 32,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Style = (Style)Application.Current.Resources["AccentButtonStyle"],
             Margin = new Thickness(0, 4, 0, 0),
         };
         ToolTipService.SetToolTip(done, "편집 끝내기 (Esc)");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(done, "완료");
         done.Click += (_, _) => o.End();
         items.Children.Add(done);
 
@@ -172,9 +123,6 @@ internal sealed class BarEditBar : ToolWindow
     private void Refresh()
     {
         var sel = _selected();
-        _name.Text = sel ?? "카드 선택";
-        _name.Foreground = Theme.Brush(sel != null ? "Fg" : "SubFg");
-        ToolTipService.SetToolTip(_name, sel);
         foreach (var b in _cardButtons) b.IsEnabled = sel != null;
     }
 
