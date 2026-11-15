@@ -49,12 +49,13 @@ internal static class EdgeBar
         ScreenEdge BarEditBar.IOwner.Edge => Edge;
         Rectangle BarEditBar.IOwner.GearRect
         {
-            get { var f = FloatBody(); int s = (int)Math.Round(BarFloat * Scale); return new Rectangle(f.Left, f.Top, s, s); }
+            // 톱니 칸: 위·왼쪽·오른쪽 바는 알약의 위 칸, 아래 바는 아래 칸(편집 막대가 위로 펼쳐지므로).
+            get { var f = FloatBody(); int s = (int)Math.Round(BarFloat * Scale); return new Rectangle(f.Left, Edge == ScreenEdge.Bottom ? f.Bottom - s : f.Top, f.Width, s); }
         }
         private List<ShellEntry> _watched = new();
         private bool _pushQueued;
 
-        private const double Pad = 12, Gap = 8, BarFloat = 36;
+        private const double Pad = 12, Gap = 8, BarFloat = 36, PillWidth = 52;
         private bool Side => Edge is ScreenEdge.Left or ScreenEdge.Right;
         private double U => Math.Max(1, (Side ? Final.Width : Final.Height) / Scale - 2 * Pad);
         private (double W, double H) Inner => (Math.Max(1, Final.Width / Scale - 2 * Pad), Math.Max(1, Final.Height / Scale - 2 * Pad));
@@ -127,7 +128,7 @@ internal static class EdgeBar
         public void CardMenu(string group) => Ui.Post(() =>
         {
             if (Mgr.GroupCard(group) is not { } card) return;
-            var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => Rename(group)).Separator();
+            var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => { Begin(); Ui.Post(() => BarEditBar.RenameFor(group)); }).Separator();
             m.Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
         });
 
@@ -273,16 +274,16 @@ internal static class EdgeBar
 
         public void ToggleEditBar() => Ui.Post(BarEditBar.Toggle);
 
-        /// <summary>바 옆 알약(설정·편집 두 칸)의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳. 왼·오른쪽 바는 세로로, 위·아래 바는 가로로 두 칸.</summary>
+        /// <summary>바 옆 알약(톱니·연필 두 칸, 폭은 편집 막대와 같다)의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳. 늘 세로로 두 칸.</summary>
         public Rectangle FloatBody()
         {
-            int size = (int)Math.Round(BarFloat * Scale), gap = (int)Math.Round(Gap * Scale);
+            int w = (int)Math.Round(PillWidth * Scale), h = (int)Math.Round(2 * BarFloat * Scale), gap = (int)Math.Round(Gap * Scale);
             return Edge switch
             {
-                ScreenEdge.Left => new(Final.Right + gap, Final.Top, size, 2 * size),
-                ScreenEdge.Right => new(Final.Left - gap - size, Final.Top, size, 2 * size),
-                ScreenEdge.Top => new(Final.Left, Final.Bottom + gap, 2 * size, size),
-                _ => new(Final.Left, Final.Top - gap - size, 2 * size, size),
+                ScreenEdge.Left => new(Final.Right + gap, Final.Top, w, h),
+                ScreenEdge.Right => new(Final.Left - gap - w, Final.Top, w, h),
+                ScreenEdge.Top => new(Final.Left, Final.Bottom + gap, w, h),
+                _ => new(Final.Left, Final.Top - gap - h, w, h),
             };
         }
 
@@ -294,10 +295,7 @@ internal static class EdgeBar
             if (Selected == group) { Selected = null; BarEditBar.Update(); }
         }
 
-        public void Rename(string group)
-        {
-            if (Mgr.GroupCard(group) is { } card) ExpandedWindow.Open(card, Mgr, editTitle: true, anchor: View.Handle, place: CenterIn);
-        }
+        public void Rename(string group) => BarEditBar.RenameFor(group);
 
         private Windows.Foundation.Point CenterIn(int w, int h)
         {

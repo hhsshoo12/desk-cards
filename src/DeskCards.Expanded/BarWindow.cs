@@ -107,7 +107,7 @@ internal sealed partial class BarWindow : Window
     private void ShowFloat()
     {
         if (_o.FloatBody is not { } body || _closing) return;
-        _float ??= new BarFloatWindow(_o.Palette, Side, _host.SettingsRequested, _host.EditRequested, _host.ToggleEditBar);
+        _float ??= new BarFloatWindow(_o.Palette, _o.Edge != 3, _host.SettingsRequested, _host.EditRequested, _host.ToggleEditBar);
         _float.SetEditing(_editing);
         _float.Enter(body, _o.Bounds, _o.Scale);
     }

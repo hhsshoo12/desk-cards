@@ -17,10 +17,11 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal sealed class BarFloatWindow : Window
 {
-    public const double Size = 36;
+    public const double Size = 36;   // 칸 높이
+    public const double PillWidth = 52; // 편집 막대(단추 40 + 안쪽 여백 6×2)와 같은 폭
     private const double Shadow = 12; // 그림자가 잘리지 않게 두는 여백
 
-    private readonly bool _vertical;
+    private readonly bool _gearFirst;
     private readonly Border _body, _gearCell, _penCell;
     private readonly TextBlock _gear, _pen;
     private readonly TranslateTransform _penShift = new();
@@ -31,10 +32,10 @@ internal sealed class BarFloatWindow : Window
     private bool _moving, _leaving, _editing;
     private IntPtr _handle;
 
-    /// <param name="vertical">바가 왼쪽·오른쪽이면 세로 알약(두 칸이 위아래), 위·아래면 가로 알약.</param>
-    public BarFloatWindow(Palette palette, bool vertical, Action settings, Action edit, Action toggle)
+    /// <param name="gearFirst">톱니가 위 칸이면 true(편집 막대가 아래로 펼쳐짐). 아래 바는 막대가 위로 펼쳐지므로 톱니가 아래 칸.</param>
+    public BarFloatWindow(Palette palette, bool gearFirst, Action settings, Action edit, Action toggle)
     {
-        _vertical = vertical;
+        _gearFirst = gearFirst;
         _settings = settings;
         _edit = edit;
         _toggle = toggle;
@@ -45,8 +46,8 @@ internal sealed class BarFloatWindow : Window
         ShowActivated = false;
         Topmost = true;
         ResizeMode = ResizeMode.NoResize;
-        Width = (vertical ? Size : 2 * Size) + 2 * Shadow;
-        Height = (vertical ? 2 * Size : Size) + 2 * Shadow;
+        Width = PillWidth + 2 * Shadow;
+        Height = 2 * Size + 2 * Shadow;
         Left = Top = -32000;
         Title = "Desk Cards 카드 바 설정";
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic");
@@ -61,19 +62,10 @@ internal sealed class BarFloatWindow : Window
         _gearCell.ToolTip = "카드 바 설정";
         _penCell.ToolTip = "카드 바 편집";
 
-        var grid = new Grid { Width = vertical ? Size : 2 * Size, Height = vertical ? 2 * Size : Size };
-        if (vertical)
-        {
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
-            Grid.SetRow(_penCell, 1);
-        }
-        else
-        {
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Size) });
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Size) });
-            Grid.SetColumn(_penCell, 1);
-        }
+        var grid = new Grid { Width = PillWidth, Height = 2 * Size };
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
+        Grid.SetRow(gearFirst ? _penCell : _gearCell, 1);
         grid.Children.Add(_gearCell);
         grid.Children.Add(_penCell);
 
@@ -85,7 +77,7 @@ internal sealed class BarFloatWindow : Window
             Height = grid.Height,
             Margin = new Thickness(Shadow),
             HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = gearFirst ? VerticalAlignment.Top : VerticalAlignment.Bottom,
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
             Background = new SolidColorBrush(popup),
@@ -115,7 +107,7 @@ internal sealed class BarFloatWindow : Window
 
     private static Border Cell(TextBlock icon, Brush hover, Action click)
     {
-        var cell = new Border { Width = Size, Height = Size, Background = Brushes.Transparent, Child = icon, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        var cell = new Border { Width = PillWidth, Height = Size, Background = Brushes.Transparent, Child = icon, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
         cell.MouseEnter += (_, _) => cell.Background = hover;
         cell.MouseLeave += (_, _) => { cell.Background = Brushes.Transparent; icon.Opacity = cell.Tag is true ? 0 : 1; };
         cell.MouseLeftButtonDown += (_, e) => { e.Handled = true; icon.Opacity = 0.7; };
@@ -139,10 +131,11 @@ internal sealed class BarFloatWindow : Window
         double len = Size;
         var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
         var dur = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 220 : 0);
-        var side = _vertical ? Border.HeightProperty : Border.WidthProperty;
-        var shift = _vertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
+        var side = Border.HeightProperty;
+        var shift = TranslateTransform.YProperty;
+        double dir = _gearFirst ? -1 : 1; // 연필이 톱니 칸 쪽으로 움직이는 방향
         _body.BeginAnimation(side, new DoubleAnimation(editing ? 2 * len : len, editing ? len : 2 * len, dur) { EasingFunction = ease });
-        _penShift.BeginAnimation(shift, new DoubleAnimation(editing ? 0 : -len, editing ? -len : 0, dur) { EasingFunction = ease });
+        _penShift.BeginAnimation(shift, new DoubleAnimation(editing ? 0 : dir * len, editing ? dir * len : 0, dur) { EasingFunction = ease });
         _pen.BeginAnimation(OpacityProperty, new DoubleAnimation(editing ? 1 : 0, editing ? 0 : 1, dur) { EasingFunction = ease });
         _penCell.IsHitTestVisible = !editing;
     }

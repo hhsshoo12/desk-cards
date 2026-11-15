@@ -1,3 +1,4 @@
+using System.Linq;
 using System;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -15,30 +16,32 @@ internal sealed class BarEditBar : ToolWindow
 {
     private static BarEditBar? _bar;
 
-    private readonly TextBlock _name;
     private readonly Button[] _cardButtons;
     private readonly Func<string?> _selected;
     private readonly GroupManager _mgr;
-    private readonly int _dir;           // +1: 알약 오른쪽으로 펼침, -1: 왼쪽으로 펼침
+    private readonly int _dir;           // +1: 알약 아래로 펼침, -1: 위로 펼침
+    private readonly bool _flyLeft;
     private readonly Windows.Foundation.Size _full; // 다 펼쳤을 때 크기(DIP)
-    private readonly System.Drawing.Point _anchor;  // 알약 쪽 가장자리의 가운데(물리 픽셀)
+    private readonly System.Drawing.Rectangle _gear; // 알약의 톱니 칸(물리 픽셀)
+    private readonly Button _renameButton;
     private Flyout? _gridFlyout;
     private bool _expanded = true, _closed;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _anim;
     private System.Diagnostics.Stopwatch? _clock;
     private double _from, _to, _k;       // 펼친 정도(0~1)
 
-    private BarEditBar(FrameworkElement outer, TextBlock name, Button[] cardButtons, GroupManager mgr, Func<string?> selected,
-        int dir, Windows.Foundation.Size full, System.Drawing.Point anchor)
+    private BarEditBar(FrameworkElement outer, Button[] cardButtons, GroupManager mgr, Func<string?> selected,
+        int dir, Windows.Foundation.Size full, System.Drawing.Rectangle gear, Button renameButton, bool flyLeft)
         : base("Desk Cards 카드 바 편집", outer)
     {
-        _name = name;
         _cardButtons = cardButtons;
         _mgr = mgr;
         _selected = selected;
         _dir = dir;
         _full = full;
-        _anchor = anchor;
+        _gear = gear;
+        _renameButton = renameButton;
+        _flyLeft = flyLeft;
     }
 
     public interface IOwner
@@ -49,7 +52,6 @@ internal sealed class BarEditBar : ToolWindow
         /// <summary>편집 중 알약(톱니 한 칸)의 자리(물리 픽셀).</summary>
         System.Drawing.Rectangle GearRect { get; }
         void ShowAddMenu();
-        void Rename(string group);
         void RemoveFromBar(string group);
         void End();
     }
@@ -58,7 +60,7 @@ internal sealed class BarEditBar : ToolWindow
     {
         if (_bar != null) return;
         var mgr = o.Mgr;
-        var items = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        var items = new StackPanel { Orientation = Orientation.Vertical, Spacing = 2 };
         var root = new Border { Padding = new Thickness(6), Background = Theme.Brush("PopupBg"), Child = items };
 
         var guides = new ToggleButton { Content = EditBar.Glyph("\uE80A"), MinWidth = 40, Height = 36, IsChecked = mgr.ShowGuides };
@@ -66,58 +68,39 @@ internal sealed class BarEditBar : ToolWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(guides, "안내선");
         guides.Click += (_, _) => mgr.ShowGuides = guides.IsChecked == true;
 
-        var name = new TextBlock
-        {
-            FontSize = 13,
-            MinWidth = 96,
-            MaxWidth = 160,
-            Margin = new Thickness(8, 0, 6, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
         BarEditBar? self = null;
         var gridButton = EditBar.Btn("\uE80A", "미리보기 칸 수", () => { });
         gridButton.Content = EditBar.GridContent();
         gridButton.Click += (_, _) => self!.ShowGridFlyout(gridButton);
-        var rename = EditBar.Btn("\uE8AC", "이름 바꾸기", () => { if (o.Selected is { } g) o.Rename(g); });
+        var rename = EditBar.Btn("\uE8AC", "이름 바꾸기", () => { if (o.Selected is { } g) RenameFor(g); });
         var remove = EditBar.Btn("\uE738", "카드 바에서 빼기 (Delete)", () => { if (o.Selected is { } g) o.RemoveFromBar(g); });
         var cardButtons = new[] { rename, gridButton, remove };
 
-        var doneContent = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Children =
-            {
-                EditBar.Glyph("\uE73E", 14),
-                new TextBlock { Text = "완료", FontSize = 14, Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center },
-            },
-        };
-        var done = new Button { Content = doneContent, Height = 32, Style = (Style)Application.Current.Resources["AccentButtonStyle"], Margin = new Thickness(4, 0, 2, 0) };
+        var done = new Button { Content = EditBar.Glyph("\uE73E", 14), Height = 32, Style = (Style)Application.Current.Resources["AccentButtonStyle"], Margin = new Thickness(0, 4, 0, 0) };
         ToolTipService.SetToolTip(done, "편집 끝내기 (Esc)");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(done, "완료");
         done.Click += (_, _) => o.End();
 
         items.Children.Add(EditBar.Btn("\uE710", "카드 넣기", o.ShowAddMenu));
         items.Children.Add(guides);
-        items.Children.Add(EditBar.Sep());
-        items.Children.Add(name);
+        items.Children.Add(EditBar.Sep2());
         foreach (var b in cardButtons) items.Children.Add(b);
-        items.Children.Add(EditBar.Sep());
+        items.Children.Add(EditBar.Sep2());
         items.Children.Add(EditBar.Btn("\uE713", "설정", () => SettingsWindow.Open(mgr, null)));
         items.Children.Add(done);
+        foreach (var child in items.Children)
+            if (child is Control c) { c.HorizontalAlignment = HorizontalAlignment.Stretch; c.HorizontalContentAlignment = HorizontalAlignment.Center; }
 
         // 다 펼쳤을 때 크기를 재고, 알약 쪽에 붙여 두어 창이 커지는 만큼만 드러나게 한다.
         root.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var full = root.DesiredSize;
-        int dir = o.Edge == ScreenEdge.Left ? -1 : 1;
-        root.Width = full.Width;
-        root.HorizontalAlignment = dir > 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-        root.VerticalAlignment = VerticalAlignment.Top;
+        int dir = o.Edge == ScreenEdge.Bottom ? -1 : 1;
+        root.Height = full.Height;
+        root.HorizontalAlignment = HorizontalAlignment.Left;
+        root.VerticalAlignment = dir > 0 ? VerticalAlignment.Top : VerticalAlignment.Bottom;
         var outer = new Grid { Children = { root } };
 
-        var gear = o.GearRect;
-        var anchor = new System.Drawing.Point(dir > 0 ? gear.Right : gear.Left, gear.Top + gear.Height / 2);
-        self = new BarEditBar(outer, name, cardButtons, mgr, () => o.Selected, dir, full, anchor);
+        self = new BarEditBar(outer, cardButtons, mgr, () => o.Selected, dir, full, o.GearRect, rename, o.Edge == ScreenEdge.Right);
         _bar = self;
         self.Closed += (_, _) =>
         {
@@ -130,7 +113,6 @@ internal sealed class BarEditBar : ToolWindow
         self.AppWindow.Show();
         self.Animate(1);
     }
-
     public static void CloseBar()
     {
         var bar = _bar;
@@ -157,10 +139,11 @@ internal sealed class BarEditBar : ToolWindow
     private void Apply(double k)
     {
         _k = k;
-        double scale = Native.MonitorScaleAt(_anchor.X, _anchor.Y);
-        int w = Math.Max(1, (int)Math.Round(_full.Width * scale * k)), h = (int)Math.Round(_full.Height * scale);
-        int x = _dir > 0 ? _anchor.X : _anchor.X - w;
-        Resize(new Windows.Graphics.RectInt32(x, _anchor.Y - h / 2, w, h));
+        double scale = Native.MonitorScaleAt(_gear.Left, _gear.Top);
+        int gap = (int)Math.Round(4 * scale);
+        int w = (int)Math.Round(_full.Width * scale), h = Math.Max(1, (int)Math.Round(_full.Height * scale * k));
+        int y = _dir > 0 ? _gear.Bottom + gap : _gear.Top - gap - h;
+        Resize(new Windows.Graphics.RectInt32(_gear.Left, y, w, h));
     }
 
     private void Animate(double to)
@@ -193,10 +176,36 @@ internal sealed class BarEditBar : ToolWindow
     private void Refresh()
     {
         var sel = _selected();
-        _name.Text = sel ?? "카드를 누르세요";
-        _name.Foreground = Theme.Brush(sel != null ? "Fg" : "SubFg");
-        ToolTipService.SetToolTip(_name, sel);
         foreach (var b in _cardButtons) b.IsEnabled = sel != null;
+    }
+
+    /// <summary>카드 이름을 바로 고치는 작은 입력 창(펼친 창을 열지 않고). Enter로 바꾸고 Esc로 닫는다.</summary>
+    public static void RenameFor(string group)
+    {
+        if (_bar is not { } b || b._mgr.GroupCard(group) is not { } card) return;
+        var box = new TextBox { Text = card.CardName, MinWidth = 220, MaxLength = 80 };
+        var flyout = new Flyout
+        {
+            Content = box,
+            Placement = b._flyLeft ? FlyoutPlacementMode.Left : FlyoutPlacementMode.Right,
+            ShouldConstrainToRootBounds = false,
+        };
+        bool done = false;
+        void Commit()
+        {
+            if (done) return;
+            done = true;
+            string text = box.Text.Trim();
+            if (text.Length > 0 && text != card.CardName && b._mgr.Cards.Contains(card)) b._mgr.RenameGroup(card, text);
+            flyout.Hide();
+        }
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter) { Commit(); e.Handled = true; }
+        };
+        flyout.Opened += (_, _) => { box.Focus(Microsoft.UI.Xaml.FocusState.Programmatic); box.SelectAll(); };
+        flyout.Closed += (_, _) => Commit();
+        flyout.ShowAt(b._renameButton);
     }
 
     private void ShowGridFlyout(Button target)
@@ -226,7 +235,7 @@ internal sealed class BarEditBar : ToolWindow
         _gridFlyout = new Flyout
         {
             Content = new StackPanel { Children = { grid, hint } },
-            Placement = FlyoutPlacementMode.Bottom,
+            Placement = _flyLeft ? FlyoutPlacementMode.Left : FlyoutPlacementMode.Right,
             ShouldConstrainToRootBounds = false,
         };
         _gridFlyout.ShowAt(target);
