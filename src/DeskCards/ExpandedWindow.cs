@@ -83,16 +83,15 @@ internal sealed partial class ExpandedWindow : ToolWindow
     {
         if (!Motion.Enabled) return;
         var hwnd = Handle;
-        long ex = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
-        Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(ex | Native.WS_EX_LAYERED));
-        SetLayeredWindowAttributes(hwnd, 0, 0, 2);
+        // 진짜 창은 그림 창이 다 커질 때까지 DWM이 그리지 않게 숨겨 둔다(CLOAK). 투명도로는 처음 몇 프레임이 비쳐 보였다.
+        SetCloak(hwnd, true);
+        bool uncloaked = false;
 
         void Restore()
         {
             _ghost?.Dispose();
             _ghost = null;
-            long now = Native.GetWindowLongPtr(hwnd, Native.GWL_EXSTYLE).ToInt64();
-            Native.SetWindowLongPtr(hwnd, Native.GWL_EXSTYLE, new IntPtr(now & ~Native.WS_EX_LAYERED));
+            if (!uncloaked) { uncloaked = true; SetCloak(hwnd, false); }
         }
 
         try
@@ -100,7 +99,12 @@ internal sealed partial class ExpandedWindow : ToolWindow
             await System.Threading.Tasks.Task.Delay(40); // 창이 화면에 올라와 내용이 그려지길 기다린다.
             if (_closing) return;
             var root = (FrameworkElement)Content;
-            int pw = _final.Width, ph = _final.Height;
+            // 진짜 창이 실제로 놓인 안쪽(클라이언트) 자리·크기에 맞춘다.
+            Native.GetWindowRect(hwnd, out var outer);
+            Native.GetClientRect(hwnd, out var client);
+            int border = Math.Max(0, ((outer.Right - outer.Left) - client.Right) / 2);
+            int topEdge = Math.Max(0, ((outer.Bottom - outer.Top) - client.Bottom) - border);
+            int pw = client.Right, ph = client.Bottom, left = outer.Left + border, topY = outer.Top + topEdge;
             var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
             await rtb.RenderAsync(root, pw, ph);
             if (_closing) return;
@@ -108,11 +112,13 @@ internal sealed partial class ExpandedWindow : ToolWindow
             // 떠 낸 그림의 실제 크기(요청한 크기와 다를 수 있다)를 쓴다.
             int bw = rtb.PixelWidth, bh = rtb.PixelHeight;
             if (bw <= 0 || bh <= 0 || pixels.Length < bw * bh * 4) throw new InvalidOperationException();
+            DumpBake(pixels, bw, bh, "raw", root);
             BakeGlass(pixels, bw, bh);
+            DumpBake(pixels, bw, bh, "baked", root);
 
             _ghost = new LayeredWindow(topmost: true);
             _ghost.SetSource(pixels, bw, bh);
-            double fx = _final.X + pw / 2.0, fy = _final.Y + ph / 2.0, sx = fx, sy = fy, from = 0.5;
+            double fx = left + pw / 2.0, fy = topY + ph / 2.0, sx = fx, sy = fy, from = 0.5;
             if (Native.GetWindowRect(_anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card), out var r))
             {
                 sx = (r.Left + r.Right) / 2.0;
@@ -139,9 +145,9 @@ internal sealed partial class ExpandedWindow : ToolWindow
                     Frame(Motion.Decel(ms / Motion.Slow), (byte)Math.Round(255 * Math.Clamp(ms / 100, 0, 1)));
                     return;
                 }
+                if (!uncloaked) { uncloaked = true; SetCloak(hwnd, false); }
                 double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
                 Frame(1, (byte)Math.Round(255 * (1 - k)));
-                SetLayeredWindowAttributes(hwnd, 0, (byte)Math.Round(255 * k), 2);
                 if (ms < Motion.Slow + Motion.Fast) return;
                 _openTimer?.Stop();
         _ghost?.Dispose();
@@ -153,9 +159,24 @@ internal sealed partial class ExpandedWindow : ToolWindow
         catch
         {
             // 그림을 뜨지 못하면 애니메이션 없이 바로 보여 준다.
-            SetLayeredWindowAttributes(hwnd, 0, 255, 2);
             Restore();
         }
+    }
+
+    /// <summary>진단용: DESKCARDS_DUMP_OPEN이 설정돼 있으면 떠 낸 그림을 임시 폴더에 BMP로 저장한다.</summary>
+    private void DumpBake(byte[] px, int w, int h, string tag, FrameworkElement root)
+    {
+        if (Environment.GetEnvironmentVariable("DESKCARDS_DUMP_OPEN") == null) return;
+        try
+        {
+            using var fs = System.IO.File.Create(System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"deskcards-open-{tag}.bmp"));
+            using var bw = new System.IO.BinaryWriter(fs);
+            bw.Write((ushort)0x4D42); bw.Write(54 + w * h * 4); bw.Write(0); bw.Write(54);
+            bw.Write(40); bw.Write(w); bw.Write(-h); bw.Write((ushort)1); bw.Write((ushort)32); bw.Write(0); bw.Write(w * h * 4); bw.Write(0); bw.Write(0); bw.Write(0); bw.Write(0);
+            bw.Write(px, 0, w * h * 4);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "deskcards-open-info.txt"), $"bake {w}x{h}; final {_final.Width}x{_final.Height}; root {root.Width}x{root.Height} actual {root.ActualWidth}x{root.ActualHeight}");
+        }
+        catch { }
     }
 
     /// <summary>
@@ -180,7 +201,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
                 if (dx * dx + dy * dy > r * r) px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0;
             }
     }
-    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
+    private static void SetCloak(IntPtr hwnd, bool on) { int v = on ? 1 : 0; Native.DwmSetWindowAttribute(hwnd, 13 /* DWMWA_CLOAK */, ref v, sizeof(int)); }
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
     /// <param name="place">창 크기(물리 픽셀)를 받아 띄울 자리(물리 픽셀)를 정한다. 없으면 카드 가운데에 펼친다.</param>
