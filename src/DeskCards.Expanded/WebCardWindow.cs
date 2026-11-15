@@ -145,7 +145,7 @@ internal sealed class WebCardWindow : Window
             ? "document.documentElement.style.setProperty('app-region','drag')"
             : "document.documentElement.style.removeProperty('app-region')");
         if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
-        else { SetZ(new IntPtr(-2)); SetZ(new IntPtr(1)); } // 최상위를 풀고 바탕화면 층으로
+        else SetZ(new IntPtr(1)); // HWND_BOTTOM이 최상위도 함께 푼다
     }
 
     internal void SetVisible(bool visible)
@@ -193,7 +193,7 @@ internal sealed class WebCardWindow : Window
                 if ((wp.flags & 0x0004) == 0)
                 {
                     if (_movingZ) wp.hwndInsertAfter = _zTarget;
-                    else if (wp.hwndInsertAfter == IntPtr.Zero || wp.hwndInsertAfter == new IntPtr(-1)) wp.flags |= 0x0004; // 앞으로 올라오는 것만 막는다
+                    else if (!_editing) wp.flags |= 0x0004; // 앱이 직접 옮길 때 말고는 z 변경을 모두 막는다(폴더 카드와 같은 규칙)
                 }
                 if (_editing && _dragging && (wp.flags & 0x0002) == 0 && GetWindowRect(hwnd, out var cur) && wp.cx == cur.Right - cur.Left && wp.cy == cur.Bottom - cur.Top)
                 {

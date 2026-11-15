@@ -91,10 +91,10 @@ internal sealed class ActiveBackdrop : SystemBackdrop
         _config = new SystemBackdropConfiguration { IsInputActive = true, Theme = ConfigTheme() };
         if (_acrylic)
         {
-            // 바탕화면이 비치도록 시스템 기본보다 색을 옅게 한다(웹 카드의 DWM 아크릴과 비슷한 정도).
-            var c = new DesktopAcrylicController { TintOpacity = 0.1f, LuminosityOpacity = 0.35f };
+            var c = new DesktopAcrylicController();
             c.AddSystemBackdropTarget(target);
             c.SetSystemBackdropConfiguration(_config);
+            Tune(c); // 설정을 붙인 뒤에 넣어야 테마 기본값에 덮어써지지 않는다
             _controller = c;
         }
         else
@@ -119,7 +119,16 @@ internal sealed class ActiveBackdrop : SystemBackdrop
     /// <summary>테마가 바뀌었을 때 배경 색조를 다시 맞춘다.</summary>
     public void Refresh()
     {
-        if (_config != null) _config.Theme = ConfigTheme();
+        if (_config == null) return;
+        _config.Theme = ConfigTheme();
+        if (_controller is DesktopAcrylicController a) Tune(a);
+    }
+
+    /// <summary>바탕화면이 비치도록 시스템 기본보다 색을 옅게 한다(웹 카드의 DWM 아크릴과 비슷한 정도).</summary>
+    private static void Tune(DesktopAcrylicController c)
+    {
+        c.TintOpacity = 0.1f;
+        c.LuminosityOpacity = 0.35f;
     }
 
     private static SystemBackdropTheme ConfigTheme() => Theme.IsLight ? SystemBackdropTheme.Light : SystemBackdropTheme.Dark;
