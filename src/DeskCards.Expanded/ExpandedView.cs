@@ -41,8 +41,31 @@ public sealed class ExpandedView
     /// <summary>WPF 스레드와 라이브러리를 미리 올려 두어 첫 펼침이 늦지 않게 한다.</summary>
     public static void Warmup() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
     {
-        try { new TileWindow.Probe(); } catch { }
+        // 진짜 펼친 창을 화면 밖에서 한 번 그려 본다(WPF 렌더러·글꼴·아크릴 첫 준비가 첫 펼침에 비치지 않게).
+        try
+        {
+            var w = new TileWindow(new WarmupHost(), new ExpandedOptions(new Palette("#FFFFFFFF", "#FFC5C5C5", "#18FFFFFF", "#B82C2C2C", false)),
+                "Desk Cards", "", new[] { new TileData("warmup.txt", "warmup", 0, 0, null) });
+            w.ShowActivated = false;
+            w.Show();
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(900) };
+            timer.Tick += (_, _) => { timer.Stop(); w.SafeClose(); };
+            timer.Start();
+        }
+        catch { }
     });
+
+    private sealed class WarmupHost : IExpandedHost
+    {
+        public (int X, int Y) Place(int widthPx, int heightPx) => (-32000, -32000);
+        public void Launch(string path) { }
+        public void ItemMenu(string path) { }
+        public void AddToGroup(IReadOnlyList<string> paths) { }
+        public void SetOrder(IReadOnlyList<string> paths) { }
+        public bool Rename(string name) => false;
+        public void OpenSettings() { }
+        public void Closed() { }
+    }
 
     public static ExpandedView Open(IExpandedHost host, ExpandedOptions options, string title, string folder, IReadOnlyList<TileData> items)
     {
