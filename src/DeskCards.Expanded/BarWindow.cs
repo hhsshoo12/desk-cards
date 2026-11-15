@@ -1,0 +1,206 @@
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Shell;
+
+namespace DeskCards.Expanded;
+
+/// <summary>
+/// 화면 가장자리에서 미끄러져 나오는 카드 판(아크릴). 나올 때와 들어갈 때 모두 처음엔 빠르고 끝으로 갈수록 느려진다.
+/// 옛 WPF 카드 바의 창 부분을 옮긴 것이다. 안의 카드는 이후 단계에서 채운다.
+/// </summary>
+internal sealed class BarWindow : Window
+{
+    private const double OpenMs = 333, CloseMs = 250;
+
+    private readonly IBarHost _host;
+    private readonly BarOptions _o;
+    private readonly Border _panel;
+    private IntPtr _previous;
+    private double _from, _to, _offset; // 가장자리 바깥으로 밀려난 정도(0 = 다 나옴, 1 = 다 들어감)
+    private double _animMs;
+    private readonly Stopwatch _anim = new();
+    private bool _animating, _closing;
+
+    public BarWindow(IBarHost host, BarOptions options)
+    {
+        _host = host;
+        _o = options;
+        int edge = options.Edge;
+
+        WindowStyle = WindowStyle.SingleBorderWindow;
+        ResizeMode = ResizeMode.NoResize;
+        ShowInTaskbar = false;
+        Topmost = true;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Left = Top = -32000;
+        Width = Height = 1;
+        Background = Brushes.Transparent;
+        UseLayoutRounding = true;
+        FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic");
+        Title = "Desk Cards 카드 바";
+        WindowChrome.SetWindowChrome(this, new WindowChrome
+        {
+            CaptionHeight = 0,
+            GlassFrameThickness = new Thickness(-1),
+            ResizeBorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(0),
+            UseAeroCaptionButtons = false,
+        });
+
+        // 창은 가장자리에서 잘린 만큼만 보이고, 안의 판은 늘 다 나온 크기다. 먼저 보이는 쪽(가장자리 반대쪽)에 붙인다.
+        _panel = new Border
+        {
+            Width = options.Final.Width / options.Scale,
+            Height = options.Final.Height / options.Scale,
+            HorizontalAlignment = edge == 0 ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            VerticalAlignment = edge == 1 ? VerticalAlignment.Bottom : VerticalAlignment.Top,
+        };
+        var root = new Grid { ClipToBounds = true, Background = Frozen(options.Palette.PopupBg) };
+        root.Children.Add(_panel);
+        Content = root;
+
+        SourceInitialized += OnSourceInitialized;
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Escape) return;
+            BeginClose();
+            e.Handled = true;
+        };
+        Closed += (_, _) =>
+        {
+            if (_animating) CompositionTarget.Rendering -= OnFrame;
+            _host.Closed();
+        };
+    }
+
+    private static Brush Frozen(string argb)
+    {
+        var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(argb));
+        b.Freeze();
+        return b;
+    }
+
+    public void Open()
+    {
+        _previous = GetForegroundWindow();
+        _offset = 1;
+        Show();
+        // 활성 창이어야 아크릴이 흐려지지 않고 Esc를 받는다. 다른 앱을 쓰는 중이라 그냥은 앞으로 못 오므로 끌어온다.
+        ForceForeground(new WindowInteropHelper(this).Handle);
+        Activate();
+        Animate(0, OpenMs);
+    }
+
+    public void BeginClose()
+    {
+        if (_closing) return;
+        _closing = true;
+        // 바에서 앱을 열었으면 그 앱이 앞에 있으니 그대로 두고, 아니면 원래 쓰던 창으로 돌려준다.
+        if (GetForegroundWindow() == new WindowInteropHelper(this).Handle && _previous != IntPtr.Zero) SetForegroundWindow(_previous);
+        Animate(1, CloseMs);
+    }
+
+    // ----- 나오고 들어가기 -----
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        long style = GetWindowLongPtr(hwnd, -16).ToInt64();
+        SetWindowLongPtr(hwnd, -16, new IntPtr(style & ~0x00080000L)); // WS_SYSMENU 제거
+        long ex = GetWindowLongPtr(hwnd, -20).ToInt64();
+        SetWindowLongPtr(hwnd, -20, new IntPtr(ex | 0x80L)); // WS_EX_TOOLWINDOW
+        if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
+        SetDwm(hwnd, 20 /* USE_IMMERSIVE_DARK_MODE */, _o.Palette.Light ? 0 : 1);
+        SetDwm(hwnd, 33 /* WINDOW_CORNER_PREFERENCE */, 2);
+        SetDwm(hwnd, 38 /* SYSTEMBACKDROP_TYPE */, 3);
+        PlaceAt(_offset);
+    }
+
+    /// <summary>
+    /// offset(0~1)만큼 가장자리 바깥으로 밀린 자리에 둔다. 모니터 밖으로 나간 부분은 잘라서
+    /// 옆 모니터에 비치지 않게 한다(창 크기를 줄이고 안의 판은 제자리).
+    /// </summary>
+    private void PlaceAt(double offset)
+    {
+        var f = _o.Final;
+        var b = _o.Bounds;
+        int travel = _o.Edge switch
+        {
+            0 => f.Right - b.Left,
+            2 => b.Right - f.Left,
+            1 => f.Bottom - b.Top,
+            _ => b.Bottom - f.Top,
+        };
+        int d = (int)Math.Round(travel * offset);
+        int x = f.Left, y = f.Top, w = f.Width, h = f.Height;
+        switch (_o.Edge)
+        {
+            case 0: x -= d; if (x < b.Left) { w -= b.Left - x; x = b.Left; } break;
+            case 2: x += d; w = Math.Min(w, b.Right - x); break;
+            case 1: y -= d; if (y < b.Top) { h -= b.Top - y; y = b.Top; } break;
+            default: y += d; h = Math.Min(h, b.Bottom - y); break;
+        }
+        SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero, x, y, Math.Max(1, w), Math.Max(1, h), 0x0004 | 0x0010); // NOZORDER | NOACTIVATE
+    }
+
+    private void Animate(double to, double ms)
+    {
+        _from = _offset;
+        _to = to;
+        _animMs = SystemParameters.ClientAreaAnimation ? ms : 0;
+        _anim.Restart();
+        if (_animating) return;
+        _animating = true;
+        CompositionTarget.Rendering += OnFrame;
+    }
+
+    private void OnFrame(object? sender, EventArgs e)
+    {
+        double t = _animMs <= 0 ? 1 : Math.Min(1, _anim.ElapsedMilliseconds / _animMs);
+        _offset = _from + (_to - _from) * Decel(t);
+        PlaceAt(_offset);
+        if (t < 1) return;
+        _animating = false;
+        CompositionTarget.Rendering -= OnFrame;
+        if (_closing) Close();
+    }
+
+    /// <summary>cubic-bezier(0,0,0,1): 툭 나와서 스르륵 멈추는 감속.</summary>
+    private static double Decel(double x)
+    {
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        double t = Math.Cbrt(x);
+        return 3 * (1 - t) * t * t + t * t * t;
+    }
+
+    // ----- Win32 -----
+
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, IntPtr pid);
+    [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint from, uint to, bool attach);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+    private static void SetDwm(IntPtr hwnd, int attribute, int value) => DwmSetWindowAttribute(hwnd, attribute, ref value, sizeof(int));
+
+    /// <summary>다른 앱이 앞에 있을 때도 이 창을 활성 창으로 가져온다(잠깐 앞 앱의 입력 큐에 붙었다가 뗀다).</summary>
+    private static void ForceForeground(IntPtr hwnd)
+    {
+        var fg = GetForegroundWindow();
+        uint fgThread = fg == IntPtr.Zero ? 0 : GetWindowThreadProcessId(fg, IntPtr.Zero);
+        uint me = GetCurrentThreadId();
+        bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+        SetForegroundWindow(hwnd);
+        if (attached) AttachThreadInput(me, fgThread, false);
+    }
+}

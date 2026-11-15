@@ -10,33 +10,8 @@ namespace DeskCards.Expanded;
 /// </summary>
 public sealed class ExpandedView
 {
-    private static Dispatcher? _dispatcher;
-    private static readonly object Gate = new();
+    private static Dispatcher Dispatcher => WpfThread.Dispatcher;
     private TileWindow? _window;
-
-    private static Dispatcher Dispatcher
-    {
-        get
-        {
-            lock (Gate)
-            {
-                if (_dispatcher != null) return _dispatcher;
-                using var ready = new ManualResetEventSlim();
-                var thread = new Thread(() =>
-                {
-                    var d = Dispatcher.CurrentDispatcher;
-                    d.UnhandledException += (_, e) => e.Handled = true; // 창 하나의 오류로 앱 전체가 죽지 않게
-                    _dispatcher = d;
-                    ready.Set();
-                    Dispatcher.Run();
-                }) { IsBackground = true, Name = "DeskCards.Expanded" };
-                thread.SetApartmentState(ApartmentState.STA);
-                thread.Start();
-                ready.Wait();
-                return _dispatcher!;
-            }
-        }
-    }
 
     /// <summary>WPF 스레드와 라이브러리를 미리 올려 두어 첫 펼침이 늦지 않게 한다.</summary>
     public static void Warmup() => Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
