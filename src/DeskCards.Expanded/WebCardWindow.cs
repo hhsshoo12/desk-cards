@@ -48,6 +48,7 @@ internal sealed class WebCardWindow : Window
     private readonly IWebCardHost _host;
     private readonly WebView2 _web;
     private readonly Border _outline;
+    private readonly Image _snapshot = new() { Stretch = Stretch.Fill, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
     private readonly Grid _root;
     private IntPtr _zTarget;
     private bool _dragging, _editing, _closed, _movingZ, _booted;
@@ -83,6 +84,7 @@ internal sealed class WebCardWindow : Window
         _outline.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(options.Palette.Accent));
         _root = new Grid();
         _root.Children.Add(_web);
+        _root.Children.Add(_snapshot);
         _root.Children.Add(_outline);
         Content = _root;
 
@@ -122,7 +124,7 @@ internal sealed class WebCardWindow : Window
         int pad = Pad;
         SetWindowPos(Hwnd, IntPtr.Zero, _x - pad, _y - pad, _w + 2 * pad, _h + 2 * pad, 0x0004 | 0x0010);
         _root.Margin = new Thickness(0);
-        _web.Margin = new Thickness(pad / Scale);
+        _web.Margin = _snapshot.Margin = new Thickness(pad / Scale);
         _outline.Margin = new Thickness(pad / Scale - 2);
     }
 
@@ -140,8 +142,42 @@ internal sealed class WebCardWindow : Window
         _editing = editing;
         _outline.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         ApplyBounds();
+        _ = Freeze(editing);
         if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
         else SetZ(new IntPtr(1));
+    }
+
+    /// <summary>
+    /// 편집 중에는 웹 화면을 그림으로 바꿔 둔다. 웹 화면(자식 창)은 마우스를 직접 받아서 카드 안쪽을 잡고 끌 수 없기 때문이다.
+    /// 그림이 떠 있는 동안은 카드 어디를 잡아도 옮겨진다.
+    /// </summary>
+    private async Task Freeze(bool on)
+    {
+        if (!on)
+        {
+            _snapshot.Visibility = Visibility.Collapsed;
+            _snapshot.Source = null;
+            if (_web.CoreWebView2 != null) _web.Visibility = Visibility.Visible;
+            return;
+        }
+        if (_web.CoreWebView2 == null) return;
+        try
+        {
+            using var stream = new System.IO.MemoryStream();
+            await _web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
+            if (!_editing || _closed) return;
+            stream.Position = 0;
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();
+            _snapshot.Source = image;
+            _snapshot.Visibility = Visibility.Visible;
+            _web.Visibility = Visibility.Hidden;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or System.IO.IOException or NotSupportedException) { }
     }
 
     internal void SetVisible(bool visible)
@@ -191,7 +227,11 @@ internal sealed class WebCardWindow : Window
                 }
                 Marshal.StructureToPtr(wp, lParam, false);
                 break;
-            }            case 0x0232: // WM_EXITSIZEMOVE
+            }            case 0x00A5 when _editing: // WM_NCRBUTTONUP: 편집 중 우클릭도 카드 메뉴
+                _host.Menu();
+                handled = true;
+                return IntPtr.Zero;
+            case 0x0232: // WM_EXITSIZEMOVE
                 _dragging = false;
                 _host.GuidesOff();
                 ReadBounds();
@@ -206,7 +246,7 @@ internal sealed class WebCardWindow : Window
         int px = (short)(lParam.ToInt64() & 0xFFFF), py = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
         int band = Pad, edge = (int)Math.Round(EdgeBand * Scale), corner = (int)Math.Round(24 * Scale);
         bool l = px < r.Left + band, rt = px >= r.Right - band, t = py < r.Top + band, b = py >= r.Bottom - band;
-        if (!(l || rt || t || b)) return 1; // HTCLIENT
+        if (!(l || rt || t || b)) return _snapshot.Visibility == Visibility.Visible ? 2 : 1; // 그림이 떠 있으면 어디든 끌어서 옮긴다
         bool el = px < r.Left + edge, er = px >= r.Right - edge, et = py < r.Top + edge, eb = py >= r.Bottom - edge;
         bool cl = px < r.Left + corner, cr = px >= r.Right - corner, ct = py < r.Top + corner, cb = py >= r.Bottom - corner;
         if ((el || et) && cl && ct) return 13;

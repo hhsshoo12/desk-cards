@@ -126,7 +126,10 @@ internal sealed class WebCardManager
     /// <summary>어두운 막 뒤로 밀린 카드를 다시 막 위로 올린다.</summary>
     public void RaiseForEdit()
     {
-        if (_editing) foreach (var r in _running.Values) r.Handle?.SetEditing(true);
+        if (!_editing) return;
+        foreach (var r in _running.Values) r.Handle?.SetEditing(true);
+        // 카드 올리기는 창 스레드에서 비동기로 끝나므로, 그 뒤에 편집 막대를 다시 맨 위로 올린다.
+        WebCards.After(() => Ui.Post(EditBar.BringToTop));
     }
 
     private void Open(InstalledWebCard card)

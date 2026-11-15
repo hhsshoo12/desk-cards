@@ -38,5 +38,8 @@ public interface IWebCardHandle
 
 public static class WebCards
 {
+    /// <summary>앞서 보낸 창 조작이 모두 끝난 뒤에 action을 WPF 창 스레드에서 실행한다.</summary>
+    public static void After(Action action) => WpfThread.Dispatcher.BeginInvoke(action);
+
     public static IWebCardHandle Open(WebCardOptions options, IWebCardHost host) => new WebCardHandle(options, host);
 }
