@@ -42,6 +42,7 @@ internal sealed partial class GroupManager
         if (_cfg.PositionsPx.Remove(oldName, out var position)) _cfg.PositionsPx[newName] = position;
         if (_cfg.Layouts.Remove(oldName, out var layout)) _cfg.Layouts[newName] = layout;
         if (_cfg.Orders.Remove(oldName, out var order)) _cfg.Orders[newName] = order;
+        RenameInBar(oldName, newName);
         _cfg.Save();
     }
 
@@ -170,6 +171,7 @@ internal sealed partial class GroupManager
         _cfg.PositionsPx.Remove(g.Name);
         _cfg.Layouts.Remove(g.Name);
         _cfg.Orders.Remove(g.Name);
+        RemoveFromBar(g.Name);
         _cfg.Save();
         RemoveCard(g.Name);
         RaiseChanged();

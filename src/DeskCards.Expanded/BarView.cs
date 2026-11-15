@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Windows.Threading;
 
 namespace DeskCards.Expanded;
@@ -8,7 +9,23 @@ public interface IBarHost
 {
     /// <summary>바가 다 들어가서 창이 닫혔다.</summary>
     void Closed();
+    void Launch(string path);
+    /// <summary>카드 안 항목의 우클릭 메뉴(앱이 연다).</summary>
+    void ItemMenu(string path);
+    /// <summary>카드의 아이콘이 아닌 곳을 우클릭했을 때의 메뉴(앱이 연다).</summary>
+    void CardMenu(string group);
+    /// <summary>카드를 펼친다. cardRect는 그 카드가 화면에 있는 자리(물리 픽셀).</summary>
+    void Expand(string group, bool hover, PixelRect cardRect);
+    void AddToGroup(string group, IReadOnlyList<string> paths);
+    /// <summary>비어 있는 바를 눌렀다(카드를 넣는 메뉴를 연다).</summary>
+    void EmptyClicked(PixelRect barRect);
 }
+
+/// <summary>바에 놓은 카드 하나. X·Y·W는 바 두께를 1로 친 값이고, 칸 하나의 기준 크기는 Cell(DIP)이다.</summary>
+public sealed record BarCardData(string Group, string Name, string Folder, int Cols, int Rows, double Cell,
+    double X, double Y, double W, IReadOnlyList<TileData> Items);
+
+public sealed record BarContent(IReadOnlyList<BarCardData> Cards, bool HoverExpand, int HoverDelayMs);
 
 /// <param name="Edge">0 = 왼쪽, 1 = 위, 2 = 오른쪽, 3 = 아래.</param>
 /// <param name="Final">다 나왔을 때 자리(물리 픽셀).</param>
@@ -25,6 +42,12 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
 public sealed class BarView
 {
     private BarWindow? _window;
+
+    /// <summary>바 창 핸들(창이 뜨기 전에는 0). 이 바에서 연 펼친 창이 그 위에 보이게 하는 데 쓴다.</summary>
+    public IntPtr Handle => _window?.HandleValue ?? IntPtr.Zero;
+
+    /// <summary>바 안 카드 내용을 바꾼다(처음·그룹·아이콘이 바뀔 때).</summary>
+    public void SetContent(BarContent content) => WpfThread.Dispatcher.BeginInvoke(() => _window?.SetContent(content));
 
     /// <summary>카드 바 창을 화면 밖에서 한 번 그려 본다(첫 열림에 회색 배경이 먼저 비치지 않게).</summary>
     public static void Warmup() => WpfThread.Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
@@ -45,15 +68,22 @@ public sealed class BarView
     private sealed class WarmupHost : IBarHost
     {
         public void Closed() { }
+        public void Launch(string path) { }
+        public void ItemMenu(string path) { }
+        public void CardMenu(string group) { }
+        public void Expand(string group, bool hover, PixelRect cardRect) { }
+        public void AddToGroup(string group, IReadOnlyList<string> paths) { }
+        public void EmptyClicked(PixelRect barRect) { }
     }
 
-    public static BarView Open(IBarHost host, BarOptions options)
+    public static BarView Open(IBarHost host, BarOptions options, BarContent content)
     {
         var view = new BarView();
         WpfThread.Dispatcher.BeginInvoke(() =>
         {
             var w = new BarWindow(host, options);
             view._window = w;
+            w.SetContent(content);
             w.Open();
         });
         return view;

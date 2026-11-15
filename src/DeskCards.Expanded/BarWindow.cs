@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Linq;
 using System.Windows.Shell;
 
 namespace DeskCards.Expanded;
@@ -16,11 +17,14 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal sealed class BarWindow : Window
 {
-    private const double OpenMs = 333, CloseMs = 250;
+    private const double OpenMs = 333, CloseMs = 250, Pad = 12;
 
     private readonly IBarHost _host;
     private readonly BarOptions _o;
     private readonly Border _panel;
+    private readonly Canvas _canvas = new();
+    private readonly Border _empty = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent };
+    private readonly System.Collections.Generic.List<(BarCardView View, Grid Box, Border Frame, BarCardData Data)> _entries = new();
     private IntPtr _previous;
     private double _from, _to, _offset; // 가장자리 바깥으로 밀려난 정도(0 = 다 나옴, 1 = 다 들어감)
     private double _animMs;
@@ -58,9 +62,17 @@ internal sealed class BarWindow : Window
         {
             Width = options.Final.Width / options.Scale,
             Height = options.Final.Height / options.Scale,
+            Child = CreateSurface(),
             HorizontalAlignment = edge == 0 ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             VerticalAlignment = edge == 1 ? VerticalAlignment.Bottom : VerticalAlignment.Top,
         };
+        var p = options.Palette;
+        Resources["Fg"] = Frozen(p.Fg);
+        Resources["SubFg"] = Frozen(p.SubFg);
+        Resources["HoverBg"] = Frozen(p.HoverBg);
+        Resources["CardBg"] = Frozen(p.CardBg);
+        Resources["CardBorder"] = Frozen(p.CardBorder);
+        Resources["Accent"] = Frozen(p.Accent);
         var root = new Grid { ClipToBounds = true, Background = Frozen(options.Palette.PopupBg) };
         root.Children.Add(_panel);
         Content = root;
@@ -84,6 +96,105 @@ internal sealed class BarWindow : Window
         var b = new SolidColorBrush((Color)ColorConverter.ConvertFromString(argb));
         b.Freeze();
         return b;
+    }
+
+    public IntPtr HandleValue => new WindowInteropHelper(this).Handle;
+
+    private bool Side => _o.Edge is 0 or 2;
+
+    /// <summary>바 두께(안쪽, DIP). 저장된 위치·크기의 단위.</summary>
+    private double U => Math.Max(1, (Side ? _o.Final.Width : _o.Final.Height) / _o.Scale - 2 * Pad);
+
+    private Size Inner => new(Math.Max(1, _o.Final.Width / _o.Scale - 2 * Pad), Math.Max(1, _o.Final.Height / _o.Scale - 2 * Pad));
+
+    private UIElement CreateSurface()
+    {
+        _canvas.Width = Inner.Width;
+        _canvas.Height = Inner.Height;
+        _empty.MouseLeftButtonUp += (_, e) =>
+        {
+            e.Handled = true;
+            _host.EmptyClicked(_o.Final);
+        };
+        var grid = new Grid { Margin = new Thickness(Pad) };
+        grid.Children.Add(_canvas);
+        grid.Children.Add(_empty);
+        return grid;
+    }
+
+    /// <summary>바 안 카드를 새 내용으로 다시 늘어놓는다.</summary>
+    public void SetContent(BarContent content)
+    {
+        if (_closing && !IsVisible) return;
+        _canvas.Children.Clear();
+        _entries.Clear();
+        double u = U;
+        foreach (var data in content.Cards)
+        {
+            var view = new BarCardView(_host, data);
+            view.Apply(data, content.HoverExpand, content.HoverDelayMs);
+            double w = data.W * u;
+            double aspect = view.Height / Math.Max(1, view.Width);
+            double k = w / Math.Max(1, view.Width);
+            var scaled = new Border { Child = view, LayoutTransform = new ScaleTransform(k, k), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            var frame = new Border
+            {
+                BorderThickness = new Thickness(2),
+                CornerRadius = new CornerRadius(10),
+                Margin = new Thickness(-4),
+                IsHitTestVisible = false,
+                Visibility = Visibility.Hidden,
+            };
+            frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
+            var box = new Grid { Width = w, Height = w * aspect };
+            box.Children.Add(scaled);
+            box.Children.Add(frame);
+            // 바탕화면 카드처럼 파일·아이콘을 끌어다 놓으면 그 그룹에 넣는다. 놓을 수 있는 동안 파란 테두리.
+            box.AllowDrop = true;
+            void Over(object? _, DragEventArgs a)
+            {
+                bool ok = a.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } paths &&
+                    paths.Any(p => !string.Equals(System.IO.Path.GetDirectoryName(p), data.Folder.TrimEnd((char)92), StringComparison.OrdinalIgnoreCase));
+                a.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
+                frame.Visibility = ok ? Visibility.Visible : Visibility.Hidden;
+                a.Handled = true;
+            }
+            box.DragEnter += Over;
+            box.DragOver += Over;
+            box.DragLeave += (_, _) => frame.Visibility = Visibility.Hidden;
+            box.Drop += (_, a) =>
+            {
+                frame.Visibility = Visibility.Hidden;
+                if (a.Data.GetData(DataFormats.FileDrop) is string[] paths) _host.AddToGroup(data.Group, paths);
+                // 이동은 앱이 직접 하므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
+                a.Effects = DragDropEffects.None;
+                a.Handled = true;
+            };
+            Canvas.SetLeft(box, data.X * u);
+            Canvas.SetTop(box, data.Y * u);
+            _canvas.Children.Add(box);
+            _entries.Add((view, box, frame, data));
+        }
+        UpdateEmpty();
+    }
+
+    private void UpdateEmpty()
+    {
+        if (_entries.Count > 0) { _empty.Visibility = Visibility.Collapsed; return; }
+        _empty.Visibility = Visibility.Visible;
+        var text = new TextBlock
+        {
+            Text = "클릭하여 나만의 카드 바 만들기",
+            FontSize = 14,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            MaxWidth = Math.Max(80, Inner.Width - 16),
+            Foreground = (Brush)Resources["Fg"],
+        };
+        _empty.Cursor = Cursors.Hand;
+        _empty.MouseEnter += (_, _) => text.TextDecorations = TextDecorations.Underline;
+        _empty.MouseLeave += (_, _) => text.TextDecorations = null;
+        _empty.Child = text;
     }
 
     public void Open()

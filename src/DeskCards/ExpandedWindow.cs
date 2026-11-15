@@ -77,7 +77,7 @@ internal sealed class ExpandedWindow : IExpandedHost
     }
 
     /// <summary>지금 테마의 색(카드 바 같은 다른 WPF 창에도 쓴다).</summary>
-    public static Palette CurrentPalette() => new(Hex("Fg"), Hex("SubFg"), Hex("HoverBg"), Hex("PopupBg"), Theme.IsLight);
+    public static Palette CurrentPalette() => new(Hex("Fg"), Hex("SubFg"), Hex("HoverBg"), Hex("PopupBg"), Theme.IsLight, Hex("CardBg"), Hex("CardBorder"), Hex("Accent"));
 
     public static string Hex(string key)
     {

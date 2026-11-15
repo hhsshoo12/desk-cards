@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
 using DeskCards.Expanded;
 using Microsoft.UI.Dispatching;
@@ -33,17 +34,191 @@ internal static class EdgeBar
     private static readonly Stopwatch _dwell = new();
     private static bool _armed = true;
 
-    /// <summary>떠 있는 카드 바 하나.</summary>
+    /// <summary>떠 있는 카드 바 하나. 바 창(WPF)이 부탁하는 일을 UI 스레드에서 해 준다.</summary>
     private sealed class OpenBar : IBarHost
     {
         public BarView View = null!;
-        public Rectangle Final, Bounds;
+        public GroupManager Mgr = null!;
+        public Rectangle Final, Bounds, WorkArea;
         public ScreenEdge Edge;
+        public double Scale;
         public bool Gone, Closing;
+        private List<ShellEntry> _watched = new();
+        private bool _pushQueued;
 
-        public void Closed() => Ui.Post(() => { Gone = true; SyncPolling(); });
+        private const double Pad = 12, Gap = 8;
+        private bool Side => Edge is ScreenEdge.Left or ScreenEdge.Right;
+        private double U => Math.Max(1, (Side ? Final.Width : Final.Height) / Scale - 2 * Pad);
+        private (double W, double H) Inner => (Math.Max(1, Final.Width / Scale - 2 * Pad), Math.Max(1, Final.Height / Scale - 2 * Pad));
+
+        public void Attach()
+        {
+            Mgr.Changed += Push;
+            Mgr.BarChanged += Push;
+            Watch();
+        }
+
+        private void Detach()
+        {
+            Mgr.Changed -= Push;
+            Mgr.BarChanged -= Push;
+            foreach (var e in _watched) e.PropertyChanged -= OnEntryChanged;
+            _watched.Clear();
+        }
+
+        private IEnumerable<(BarItem Item, CardWindow Card)> Placed() =>
+            Mgr.BarItems.Select(i => (Item: i, Card: Mgr.GroupCard(i.Group))).Where(x => x.Card != null).Select(x => (x.Item, x.Card!));
+
+        public BarContent Content() => new(
+            Placed().Select(x =>
+            {
+                var layout = Mgr.GetLayout(x.Card.Group.Name);
+                var items = x.Card.Group.Items
+                    .Select(e => new TileData(e.Path, e.Name, e.IconPixels?.Width ?? 0, e.IconPixels?.Height ?? 0, e.IconPixels?.Pixels))
+                    .ToList();
+                return new BarCardData(x.Card.Group.Name, x.Card.Group.Name, x.Card.Group.Folder, layout.Cols, layout.Rows, Mgr.CellSize,
+                    x.Item.X, x.Item.Y, x.Item.W, items);
+            }).ToList(),
+            Mgr.HoverExpand, Mgr.HoverExpandDelay);
+
+        private void Watch()
+        {
+            foreach (var e in _watched) e.PropertyChanged -= OnEntryChanged;
+            _watched = Placed().SelectMany(x => x.Card.Group.Items).ToList();
+            foreach (var e in _watched) e.PropertyChanged += OnEntryChanged;
+        }
+
+        private void OnEntryChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Push();
+
+        /// <summary>그룹·배치가 바뀌거나 아이콘이 도착하면 한꺼번에 모아 한 번만 보낸다.</summary>
+        private void Push()
+        {
+            if (Gone || _pushQueued) return;
+            _pushQueued = true;
+            Ui.Post(() =>
+            {
+                _pushQueued = false;
+                if (Gone) return;
+                Watch();
+                View.SetContent(Content());
+            });
+        }
+
+        // ----- IBarHost: WPF 창 스레드에서 불린다 -----
+
+        public void Closed() => Ui.Post(() => { Gone = true; Detach(); SyncPolling(); });
+
+        public void Launch(string path) => Ui.Post(() => FileOps.Launch(path));
+
+        public void ItemMenu(string path) => Ui.Post(() =>
+        {
+            var entry = Placed().SelectMany(x => x.Card.Group.Items).FirstOrDefault(e => string.Equals(e.Path, path, StringComparison.OrdinalIgnoreCase));
+            if (entry != null) Menus.ForEntry(entry).ShowAtCursor();
+        });
+
+        public void CardMenu(string group) => Ui.Post(() =>
+        {
+            if (Mgr.GroupCard(group) is not { } card) return;
+            Menus.ForCard(card, Mgr).Separator().Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
+        });
+
+        public void AddToGroup(string group, IReadOnlyList<string> paths) => Ui.Post(() =>
+        {
+            if (Mgr.GroupCard(group) is { } card) FileOps.AddToGroup(paths, card.Group.Folder, Mgr.Root);
+        });
+
+        public void Expand(string group, bool hover, PixelRect cardRect) => Ui.Post(() =>
+        {
+            if (Mgr.GroupCard(group) is not { } card) return;
+            if (hover && ExpandedWindow.IsOpenFor(card)) return;
+            ExpandedWindow.Open(card, Mgr, hover: hover, anchor: View.Handle, place: (w, h) =>
+            {
+                int gap = (int)Math.Round(Gap * Scale);
+                double cx = (cardRect.Left + cardRect.Right) / 2.0, cy = (cardRect.Top + cardRect.Bottom) / 2.0;
+                double x = Edge switch
+                {
+                    ScreenEdge.Left => Final.Right + gap,
+                    ScreenEdge.Right => Final.Left - gap - w,
+                    _ => cx - w / 2,
+                };
+                double y = Edge switch
+                {
+                    ScreenEdge.Top => Final.Bottom + gap,
+                    ScreenEdge.Bottom => Final.Top - gap - h,
+                    _ => cy - h / 2,
+                };
+                x = Math.Clamp(x, WorkArea.Left + gap, Math.Max(WorkArea.Left + gap, WorkArea.Right - gap - w));
+                y = Math.Clamp(y, WorkArea.Top + gap, Math.Max(WorkArea.Top + gap, WorkArea.Bottom - gap - h));
+                return new Windows.Foundation.Point(x, y);
+            });
+        });
+
+        public void EmptyClicked(PixelRect barRect) => Ui.Post(() =>
+        {
+            var menu = new FluentMenu();
+            var cards = Mgr.CardsNotInBar().ToList();
+            foreach (var c in cards)
+            {
+                var card = c;
+                menu.Item("", card.Group.Name, () => Add(card), image: card.Group.Items.FirstOrDefault()?.Icon);
+            }
+            if (cards.Count > 0) menu.Separator();
+            menu.Item("", "카드 바에만 둘 새 그룹", () =>
+            {
+                if (Mgr.NewBarGroup() is not { } card) return;
+                Add(card);
+            });
+            menu.ShowAtCursor();
+        });
+
+        // ----- 카드 넣기·빼기 -----
+
+        private double AspectOf(CardWindow card)
+        {
+            var l = Mgr.GetLayout(card.Group.Name);
+            return (l.Rows * Mgr.CellSize + 28) / Math.Max(1, l.Cols * Mgr.CellSize);
+        }
+
+        /// <summary>카드를 바 안 빈자리(가장자리 쪽부터 차례로)에 넣는다.</summary>
+        private void Add(CardWindow card)
+        {
+            if (Mgr.BarItems.Any(i => string.Equals(i.Group, card.Group.Name, StringComparison.OrdinalIgnoreCase))) return;
+            double aspect = AspectOf(card);
+            double w = 0.8 / Math.Max(1, aspect); // 바 두께의 80%에 맞춘 크기(가로·세로 중 긴 쪽 기준)
+            var item = new BarItem { Group = card.Group.Name, W = w };
+            (item.X, item.Y) = FreeSpot(w, aspect);
+            Mgr.SetBarItems(Mgr.BarItems.Append(item));
+        }
+
+        private void Remove(string group)
+        {
+            Mgr.SetBarItems(Mgr.BarItems.Where(i => !string.Equals(i.Group, group, StringComparison.OrdinalIgnoreCase)));
+            // 카드 바에만 있던 그룹은 없어지지 않게 바탕화면으로 꺼낸다.
+            if (Mgr.IsBarOnly(group) && Mgr.GroupCard(group) is { } card) Mgr.ShowOnDesktop(card);
+        }
+
+        /// <summary>바 길이 방향으로 훑으며 다른 카드와 간격을 두고 들어갈 첫 자리(바 두께 단위).</summary>
+        private (double X, double Y) FreeSpot(double w, double aspect)
+        {
+            double u = U, gap = SmartGuides.GapDip / u;
+            double cross = Side ? w : w * aspect;     // 두께 방향 크기
+            double along = Side ? w * aspect : w;     // 길이 방향 크기
+            double c0 = Math.Max(0, (1 - cross) / 2); // 두께 방향 가운데
+            double length = (Side ? Inner.H : Inner.W) / u;
+            var others = Placed().Select(x => (x.Item, Aspect: AspectOf(x.Card))).ToList();
+            for (double a = 0; a + along <= length + 1e-6; a += 0.05)
+            {
+                var (rx, ry) = Side ? (c0, a) : (a, c0);
+                bool free = others.All(o =>
+                {
+                    double ow = o.Item.W, oh = o.Item.W * o.Aspect;
+                    return rx + w + gap <= o.Item.X || o.Item.X + ow + gap <= rx || ry + w * aspect + gap <= o.Item.Y || o.Item.Y + oh + gap <= ry;
+                });
+                if (free) return (rx, ry);
+            }
+            return Side ? (c0, 0) : (0, c0);
+        }
     }
-
     public static void Start(GroupManager mgr)
     {
         _mgr = mgr;
@@ -189,8 +364,9 @@ internal static class EdgeBar
     {
         var mgr = _mgr!;
         double scale = ScaleOf(screen);
-        var bar = new OpenBar { Edge = edge, Bounds = screen.Bounds, Final = FinalRect(screen, edge, mgr.BarSize) };
-        bar.View = BarView.Open(bar, new BarOptions(ExpandedWindow.CurrentPalette(), (int)edge, ToPx(bar.Final), ToPx(bar.Bounds), scale));
+        var bar = new OpenBar { Mgr = mgr, Edge = edge, Scale = scale, Bounds = screen.Bounds, WorkArea = screen.WorkArea, Final = FinalRect(screen, edge, mgr.BarSize) };
+        bar.Attach();
+        bar.View = BarView.Open(bar, new BarOptions(ExpandedWindow.CurrentPalette(), (int)edge, ToPx(bar.Final), ToPx(bar.Bounds), scale), bar.Content());
         _bar = bar;
     }
 

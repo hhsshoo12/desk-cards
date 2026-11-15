@@ -7,7 +7,8 @@ namespace DeskCards.Expanded;
 public sealed record TileData(string Path, string Name, int IconWidth, int IconHeight, byte[]? Icon);
 
 /// <summary>색은 #AARRGGBB.</summary>
-public sealed record Palette(string Fg, string SubFg, string HoverBg, string PopupBg, bool Light);
+public sealed record Palette(string Fg, string SubFg, string HoverBg, string PopupBg, bool Light,
+    string CardBg = "#CC202020", string CardBorder = "#26FFFFFF", string Accent = "#FF60CDFF");
 
 public sealed record ExpandedOptions(
     Palette Palette,
