@@ -118,6 +118,15 @@ internal sealed class BalloonTip : ToolWindow
 
     private void PresentNear(Native.RECT target)
     {
+        Layout(target);
+        AppWindow.Show(false);
+        Hwnd.SetZOrder(Handle, Hwnd.Topmost);
+        // 버튼 같은 컨트롤은 화면에 올라온 뒤에야 제 크기가 정해지므로, 그때 한 번 더 맞춘다(안 그러면 아래가 잘린다).
+        ((FrameworkElement)Content).Loaded += (_, _) => { if (!_closing) Layout(target); };
+    }
+
+    private void Layout(Native.RECT target)
+    {
         int cx = (target.Left + target.Right) / 2;
         var wa = DesktopGrid.WorkAreaAt(cx, (target.Top + target.Bottom) / 2);
         var root = (FrameworkElement)Content;
@@ -129,8 +138,12 @@ internal sealed class BalloonTip : ToolWindow
         if (y + h > wa.Bottom) y = target.Top - gap - h;
         int x = Math.Max(wa.Left, Math.Min(cx - w / 2, wa.Right - w));
         Resize(new RectInt32(x, Math.Max(wa.Top, y), w, h));
-        AppWindow.Show(false);
-        Hwnd.SetZOrder(Handle, Hwnd.Topmost);
+    }
+
+    /// <summary>떠 있는 안내를 다시 맨 위로 올린다.</summary>
+    public static void Raise()
+    {
+        if (_current is { _closing: false } tip) Hwnd.SetZOrder(tip.Handle, Hwnd.Topmost);
     }
 
     /// <summary>떠 있는 안내를 닫는다(편집을 끝내거나 다른 카드를 옮기기 시작할 때).</summary>

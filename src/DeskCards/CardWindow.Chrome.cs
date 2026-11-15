@@ -28,7 +28,9 @@ internal sealed partial class CardWindow
     /// <summary>편집 중에는 어두운 막(EditDim) 위로 올라온다. 편집이 끝나면 다시 바탕화면 층으로 내려간다.</summary>
     public void RaiseForEdit()
     {
-        if (_editing) Hwnd.SetZOrder(Handle, Hwnd.Topmost);
+        if (!_editing) return;
+        Hwnd.SetZOrder(Handle, Hwnd.Topmost);
+        BalloonTip.Raise(); // 같은 최상위 층에서 나중에 올라온 카드가 안내 풍선을 덮지 않게
     }
 
     private void InstallMessageHook(IntPtr hwnd)
