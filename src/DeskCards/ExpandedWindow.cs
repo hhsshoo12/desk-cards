@@ -100,13 +100,12 @@ internal sealed partial class ExpandedWindow : ToolWindow
             if (_closing) return;
             var root = (FrameworkElement)Content;
             // 진짜 창이 실제로 놓인 안쪽(클라이언트) 자리·크기에 맞춘다.
-            Native.GetWindowRect(hwnd, out var outer);
             Native.GetClientRect(hwnd, out var client);
-            int border = Math.Max(0, ((outer.Right - outer.Left) - client.Right) / 2);
-            int topEdge = Math.Max(0, ((outer.Bottom - outer.Top) - client.Bottom) - border);
-            int pw = client.Right, ph = client.Bottom, left = outer.Left + border, topY = outer.Top + topEdge;
+            var origin = new Native.POINT();
+            ClientToScreen(hwnd, ref origin);
+            int pw = client.Right, ph = client.Bottom, left = origin.X, topY = origin.Y;
             var rtb = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
-            await rtb.RenderAsync(root, pw, ph);
+            await rtb.RenderAsync(root); // 크기를 주면 DIP로 읽혀 배율만큼 커지므로, 요소 크기 그대로 물리 픽셀 1:1로 뜬다.
             if (_closing) return;
             var pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(await rtb.GetPixelsAsync());
             // 떠 낸 그림의 실제 크기(요청한 크기와 다를 수 있다)를 쓴다.
@@ -142,19 +141,18 @@ internal sealed partial class ExpandedWindow : ToolWindow
                 double ms = clock.Elapsed.TotalMilliseconds;
                 if (ms < Motion.Slow)
                 {
-                    Frame(Motion.Decel(ms / Motion.Slow), (byte)Math.Round(255 * Math.Clamp(ms / 100, 0, 1)));
+                    Frame(Motion.Decel(ms / Motion.Slow), (byte)Math.Round(255 * Math.Clamp(ms / 50, 0, 1)));
                     return;
                 }
-                if (!uncloaked) { uncloaked = true; SetCloak(hwnd, false); }
-                double k = Motion.Decel((ms - Motion.Slow) / Motion.Fast);
-                Frame(1, (byte)Math.Round(255 * (1 - k)));
-                if (ms < Motion.Slow + Motion.Fast) return;
+                // 맞게 떠 낸 그림이라 페이드 없이 바로 바꾼다: 진짜 창을 드러내고, 한두 프레임 뒤 그림 창을 걷는다.
                 _openTimer?.Stop();
-        _ghost?.Dispose();
                 _openTimer = null;
+                Frame(1, 255);
+                if (!uncloaked) { uncloaked = true; SetCloak(hwnd, false); }
+                DwmFlush();
+                DwmFlush();
                 Restore();
-            };
-            _openTimer.Start();
+            };            _openTimer.Start();
         }
         catch
         {
@@ -201,6 +199,8 @@ internal sealed partial class ExpandedWindow : ToolWindow
                 if (dx * dx + dy * dy > r * r) px[i] = px[i + 1] = px[i + 2] = px[i + 3] = 0;
             }
     }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hwnd, ref Native.POINT point);
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")] private static extern int DwmFlush();
     private static void SetCloak(IntPtr hwnd, bool on) { int v = on ? 1 : 0; Native.DwmSetWindowAttribute(hwnd, 13 /* DWMWA_CLOAK */, ref v, sizeof(int)); }
 
     /// <param name="hover">더보기 칸에 올려 두어서 연 경우. 마우스가 창 밖으로 나가면 바로 닫힌다.</param>
@@ -348,6 +348,7 @@ internal sealed partial class ExpandedWindow : ToolWindow
 
     private void OnClosed()
     {
+        _closing = true;
         Group.Changed -= Rebuild;
         _leaveTimer?.Stop();
         _openTimer?.Stop();
