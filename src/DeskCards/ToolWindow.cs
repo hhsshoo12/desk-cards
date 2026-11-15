@@ -37,28 +37,28 @@ internal abstract class ToolWindow : Window
 
     private void OnTheme() => Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
 
-    private (int X, int Y, double MaxWidth, bool CenterX)? _anchor;
+    private (int X, int Y, double MaxWidth, double Ax, double Ay)? _anchor;
 
     /// <summary>
     /// 내용 크기(DIP, 너비는 maxWidth까지)로 키워 화면 좌표(물리 픽셀) x, y에 놓는다. centerX면 x는 가운데다.
     /// 템플릿이 적용되기 전에 잰 크기는 작게 나오므로, 내용이 화면에 올라온 뒤 한 번 더 맞춘다.
     /// </summary>
-    protected void Place(int x, int y, double maxWidth = double.PositiveInfinity, bool centerX = false)
+    protected void Place(int x, int y, double maxWidth = double.PositiveInfinity, bool centerX = false, double anchorX = 0, double anchorY = 0)
     {
         bool first = _anchor == null;
-        _anchor = (x, y, maxWidth, centerX);
+        _anchor = (x, y, maxWidth, centerX ? 0.5 : anchorX, anchorY);
         Reflow();
         if (first) ((FrameworkElement)Content).Loaded += (_, _) => Reflow();
     }
 
     private void Reflow()
     {
-        if (_anchor is not var (x, y, maxWidth, centerX)) return;
+        if (_anchor is not var (x, y, maxWidth, ax, ay)) return;
         var root = (FrameworkElement)Content;
         root.Measure(new Windows.Foundation.Size(maxWidth, double.PositiveInfinity));
         double scale = Native.MonitorScaleAt(x, y);
         int w = (int)Math.Round(root.DesiredSize.Width * scale), h = (int)Math.Round(root.DesiredSize.Height * scale);
-        Resize(new Windows.Graphics.RectInt32(centerX ? x - w / 2 : x, y, w, h));
+        Resize(new Windows.Graphics.RectInt32(x - (int)Math.Round(w * ax), y - (int)Math.Round(h * ay), w, h));
     }
 
     /// <summary>

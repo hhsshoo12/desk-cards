@@ -19,7 +19,18 @@ public interface IBarHost
     void AddToGroup(string group, IReadOnlyList<string> paths);
     /// <summary>비어 있는 바를 눌렀다(카드를 넣는 메뉴를 연다).</summary>
     void EmptyClicked(PixelRect barRect);
+    /// <summary>편집 중 카드를 눌러 골랐다(null = 선택 해제).</summary>
+    void SelectionChanged(string? group);
+    /// <summary>편집 중 카드를 옮기거나 키웠다. 모든 카드의 새 자리.</summary>
+    void ItemsEdited(IReadOnlyList<BarItemData> items);
+    /// <summary>편집 중 Esc를 눌렀다.</summary>
+    void EditEnded();
+    /// <summary>편집 중 Delete를 눌렀다(그 카드를 바에서 뺀다).</summary>
+    void RemoveRequested(string group);
 }
+
+/// <summary>편집한 카드의 자리(바 두께를 1로 친 값).</summary>
+public sealed record BarItemData(string Group, double X, double Y, double W);
 
 /// <summary>바에 놓은 카드 하나. X·Y·W는 바 두께를 1로 친 값이고, 칸 하나의 기준 크기는 Cell(DIP)이다.</summary>
 public sealed record BarCardData(string Group, string Name, string Folder, int Cols, int Rows, double Cell,
@@ -74,6 +85,10 @@ public sealed class BarView
         public void Expand(string group, bool hover, PixelRect cardRect) { }
         public void AddToGroup(string group, IReadOnlyList<string> paths) { }
         public void EmptyClicked(PixelRect barRect) { }
+        public void SelectionChanged(string? group) { }
+        public void ItemsEdited(IReadOnlyList<BarItemData> items) { }
+        public void EditEnded() { }
+        public void RemoveRequested(string group) { }
     }
 
     public static BarView Open(IBarHost host, BarOptions options, BarContent content)
@@ -88,6 +103,10 @@ public sealed class BarView
         });
         return view;
     }
+
+    public void BeginEdit() => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginEdit());
+
+    public void EndEdit() => WpfThread.Dispatcher.BeginInvoke(() => _window?.EndEdit());
 
     /// <summary>바를 가장자리로 다시 밀어 넣고 닫는다.</summary>
     public void BeginClose() => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginClose());

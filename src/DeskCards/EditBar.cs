@@ -18,7 +18,7 @@ internal sealed class EditBar : ToolWindow
     private const string IconFont = "Segoe Fluent Icons, Segoe MDL2 Assets";
 
     /// <summary>칸 수 빠른 선택(가로, 세로).</summary>
-    private static readonly (int Cols, int Rows)[] GridPresets =
+    internal static readonly (int Cols, int Rows)[] GridPresets =
         { (1, 1), (2, 1), (2, 2), (3, 2), (3, 3), (4, 2), (4, 3), (4, 4) };
 
     private static EditBar? _bar;
@@ -206,7 +206,7 @@ internal sealed class EditBar : ToolWindow
     }
 
     /// <summary>칸 모양을 작은 네모들로 그린 미리보기 + "3×2" 글자.</summary>
-    private static UIElement GridPreview(int cols, int rows, bool current)
+    internal static UIElement GridPreview(int cols, int rows, bool current)
     {
         const double box = 26, gap = 2;
         double cell = (box - gap * (Math.Max(cols, rows) - 1)) / Math.Max(cols, rows);
@@ -240,14 +240,14 @@ internal sealed class EditBar : ToolWindow
 
     // ----- 만들기 도우미 -----
 
-    private static UIElement GridContent()
+    internal static UIElement GridContent()
     {
         var chevron = Glyph("", 9);
         chevron.Margin = new Thickness(6, 2, 0, 0);
         return new StackPanel { Orientation = Orientation.Horizontal, Children = { Glyph(""), chevron } };
     }
 
-    private static Button Btn(string glyph, string tip, Action act)
+    internal static Button Btn(string glyph, string tip, Action act)
     {
         var b = new Button
         {
@@ -281,10 +281,13 @@ internal sealed class EditBar : ToolWindow
         return b;
     }
 
-    private static TextBlock Glyph(string glyph, double size = 16) =>
+    internal static TextBlock Glyph(string glyph, double size = 16) =>
         new() { Text = glyph, FontFamily = new FontFamily(IconFont), FontSize = size, VerticalAlignment = VerticalAlignment.Center };
 
-    private static Border Sep() =>
+    internal static Border Sep2() =>
+        new() { Width = 22, Height = 1, Margin = new Thickness(0, 4, 0, 4), HorizontalAlignment = HorizontalAlignment.Center, Background = Theme.Brush("MenuLine") };
+
+    internal static Border Sep() =>
         new() { Width = 1, Height = 22, Margin = new Thickness(6, 0, 6, 0), Background = Theme.Brush("MenuLine") };
 }
 

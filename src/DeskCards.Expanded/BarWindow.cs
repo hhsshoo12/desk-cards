@@ -15,7 +15,7 @@ namespace DeskCards.Expanded;
 /// 화면 가장자리에서 미끄러져 나오는 카드 판(아크릴). 나올 때와 들어갈 때 모두 처음엔 빠르고 끝으로 갈수록 느려진다.
 /// 옛 WPF 카드 바의 창 부분을 옮긴 것이다. 안의 카드는 이후 단계에서 채운다.
 /// </summary>
-internal sealed class BarWindow : Window
+internal sealed partial class BarWindow : Window
 {
     private const double OpenMs = 333, CloseMs = 250, Pad = 12;
 
@@ -24,7 +24,6 @@ internal sealed class BarWindow : Window
     private readonly Border _panel;
     private readonly Canvas _canvas = new();
     private readonly Border _empty = new() { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent };
-    private readonly System.Collections.Generic.List<(BarCardView View, Grid Box, Border Frame, BarCardData Data)> _entries = new();
     private IntPtr _previous;
     private double _from, _to, _offset; // 가장자리 바깥으로 밀려난 정도(0 = 다 나옴, 1 = 다 들어감)
     private double _animMs;
@@ -80,9 +79,7 @@ internal sealed class BarWindow : Window
         SourceInitialized += OnSourceInitialized;
         PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Escape) return;
-            BeginClose();
-            e.Handled = true;
+            HandleKey(e);
         };
         Closed += (_, _) =>
         {
@@ -123,81 +120,6 @@ internal sealed class BarWindow : Window
         grid.Children.Add(_canvas);
         grid.Children.Add(_empty);
         return grid;
-    }
-
-    /// <summary>바 안 카드를 새 내용으로 다시 늘어놓는다.</summary>
-    public void SetContent(BarContent content)
-    {
-        if (_closing && !IsVisible) return;
-        _canvas.Children.Clear();
-        _entries.Clear();
-        double u = U;
-        foreach (var data in content.Cards)
-        {
-            var view = new BarCardView(_host, data);
-            view.Apply(data, content.HoverExpand, content.HoverDelayMs);
-            double w = data.W * u;
-            double aspect = view.Height / Math.Max(1, view.Width);
-            double k = w / Math.Max(1, view.Width);
-            var scaled = new Border { Child = view, LayoutTransform = new ScaleTransform(k, k), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
-            var frame = new Border
-            {
-                BorderThickness = new Thickness(2),
-                CornerRadius = new CornerRadius(10),
-                Margin = new Thickness(-4),
-                IsHitTestVisible = false,
-                Visibility = Visibility.Hidden,
-            };
-            frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
-            var box = new Grid { Width = w, Height = w * aspect };
-            box.Children.Add(scaled);
-            box.Children.Add(frame);
-            // 바탕화면 카드처럼 파일·아이콘을 끌어다 놓으면 그 그룹에 넣는다. 놓을 수 있는 동안 파란 테두리.
-            box.AllowDrop = true;
-            void Over(object? _, DragEventArgs a)
-            {
-                bool ok = a.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } paths &&
-                    paths.Any(p => !string.Equals(System.IO.Path.GetDirectoryName(p), data.Folder.TrimEnd((char)92), StringComparison.OrdinalIgnoreCase));
-                a.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
-                frame.Visibility = ok ? Visibility.Visible : Visibility.Hidden;
-                a.Handled = true;
-            }
-            box.DragEnter += Over;
-            box.DragOver += Over;
-            box.DragLeave += (_, _) => frame.Visibility = Visibility.Hidden;
-            box.Drop += (_, a) =>
-            {
-                frame.Visibility = Visibility.Hidden;
-                if (a.Data.GetData(DataFormats.FileDrop) is string[] paths) _host.AddToGroup(data.Group, paths);
-                // 이동은 앱이 직접 하므로 원본 쪽에서 삭제하지 않도록 None을 돌려준다.
-                a.Effects = DragDropEffects.None;
-                a.Handled = true;
-            };
-            Canvas.SetLeft(box, data.X * u);
-            Canvas.SetTop(box, data.Y * u);
-            _canvas.Children.Add(box);
-            _entries.Add((view, box, frame, data));
-        }
-        UpdateEmpty();
-    }
-
-    private void UpdateEmpty()
-    {
-        if (_entries.Count > 0) { _empty.Visibility = Visibility.Collapsed; return; }
-        _empty.Visibility = Visibility.Visible;
-        var text = new TextBlock
-        {
-            Text = "클릭하여 나만의 카드 바 만들기",
-            FontSize = 14,
-            TextWrapping = TextWrapping.Wrap,
-            TextAlignment = TextAlignment.Center,
-            MaxWidth = Math.Max(80, Inner.Width - 16),
-            Foreground = (Brush)Resources["Fg"],
-        };
-        _empty.Cursor = Cursors.Hand;
-        _empty.MouseEnter += (_, _) => text.TextDecorations = TextDecorations.Underline;
-        _empty.MouseLeave += (_, _) => text.TextDecorations = null;
-        _empty.Child = text;
     }
 
     public void Open()

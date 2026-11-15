@@ -35,14 +35,19 @@ internal static class EdgeBar
     private static bool _armed = true;
 
     /// <summary>떠 있는 카드 바 하나. 바 창(WPF)이 부탁하는 일을 UI 스레드에서 해 준다.</summary>
-    private sealed class OpenBar : IBarHost
+    private sealed class OpenBar : IBarHost, BarEditBar.IOwner
     {
         public BarView View = null!;
         public GroupManager Mgr = null!;
         public Rectangle Final, Bounds, WorkArea;
         public ScreenEdge Edge;
         public double Scale;
-        public bool Gone, Closing;
+        public bool Gone, Closing, Editing;
+        private bool _saving;
+        public string? Selected { get; private set; }
+        GroupManager BarEditBar.IOwner.Mgr => Mgr;
+        ScreenEdge BarEditBar.IOwner.Edge => Edge;
+        Rectangle BarEditBar.IOwner.Final => Final;
         private List<ShellEntry> _watched = new();
         private bool _pushQueued;
 
@@ -93,7 +98,7 @@ internal static class EdgeBar
         /// <summary>그룹·배치가 바뀌거나 아이콘이 도착하면 한꺼번에 모아 한 번만 보낸다.</summary>
         private void Push()
         {
-            if (Gone || _pushQueued) return;
+            if (Gone || _pushQueued || _saving) return;
             _pushQueued = true;
             Ui.Post(() =>
             {
@@ -106,7 +111,7 @@ internal static class EdgeBar
 
         // ----- IBarHost: WPF 창 스레드에서 불린다 -----
 
-        public void Closed() => Ui.Post(() => { Gone = true; Detach(); SyncPolling(); });
+        public void Closed() => Ui.Post(() => { Gone = true; End(); Detach(); SyncPolling(); });
 
         public void Launch(string path) => Ui.Post(() => FileOps.Launch(path));
 
@@ -119,7 +124,9 @@ internal static class EdgeBar
         public void CardMenu(string group) => Ui.Post(() =>
         {
             if (Mgr.GroupCard(group) is not { } card) return;
-            Menus.ForCard(card, Mgr).Separator().Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
+            var m = Menus.ForCard(card, Mgr).Separator();
+            if (!Editing) m.Item("", "카드 바 편집", Begin);
+            m.Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
         });
 
         public void AddToGroup(string group, IReadOnlyList<string> paths) => Ui.Post(() =>
@@ -147,6 +154,12 @@ internal static class EdgeBar
 
         public void EmptyClicked(PixelRect barRect) => Ui.Post(() =>
         {
+            if (!Editing) Begin();
+            ShowAddMenu();
+        });
+
+        public void ShowAddMenu()
+        {
             var menu = new FluentMenu();
             var cards = Mgr.CardsNotInBar().ToList();
             foreach (var c in cards)
@@ -161,7 +174,62 @@ internal static class EdgeBar
                 Add(card);
             });
             menu.ShowAtCursor();
+        }
+
+        // ----- 바 편집 -----
+
+        public void Begin()
+        {
+            if (Editing || Gone) return;
+            Editing = true;
+            Selected = null;
+            ExpandedWindow.CloseCurrent();
+            View.BeginEdit();
+            BarEditBar.Open(this);
+        }
+
+        /// <summary>바 편집을 끝낸다(막대를 닫고 바는 평소 모습으로).</summary>
+        public void End()
+        {
+            if (!Editing) return;
+            Editing = false;
+            Selected = null;
+            if (!Gone) View.EndEdit();
+            BarEditBar.CloseBar();
+        }
+
+        public void SelectionChanged(string? group) => Ui.Post(() => { Selected = group; BarEditBar.Update(); });
+
+        public void ItemsEdited(IReadOnlyList<BarItemData> items) => Ui.Post(() =>
+        {
+            var next = items.Select(i => new BarItem { Group = i.Group, X = i.X, Y = i.Y, W = i.W }).ToList();
+            _saving = true;
+            try { Mgr.SetBarItems(next); }
+            finally { _saving = false; }
         });
+
+        public void EditEnded() => Ui.Post(End);
+
+        public void RemoveRequested(string group) => Ui.Post(() => RemoveFromBar(group));
+
+        public void RemoveFromBar(string group)
+        {
+            Remove(group);
+            if (Selected == group) { Selected = null; BarEditBar.Update(); }
+        }
+
+        public void Rename(string group)
+        {
+            if (Mgr.GroupCard(group) is { } card) ExpandedWindow.Open(card, Mgr, editTitle: true, anchor: View.Handle, place: CenterIn);
+        }
+
+        private Windows.Foundation.Point CenterIn(int w, int h)
+        {
+            double x = (Final.Left + Final.Right - w) / 2.0, y = (Final.Top + Final.Bottom - h) / 2.0;
+            x = Math.Clamp(x, WorkArea.Left, Math.Max(WorkArea.Left, WorkArea.Right - w));
+            y = Math.Clamp(y, WorkArea.Top, Math.Max(WorkArea.Top, WorkArea.Bottom - h));
+            return new Windows.Foundation.Point(x, y);
+        }
 
         // ----- 카드 넣기·빼기 -----
 
@@ -392,7 +460,7 @@ internal static class EdgeBar
     /// </summary>
     private static void CheckLeave(OpenBar bar)
     {
-        if (bar.Closing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
+        if (bar.Closing || bar.Editing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
         if (!Native.GetCursorPos(out var pt)) return;
         var r = bar.Final;
         var b = bar.Bounds;
