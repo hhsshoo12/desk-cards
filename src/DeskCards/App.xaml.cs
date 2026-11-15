@@ -37,6 +37,8 @@ public partial class App : Application
         catch { }
     }
 
+    private Microsoft.UI.Xaml.Window? _anchor;
+
     private void Launch()
     {
         Ui.Init();
@@ -70,6 +72,9 @@ public partial class App : Application
             // 바꿔 끼우지 못하면 지금 버전으로 켠다. 설정의 [앱 재시작]으로 다시 시도할 수 있다.
         }
         if (host.Installed && cfg.PendingUpdate == null) UpdatePackage.Cleanup(host.InstallDir, Updater.RunningVersion);
+
+        // 카드 창이 모두 라이브러리(WPF)로 옮겨져 WinUI 창이 하나도 없을 수 있다. 마지막 WinUI 창(편집 막대·설정)이 닫혀도 앱이 끝나지 않게 보이지 않는 창을 하나 쥐고 있는다.
+        _anchor = new Microsoft.UI.Xaml.Window();
 
         Theme.Apply();
         _uiSettings = new UISettings();
