@@ -48,7 +48,7 @@ internal sealed class WebCardWindow : Window
     private readonly IWebCardHost _host;
     private readonly WebView2 _web;
     private readonly Border _outline;
-    private readonly Image _snapshot = new() { Stretch = Stretch.Fill, Visibility = Visibility.Collapsed, IsHitTestVisible = false };
+    private readonly Shield _shield;
     private readonly Grid _root;
     private IntPtr _zTarget;
     private bool _dragging, _editing, _closed, _movingZ, _booted;
@@ -84,7 +84,8 @@ internal sealed class WebCardWindow : Window
         _outline.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(options.Palette.Accent));
         _root = new Grid();
         _root.Children.Add(_web);
-        _root.Children.Add(_snapshot);
+        _shield = new Shield(() => _host.Menu()) { Visibility = Visibility.Collapsed };
+        _root.Children.Add(_shield);
         _root.Children.Add(_outline);
         Content = _root;
 
@@ -124,7 +125,7 @@ internal sealed class WebCardWindow : Window
         int pad = Pad;
         SetWindowPos(Hwnd, IntPtr.Zero, _x - pad, _y - pad, _w + 2 * pad, _h + 2 * pad, 0x0004 | 0x0010);
         _root.Margin = new Thickness(0);
-        _web.Margin = _snapshot.Margin = new Thickness(pad / Scale);
+        _web.Margin = _shield.Margin = new Thickness(pad / Scale);
         _outline.Margin = new Thickness(pad / Scale - 2);
     }
 
@@ -142,42 +143,9 @@ internal sealed class WebCardWindow : Window
         _editing = editing;
         _outline.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         ApplyBounds();
-        _ = Freeze(editing);
+        _shield.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
         else SetZ(new IntPtr(1));
-    }
-
-    /// <summary>
-    /// 편집 중에는 웹 화면을 그림으로 바꿔 둔다. 웹 화면(자식 창)은 마우스를 직접 받아서 카드 안쪽을 잡고 끌 수 없기 때문이다.
-    /// 그림이 떠 있는 동안은 카드 어디를 잡아도 옮겨진다.
-    /// </summary>
-    private async Task Freeze(bool on)
-    {
-        if (!on)
-        {
-            _snapshot.Visibility = Visibility.Collapsed;
-            _snapshot.Source = null;
-            if (_web.CoreWebView2 != null) _web.Visibility = Visibility.Visible;
-            return;
-        }
-        if (_web.CoreWebView2 == null) return;
-        try
-        {
-            using var stream = new System.IO.MemoryStream();
-            await _web.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream);
-            if (!_editing || _closed) return;
-            stream.Position = 0;
-            var image = new System.Windows.Media.Imaging.BitmapImage();
-            image.BeginInit();
-            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            image.StreamSource = stream;
-            image.EndInit();
-            image.Freeze();
-            _snapshot.Source = image;
-            _snapshot.Visibility = Visibility.Visible;
-            _web.Visibility = Visibility.Hidden;
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException or System.IO.IOException or NotSupportedException) { }
     }
 
     internal void SetVisible(bool visible)
@@ -227,11 +195,7 @@ internal sealed class WebCardWindow : Window
                 }
                 Marshal.StructureToPtr(wp, lParam, false);
                 break;
-            }            case 0x00A5 when _editing: // WM_NCRBUTTONUP: 편집 중 우클릭도 카드 메뉴
-                _host.Menu();
-                handled = true;
-                return IntPtr.Zero;
-            case 0x0232: // WM_EXITSIZEMOVE
+            }            case 0x0232: // WM_EXITSIZEMOVE
                 _dragging = false;
                 _host.GuidesOff();
                 ReadBounds();
@@ -246,7 +210,7 @@ internal sealed class WebCardWindow : Window
         int px = (short)(lParam.ToInt64() & 0xFFFF), py = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
         int band = Pad, edge = (int)Math.Round(EdgeBand * Scale), corner = (int)Math.Round(24 * Scale);
         bool l = px < r.Left + band, rt = px >= r.Right - band, t = py < r.Top + band, b = py >= r.Bottom - band;
-        if (!(l || rt || t || b)) return _snapshot.Visibility == Visibility.Visible ? 2 : 1; // 그림이 떠 있으면 어디든 끌어서 옮긴다
+        if (!(l || rt || t || b)) return 1;
         bool el = px < r.Left + edge, er = px >= r.Right - edge, et = py < r.Top + edge, eb = py >= r.Bottom - edge;
         bool cl = px < r.Left + corner, cr = px >= r.Right - corner, ct = py < r.Top + corner, cb = py >= r.Bottom - corner;
         if ((el || et) && cl && ct) return 13;
@@ -398,6 +362,75 @@ w.addEventListener('message',e=>{const m=e.data;if(!m)return;
 window.addEventListener('contextmenu',e=>{e.preventDefault();w.postMessage({t:'menu'});},true);
 w.postMessage({t:'ready'});})();
 """;
+
+    /// <summary>
+    /// 편집 중에 웹 화면 위에 덮는 투명한 자식 창. 웹 화면은 그대로 그려지지만 마우스는 이 창이 받아서,
+    /// 카드 어디를 잡아도 옮겨지고 우클릭은 카드 메뉴가 된다(화면 위에 WPF 요소를 겹칠 수 없어서 자식 창으로 덮는다).
+    /// </summary>
+    private sealed class Shield : HwndHost
+    {
+        private static WndProcDelegate? _proc;
+        private static bool _registered;
+        private readonly Action _menu;
+
+        public Shield(Action menu) => _menu = menu;
+
+        private delegate IntPtr WndProcDelegate(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct WNDCLASS
+        {
+            public uint style; public WndProcDelegate lpfnWndProc; public int cbClsExtra, cbWndExtra;
+            public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string? lpszMenuName, lpszClassName;
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern ushort RegisterClassW(ref WNDCLASS c);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr CreateWindowExW(int ex, string cls, string name, uint style, int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
+        [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern IntPtr DefWindowProcW(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] private static extern IntPtr SendMessageW(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern IntPtr LoadCursorW(IntPtr inst, IntPtr name);
+        [DllImport("user32.dll")] private static extern IntPtr SetCursor(IntPtr cursor);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? name);
+
+        protected override HandleRef BuildWindowCore(HandleRef parent)
+        {
+            const string Class = "DeskCardsWebShield";
+            if (!_registered)
+            {
+                _proc = Proc;
+                var wc = new WNDCLASS { lpfnWndProc = _proc, hInstance = GetModuleHandleW(null), lpszClassName = Class };
+                RegisterClassW(ref wc);
+                _registered = true;
+            }
+            var hwnd = CreateWindowExW(0, Class, "", 0x40000000 | 0x10000000 /* WS_CHILD | WS_VISIBLE */, 0, 0, 1, 1, parent.Handle, IntPtr.Zero, GetModuleHandleW(null), IntPtr.Zero);
+            return new HandleRef(this, hwnd);
+        }
+
+        protected override void DestroyWindowCore(HandleRef hwnd) => DestroyWindow(hwnd.Handle);
+
+        private IntPtr Proc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            switch (msg)
+            {
+                case 0x0201: // WM_LBUTTONDOWN: 카드 제목 줄을 잡은 것처럼 옮기기 시작
+                    ReleaseCapture();
+                    SendMessageW(GetAncestor(hwnd, 2 /* GA_ROOT */), 0x00A1 /* WM_NCLBUTTONDOWN */, new IntPtr(2), IntPtr.Zero);
+                    return IntPtr.Zero;
+                case 0x0205: // WM_RBUTTONUP
+                    _menu();
+                    return IntPtr.Zero;
+                case 0x0020: // WM_SETCURSOR
+                    SetCursor(LoadCursorW(IntPtr.Zero, new IntPtr(32646))); // 사방 화살표
+                    return new IntPtr(1);
+                case 0x0014: // WM_ERASEBKGND
+                    return new IntPtr(1);
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        }
+    }
 
     // ----- 네이티브 -----
 
