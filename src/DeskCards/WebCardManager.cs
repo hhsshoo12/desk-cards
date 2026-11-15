@@ -26,6 +26,7 @@ internal sealed class WebCardManager
         _cfg = cfg;
         _mgr = mgr;
         Store = new WebCardStore(storeRoot ?? Path.Combine(AppPaths.LocalDataDir, "cards"));
+        Theme.Changed += OnThemeChanged;
     }
 
     public WebCardStore Store { get; }
@@ -34,6 +35,14 @@ internal sealed class WebCardManager
     public event Action? Changed;
 
     public static WebCardManager Create(Config cfg, GroupManager mgr) => Instance = new WebCardManager(cfg, mgr);
+
+    /// <summary>테마(라이트·다크)가 바뀌면 웹 카드 창의 미카 색도 바꾼다.</summary>
+    private void OnThemeChanged() => Ui.Post(() =>
+    {
+        if (_shuttingDown) return;
+        var palette = ExpandedWindow.CurrentPalette();
+        foreach (var r in _running.Values) r.Handle?.SetPalette(palette);
+    }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
 
     public void Start()
     {
@@ -47,6 +56,7 @@ internal sealed class WebCardManager
     public void Shutdown()
     {
         _shuttingDown = true;
+        Theme.Changed -= OnThemeChanged;
         foreach (var r in _running.Values.ToList()) r.Dispose();
         _running.Clear();
         if (Instance == this) Instance = null;

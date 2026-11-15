@@ -17,7 +17,7 @@ namespace DeskCards.Expanded;
 internal abstract class DesktopCardWindow : Window
 {
     private const int Band = 12, EdgeBand = 6; // 편집 띠 두께(DIP): 바깥쪽 EdgeBand는 크기 조절, 안쪽은 끌기
-    private const int BackdropType = 3; // DWMSBT_TRANSIENTWINDOW = 아크릴. 폴더·웹 카드가 같은 값을 쓴다.
+    private const int BackdropType = 2; // DWMSBT_MAINWINDOW = 미카. 폴더·웹 카드가 같은 값을 쓴다.
 
     private readonly IDesktopCardHost _host;
     private readonly string _id;
