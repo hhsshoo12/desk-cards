@@ -85,8 +85,8 @@ internal sealed class BarMenuWindow : Window
         _editHeight = _editPanel.DesiredSize.Height;
         SetSelected(null);
 
-        Width = Cell + 2 * Shadow;
-        Height = Cell + Math.Max(_editHeight, 2 * Cell) + 2 * Shadow;
+        Width = Cell + 2 + 2 * Shadow;   // 판 테두리(1×2)만큼 더 두어 안쪽 칸이 잘리지 않게
+        Height = Cell + Math.Max(_editHeight, 2 * Cell) + 2 + 2 * Shadow;
         _slot.Children.Add(_menuPanel);
 
         var stack = new StackPanel { VerticalAlignment = growUp ? VerticalAlignment.Bottom : VerticalAlignment.Top };
@@ -97,8 +97,8 @@ internal sealed class BarMenuWindow : Window
         popup.A = 0xF2;
         _body = new Border
         {
-            Width = Cell,
-            Height = Cell,
+            Width = Cell + 2,
+            Height = Cell + 2,
             Margin = new Thickness(Shadow),
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = growUp ? VerticalAlignment.Bottom : VerticalAlignment.Top,
@@ -253,7 +253,8 @@ internal sealed class BarMenuWindow : Window
     {
         int gen = ++_gen;
         var dur = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? ms : 0);
-        var anim = new DoubleAnimation(_body.ActualHeight > 0 ? _body.ActualHeight : Cell, to, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop };
+        to += 2; // 테두리
+        var anim = new DoubleAnimation(_body.ActualHeight > 0 ? _body.ActualHeight : Cell + 2, to, dur) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop };
         anim.Completed += (_, _) =>
         {
             if (gen != _gen) return;
