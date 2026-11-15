@@ -39,6 +39,7 @@ internal static class Theme
             Set("Fg", "#FF1B1B1B");
             Set("SubFg", "#FF5F5F5F");
             Set("PopupBg", mica ? "#B8FAFAFA" : "#F7F3F3F3");
+        Set("CardSurface", mica ? "#4DFFFFFF" : "#F7F3F3F3");
             Set("Accent", "#FF005FB8");
             Set("AccentFg", "#FFFFFFFF");
             Set("Danger", "#FFC42B1C");
@@ -53,6 +54,7 @@ internal static class Theme
             Set("Fg", "#FFFFFFFF");
             Set("SubFg", "#FFC5C5C5");
             Set("PopupBg", mica ? "#B82C2C2C" : "#F7202020");
+        Set("CardSurface", mica ? "#4D202020" : "#F7202020");
             Set("Accent", "#FF60CDFF");
             Set("AccentFg", "#FF000000");
             Set("Danger", "#FFFF99A4");

@@ -42,7 +42,7 @@ internal sealed partial class CardWindow : Window
             CardMenu = () => Menus.ForCard(this, Mgr),
             Editing = () => IsEditing,
         };
-        _root = new Grid { Background = Theme.Brush("PopupBg") };
+        _root = new Grid { Background = Theme.Brush("CardSurface") };
         _root.Children.Add(View);
         Content = _root;
         _editor = new CardEditor(this, _root);
