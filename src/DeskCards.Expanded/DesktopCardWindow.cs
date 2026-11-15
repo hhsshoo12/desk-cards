@@ -27,6 +27,15 @@ internal abstract class DesktopCardWindow : Window
     private PixelRect _sizeStart;
     private Palette _palette;
 
+    private static readonly System.Collections.Generic.List<DesktopCardWindow> OpenCards = new(); // WPF 창 스레드에서만 쓴다
+
+    /// <summary>열려 있는 카드를 모두 바탕화면 층(맨 아래)으로 내린다.</summary>
+    private static void RestackAll()
+    {
+        foreach (var w in OpenCards.ToArray())
+            if (!w.Dead && !w.Editing && w.IsVisible) w.SendToBottom();
+    }
+
     protected int X, Y, W, H; // 내용 영역
     protected bool Editing, Dead;
 
@@ -68,8 +77,9 @@ internal abstract class DesktopCardWindow : Window
         root.Children.Add(_outline);
         Content = root;
 
+        OpenCards.Add(this);
         SourceInitialized += OnSourceInitialized;
-        Closed += (_, _) => { Dead = true; OnClosedCore(); _host.Closed(); };
+        Closed += (_, _) => { OpenCards.Remove(this); Dead = true; OnClosedCore(); _host.Closed(); };
     }
 
     /// <summary>파생 클래스의 준비가 끝난 뒤 부른다: 창을 만들고(핸들) 보여야 하면 띄운다.</summary>
@@ -262,7 +272,8 @@ internal abstract class DesktopCardWindow : Window
                 bool active = (wParam.ToInt64() & 0xFFFF) != 0, priming = _priming;
                 CardLog.Write($"카드 {(active ? "활성" : "비활성")} {Title} (상대 {ClassOf(lParam)}{(priming ? ", prime" : "")})");
                 if (active && !Editing)
-                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (Dead || Editing) return; SendToBottom(); if (!priming) _host.Activated(); });
+                    // 활성화로 바탕화면(Progman)이 모든 카드 위로 올라와 카드가 가려지므로, 이 스레드의 카드를 모두 곧바로(Send) 내려서 가려지는 시간을 없앤다.
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, () => { if (Dead || Editing) return; RestackAll(); if (!priming) _host.Activated(); });
                 break;
             }
             case 0x001C: // WM_ACTIVATEAPP
