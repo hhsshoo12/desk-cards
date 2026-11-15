@@ -56,7 +56,7 @@ internal sealed class BarEditBar : ToolWindow
         var name = new TextBlock
         {
             FontSize = 13,
-            MaxWidth = 84,
+            MinWidth = 84, MaxWidth = 120,
             Margin = new Thickness(4, 6, 4, 6),
             HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
@@ -77,6 +77,8 @@ internal sealed class BarEditBar : ToolWindow
         items.Children.Add(EditBar.Sep2());
         items.Children.Add(EditBar.Btn("\uE713", "설정", () => SettingsWindow.Open(mgr, null)));
         var done = EditBar.Btn("\uE73E", "편집 끝내기 (Esc)", o.End);
+        done.ClearValue(Control.BackgroundProperty);
+        done.ClearValue(Control.BorderThicknessProperty);
         done.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         items.Children.Add(done);
 
@@ -122,7 +124,7 @@ internal sealed class BarEditBar : ToolWindow
     private void Refresh()
     {
         var sel = _selected();
-        _name.Text = sel ?? "카드를 누르세요";
+        _name.Text = sel ?? "카드 선택";
         _name.Foreground = Theme.Brush(sel != null ? "Fg" : "SubFg");
         ToolTipService.SetToolTip(_name, sel);
         foreach (var b in _cardButtons) b.IsEnabled = sel != null;
