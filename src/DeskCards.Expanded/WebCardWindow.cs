@@ -108,7 +108,7 @@ internal sealed class WebCardWindow : Window
         if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target) target.BackgroundColor = Colors.Transparent;
         SetDwm(hwnd, 20, _o.Palette.Light ? 0 : 1);
         SetDwm(hwnd, 33, 2);
-        SetDwm(hwnd, 38, 3);
+        SetDwm(hwnd, 38, 2); // DWMSBT_MAINWINDOW = 미카
         HwndSource.FromHwnd(hwnd)?.AddHook(WndProc);
         SetWindowLongPtr(hwnd, -8, FindWindow("Progman", null)); // 소유자 = 바탕화면(Win+D에도 안 숨겨짐)
         ApplyBounds();
