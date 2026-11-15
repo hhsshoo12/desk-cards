@@ -214,11 +214,12 @@ internal sealed class WebCardManager
 
         private void OnExeLine(string line)
         {
-            if (_disposed || Handle == null) return;
+            var handle = Handle;
+            if (_disposed || handle == null) return;
             string json;
             try { using var doc = JsonDocument.Parse(line); json = line; }
             catch (JsonException) { json = JsonSerializer.Serialize(line); }
-            Handle.ToPage(json);
+            handle.ToPage(json);
         }
 
         // ----- IWebCardHost (WPF 창 스레드에서 불린다) -----
@@ -232,7 +233,7 @@ internal sealed class WebCardManager
 
         public void Menu() => _owner.ShowMenu(Id);
 
-        public void FromPage(string json) => _process?.Send(json);
+        public void FromPage(string json) { var p = _process; p?.Send(json); }
 
         public PixelRect Snap(string id, PixelRect rect) => ExpandedWindow.OnUi(() =>
         {
