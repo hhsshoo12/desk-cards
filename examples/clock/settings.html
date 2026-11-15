@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #fff; } }
+  [data-theme=light] { --fg: #111; }
+  [data-theme=dark] { --fg: #fff; }
+  html, body { margin: 0; background: transparent; color: var(--fg); font: 14px "Segoe UI Variable Text", "Segoe UI", sans-serif; user-select: none; }
+  body { padding: 14px 16px; }
+  h1 { font-size: 15px; margin: 0 0 10px; }
+  label { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; }
+  input { width: 18px; height: 18px; accent-color: #0078d4; }
+  small { opacity: .6; display: block; margin-top: 8px; }
+</style>
+<h1>시계 설정</h1>
+<label>24시간 표시 <input type="checkbox" id="hour24"></label>
+<label>초 표시 <input type="checkbox" id="seconds"></label>
+<label>날짜 표시 <input type="checkbox" id="date"></label>
+<small>바깥을 누르거나 Esc를 누르면 닫혀요.</small>
+<script>
+  const keys = ['hour24', 'seconds', 'date'];
+  let s = { hour24: false, seconds: false, date: true };
+  try { s = { ...s, ...JSON.parse(localStorage.getItem('clock') || '{}') }; } catch {}
+  for (const k of keys) {
+    const el = document.getElementById(k);
+    el.checked = !!s[k];
+    el.onchange = () => { s[k] = el.checked; localStorage.setItem('clock', JSON.stringify(s)); };
+  }
+</script>

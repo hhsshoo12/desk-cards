@@ -1,18 +1,38 @@
 <!doctype html>
 <meta charset="utf-8">
 <style>
-  html, body { margin: 0; height: 100%; background: transparent; color: #fff; font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; user-select: none; }
-  body { display: grid; place-items: center; text-align: center; }
+  :root { --fg: #111; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #fff; } }
+  [data-theme=light] { --fg: #111; }
+  [data-theme=dark] { --fg: #fff; }
+  html, body { margin: 0; height: 100%; background: transparent; color: var(--fg); font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; user-select: none; }
+  body { display: grid; place-items: center; text-align: center; cursor: default; }
   #t { font-size: 44px; font-weight: 600; letter-spacing: 1px; }
   #d { font-size: 14px; opacity: .7; margin-top: 4px; }
 </style>
 <div><div id="t"></div><div id="d"></div></div>
 <script>
   const t = document.getElementById('t'), d = document.getElementById('d');
+  const load = () => {
+    try { return { hour24: false, seconds: false, date: true, ...JSON.parse(localStorage.getItem('clock') || '{}') }; }
+    catch { return { hour24: false, seconds: false, date: true }; }
+  };
+  let s = load();
   function tick() {
     const n = new Date();
-    t.textContent = n.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-    d.textContent = n.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' });
+    const opt = { hour: '2-digit', minute: '2-digit', hour12: !s.hour24 };
+    if (s.seconds) opt.second = '2-digit';
+    t.textContent = n.toLocaleTimeString('ko-KR', opt);
+    d.textContent = s.date ? n.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' }) : '';
+    d.style.display = s.date ? '' : 'none';
   }
   tick(); setInterval(tick, 1000);
+  // 설정 창에서 바꾸면 localStorage의 storage 이벤트로 바로 반영된다.
+  addEventListener('storage', () => { s = load(); tick(); });
+  // 시계를 누르면 설정 창(카드 아래)을 연다. 편집 모드에서는 끌기 영역이라 열지 않는다.
+  document.body.addEventListener('click', () => {
+    if (deskcard.editing) return;
+    const h = deskcard.bounds ? deskcard.bounds.h : 140;
+    deskcard.overlay.open({ url: 'settings.html', x: 0, y: h + 8, width: 240, height: 190 });
+  });
 </script>
