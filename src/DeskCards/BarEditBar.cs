@@ -80,6 +80,8 @@ internal sealed class BarEditBar : ToolWindow
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(done, "완료");
         done.Click += (_, _) => o.End();
         items.Children.Add(done);
+        foreach (var child in items.Children)
+            if (child is Button btn) { btn.HorizontalAlignment = HorizontalAlignment.Stretch; btn.HorizontalContentAlignment = HorizontalAlignment.Center; }
 
         self = new BarEditBar(root, name, cardButtons, mgr, () => o.Selected, o.End, o.Edge == ScreenEdge.Right);
         _bar = self;
