@@ -215,6 +215,55 @@ internal static class EdgeBar
 
         public void EditEnded() => Ui.Post(End);
 
+        // ----- 안내선: 바탕화면 카드와 같은 SmartGuides를 바 안쪽 영역 기준 물리 픽셀로 쓴다. WPF 창 스레드가 기다리며 부른다. -----
+
+        private Native.RECT RectPx(double x, double y, double w, double aspect)
+        {
+            double u = U, s = Scale;
+            int l = (int)Math.Round(Final.Left + (Pad + x * u) * s), t = (int)Math.Round(Final.Top + (Pad + y * u) * s);
+            int wp = (int)Math.Round(w * u * s), hp = (int)Math.Round(w * u * aspect * s);
+            return new Native.RECT { Left = l, Top = t, Right = l + wp, Bottom = t + hp };
+        }
+
+        private List<Native.RECT> OthersPx(string group) => Placed()
+            .Where(p => !string.Equals(p.Item.Group, group, StringComparison.OrdinalIgnoreCase))
+            .Select(p => RectPx(p.Item.X, p.Item.Y, p.Item.W, AspectOf(p.Card))).ToList();
+
+        private Rectangle Area()
+        {
+            int pad = (int)Math.Round(Pad * Scale);
+            return new Rectangle(Final.Left + pad, Final.Top + pad, Math.Max(1, Final.Width - 2 * pad), Math.Max(1, Final.Height - 2 * pad));
+        }
+
+        private static Native.RECT Rc(PixelRect r) => new() { Left = r.Left, Top = r.Top, Right = r.Right, Bottom = r.Bottom };
+
+        private static PixelRect Pr(Native.RECT r) => new(r.Left, r.Top, r.Right, r.Bottom);
+
+        public PixelRect SnapMove(string group, PixelRect rect) => ExpandedWindow.OnUi(() =>
+        {
+            var (x, y, lines) = SmartGuides.Snap(rect.Left, rect.Top, rect.Width, rect.Height, OthersPx(group), Area(), Scale);
+            if (Mgr.ShowGuides) SmartGuides.Show(Area(), lines); else SmartGuides.Hide();
+            return new PixelRect(x, y, x + rect.Width, y + rect.Height);
+        }, rect);
+
+        public double SnapScale(string group, PixelRect start, double scale) => ExpandedWindow.OnUi(() =>
+        {
+            var (g, lines) = SmartGuides.SnapScale(Rc(start), scale, OthersPx(group), Area(), Scale);
+            if (Mgr.ShowGuides) SmartGuides.Show(Area(), lines); else SmartGuides.Hide();
+            return g;
+        }, scale);
+
+        public int Placement(string group, PixelRect rect) => ExpandedWindow.OnUi(
+            () => (int)SmartGuides.Check(Rc(rect), OthersPx(group), SmartGuides.GapPx(Scale)), 0);
+
+        public PixelRect PushApart(string group, PixelRect rect) => ExpandedWindow.OnUi(() =>
+        {
+            var (dx, dy) = SmartGuides.PushApart(Rc(rect), OthersPx(group), SmartGuides.GapPx(Scale));
+            return new PixelRect(rect.Left + dx, rect.Top + dy, rect.Right + dx, rect.Bottom + dy);
+        }, rect);
+
+        public void GuidesOff() => Ui.Post(SmartGuides.Hide);
+
         public void SettingsRequested() => Ui.Post(() => SettingsWindow.OpenBar(Mgr));
 
         /// <summary>바 옆 설정 버튼 본체의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳.</summary>

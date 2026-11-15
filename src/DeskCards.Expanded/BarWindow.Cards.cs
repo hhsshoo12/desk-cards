@@ -179,6 +179,7 @@ internal sealed partial class BarWindow
     {
         Point start = default;
         double x0 = 0, y0 = 0, w0 = 0;
+        PixelRect startPx = default;
         bool moved = false;
 
         en.Shield.MouseLeftButtonDown += (_, a) =>
@@ -197,6 +198,10 @@ internal sealed partial class BarWindow
             var p = a.GetPosition(_canvas);
             double nx = Math.Clamp(x0 + p.X - start.X, 0, Math.Max(0, _canvas.Width - en.Box.Width));
             double ny = Math.Clamp(y0 + p.Y - start.Y, 0, Math.Max(0, _canvas.Height - en.Box.Height));
+            // 안내선: 다른 카드·바 가운데와 줄이 맞으면 붙는다(앱이 계산하고 선을 그린다).
+            var snapped = _host.SnapMove(en.Data.Group, PxRect(nx, ny, en.Box.Width, en.Box.Height));
+            nx = Math.Clamp(CanvasX(snapped.Left), 0, Math.Max(0, _canvas.Width - en.Box.Width));
+            ny = Math.Clamp(CanvasY(snapped.Top), 0, Math.Max(0, _canvas.Height - en.Box.Height));
             if (Math.Abs(nx - Canvas.GetLeft(en.Box)) < 0.01 && Math.Abs(ny - Canvas.GetTop(en.Box)) < 0.01) return;
             moved = true;
             Canvas.SetLeft(en.Box, nx);
@@ -207,7 +212,8 @@ internal sealed partial class BarWindow
         {
             if (_active != en) return;
             en.Shield.ReleaseMouseCapture();
-            bool bad = Overlaps(en);
+            bool bad = !SettlePlacement(en);
+            _host.GuidesOff();
             if (bad) { Canvas.SetLeft(en.Box, x0); Canvas.SetTop(en.Box, y0); }
             _active = null;
             ShowFrame(en);
@@ -222,6 +228,7 @@ internal sealed partial class BarWindow
             _active = en;
             start = a.GetPosition(_canvas);
             w0 = en.Box.Width;
+            startPx = PxRect(Canvas.GetLeft(en.Box), Canvas.GetTop(en.Box), en.Box.Width, en.Box.Height);
             x0 = en.Box.Width; // 직전 크기(되돌릴 때)
             y0 = en.Box.Height;
             moved = false;
@@ -235,6 +242,8 @@ internal sealed partial class BarWindow
             double left = Canvas.GetLeft(en.Box), top = Canvas.GetTop(en.Box);
             double maxW = Math.Min(_canvas.Width - left, (_canvas.Height - top) / Math.Max(0.01, en.Aspect));
             double nw = Math.Clamp(w0 + (p.X - start.X), Math.Min(U * 0.25, maxW), Math.Max(U * 0.25, maxW));
+            double g = _host.SnapScale(en.Data.Group, startPx, nw / Math.Max(1, w0));
+            nw = Math.Clamp(w0 * g, Math.Min(U * 0.25, maxW), Math.Max(U * 0.25, maxW));
             moved = true;
             Resize(en, nw);
             MarkInvalid(en);
@@ -243,7 +252,8 @@ internal sealed partial class BarWindow
         {
             if (_active != en) return;
             en.Grip.ReleaseMouseCapture();
-            bool bad = Overlaps(en);
+            bool bad = !SettlePlacement(en);
+            _host.GuidesOff();
             if (bad) Resize(en, x0);
             _active = null;
             ShowFrame(en);
@@ -261,16 +271,37 @@ internal sealed partial class BarWindow
         en.Scale.ScaleX = en.Scale.ScaleY = k;
     }
 
-    private bool Overlaps(Entry en)
+    // ----- 안내선·자리 검사는 바탕화면 카드와 같은 규칙을 쓰려고 앱(SmartGuides)에 묻는다. 좌표는 화면 물리 픽셀이다. -----
+
+    private PixelRect PxRect(double x, double y, double w, double h)
     {
-        double l = Canvas.GetLeft(en.Box), t = Canvas.GetTop(en.Box), r = l + en.Box.Width, b = t + en.Box.Height;
-        foreach (var o in _entries)
+        double s = _o.Scale;
+        int l = (int)Math.Round(_o.Final.Left + (Pad + x) * s), t = (int)Math.Round(_o.Final.Top + (Pad + y) * s);
+        return new PixelRect(l, t, l + (int)Math.Round(w * s), t + (int)Math.Round(h * s));
+    }
+
+    private PixelRect PxRect(Entry en) => PxRect(Canvas.GetLeft(en.Box), Canvas.GetTop(en.Box), en.Box.Width, en.Box.Height);
+
+    private double CanvasX(int px) => (px - _o.Final.Left) / _o.Scale - Pad;
+
+    private double CanvasY(int px) => (px - _o.Final.Top) / _o.Scale - Pad;
+
+    private bool Overlaps(Entry en) => _host.Placement(en.Data.Group, PxRect(en)) != 0;
+
+    /// <summary>놓은 자리가 괜찮은지. 간격보다 가까우면 간격만큼 밀어 보고, 그래도 안 되면 false.</summary>
+    private bool SettlePlacement(Entry en)
+    {
+        int placement = _host.Placement(en.Data.Group, PxRect(en));
+        if (placement == 1)
         {
-            if (o == en) continue;
-            double ol = Canvas.GetLeft(o.Box), ot = Canvas.GetTop(o.Box);
-            if (l < ol + o.Box.Width && ol < r && t < ot + o.Box.Height && ot < b) return true;
+            var pushed = _host.PushApart(en.Data.Group, PxRect(en));
+            double nx = Math.Clamp(CanvasX(pushed.Left), 0, Math.Max(0, _canvas.Width - en.Box.Width));
+            double ny = Math.Clamp(CanvasY(pushed.Top), 0, Math.Max(0, _canvas.Height - en.Box.Height));
+            Canvas.SetLeft(en.Box, nx);
+            Canvas.SetTop(en.Box, ny);
+            placement = _host.Placement(en.Data.Group, PxRect(en));
         }
-        return false;
+        return placement == 0;
     }
 
     private void MarkInvalid(Entry en)

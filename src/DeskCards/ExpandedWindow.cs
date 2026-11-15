@@ -116,7 +116,7 @@ internal sealed class ExpandedWindow : IExpandedHost
 
     // ----- IExpandedHost: WPF 창 스레드에서 불린다 -----
 
-    private static T OnUi<T>(Func<T> func, T fallback)
+    internal static T OnUi<T>(Func<T> func, T fallback)
     {
         if (Ui.CheckAccess) return func();
         T result = fallback;

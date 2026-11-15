@@ -64,6 +64,11 @@ internal sealed class BarEditBar : ToolWindow
         var cardButtons = new[] { rename, gridButton, remove };
 
         items.Children.Add(EditBar.Btn("\uE710", "카드 넣기", o.ShowAddMenu));
+        var guides = new ToggleButton { Content = EditBar.Glyph("\uE80A"), MinWidth = 40, Height = 36, IsChecked = mgr.ShowGuides };
+        ToolTipService.SetToolTip(guides, "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(guides, "안내선");
+        guides.Click += (_, _) => mgr.ShowGuides = guides.IsChecked == true;
+        items.Children.Add(guides);
         items.Children.Add(EditBar.Sep2());
         foreach (var b in cardButtons) items.Children.Add(b);
         items.Children.Add(EditBar.Sep2());
@@ -81,7 +86,7 @@ internal sealed class BarEditBar : ToolWindow
         done.Click += (_, _) => o.End();
         items.Children.Add(done);
         foreach (var child in items.Children)
-            if (child is Button btn) { btn.HorizontalAlignment = HorizontalAlignment.Stretch; btn.HorizontalContentAlignment = HorizontalAlignment.Center; }
+            if (child is Control btn) { btn.HorizontalAlignment = HorizontalAlignment.Stretch; btn.HorizontalContentAlignment = HorizontalAlignment.Center; }
 
         self = new BarEditBar(root, name, cardButtons, mgr, () => o.Selected, o.End, o.Edge == ScreenEdge.Right);
         _bar = self;

@@ -29,6 +29,16 @@ public interface IBarHost
     void RemoveRequested(string group);
     /// <summary>바 옆 설정 버튼을 눌렀다.</summary>
     void SettingsRequested();
+    /// <summary>카드를 끌 때 안내선에 맞춰 붙은 자리(앱이 안내선도 그린다). 화면 물리 픽셀.</summary>
+    PixelRect SnapMove(string group, PixelRect rect);
+    /// <summary>비율을 지키며 크기를 바꿀 때 안내선에 맞춘 배율(start는 바꾸기 시작할 때 자리).</summary>
+    double SnapScale(string group, PixelRect start, double scale);
+    /// <summary>그 자리가 괜찮은지. 0 = 괜찮음, 1 = 다른 카드와 너무 가까움, 2 = 겹침.</summary>
+    int Placement(string group, PixelRect rect);
+    /// <summary>너무 가까운 카드에서 간격만큼 떨어지게 민 자리.</summary>
+    PixelRect PushApart(string group, PixelRect rect);
+    /// <summary>안내선을 지운다.</summary>
+    void GuidesOff();
 }
 
 /// <summary>편집한 카드의 자리(바 두께를 1로 친 값).</summary>
@@ -92,6 +102,11 @@ public sealed class BarView
         public void EditEnded() { }
         public void RemoveRequested(string group) { }
         public void SettingsRequested() { }
+        public PixelRect SnapMove(string group, PixelRect rect) => rect;
+        public double SnapScale(string group, PixelRect start, double scale) => scale;
+        public int Placement(string group, PixelRect rect) => 0;
+        public PixelRect PushApart(string group, PixelRect rect) => rect;
+        public void GuidesOff() { }
     }
 
     public static BarView Open(IBarHost host, BarOptions options, BarContent content)
