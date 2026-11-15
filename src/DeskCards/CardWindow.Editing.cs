@@ -7,7 +7,7 @@ namespace DeskCards;
 /// <summary>
 /// 편집 상태(편집 중·고름·안 되는 자리)와 끌기·크기 조절의 앱 쪽 규칙.
 /// 끄는 동작 자체(옮기기·크기 조절·강조 테두리)는 창 라이브러리가 하고, 여기서는 안내선에 맞추고 놓은 자리를 검사한다.
-/// 창 스레드에서 불리는 Snap·SnapScale은 앱이 아는 카드 자리만 보고 계산하므로 UI 스레드를 기다려도 서로 막히지 않는다.
+/// 창 스레드에서 불리는 Snap·SnapScale은 앱이 아는 카드 자리만 보고 계산하며 앱 UI 스레드가 계산을 끝낼 때까지 창 스레드가 기다린다(최대 3초).
 /// </summary>
 internal sealed partial class CardWindow
 {
@@ -17,7 +17,7 @@ internal sealed partial class CardWindow
     private PixelRect? _dragStart;
     private IReadOnlyList<Native.RECT> _others = Array.Empty<Native.RECT>();
     private bool _triedFlush; // 간격을 두는 중에 옆 카드에 딱 붙이려고 했는지
-    private double _zoomStart;
+    private double _zoomStart, _scaleStart, _dragDpi;
 
     public bool IsEditing => _editing;
 
@@ -82,6 +82,8 @@ internal sealed partial class CardWindow
         _others = Mgr.CardRects(except: this);
         _triedFlush = false;
         _zoomStart = _layout.Zoom;
+        _scaleStart = _appliedScale;
+        _dragDpi = DpiScale;
         Ui.Post(BalloonTip.CloseCurrent); // 앞 안내는 이전 자리 이야기라 새로 옮기기 시작하면 치운다
     }
 
@@ -131,7 +133,7 @@ internal sealed partial class CardWindow
         {
             Left = start.Left, Top = start.Top,
             Right = start.Left + (int)Math.Round(start.Width * snapped),
-            Bottom = start.Top + (int)Math.Round(start.Height * snapped) + (int)Math.Round(LabelH * _appliedScale * snapped * dpi),
+            Bottom = start.Top + (int)Math.Round(start.Height * snapped) + DesktopCards.LabelPixels(_appliedScale * snapped, dpi),
         };
         SetInvalid(SmartGuides.Check(placed, _others, SmartGuides.GapPx(dpi)) != SmartGuides.Placement.Ok);
         return snapped;
@@ -147,6 +149,13 @@ internal sealed partial class CardWindow
         if (_dragStart is not { } start) return;
         _dragStart = null;
         SmartGuides.Hide();
+        if (Math.Abs(DpiScale - _dragDpi) > 0.01)
+        {
+            // 배율이 다른 모니터로 옮겨 오는 동안 창 크기가 새 배율로 바뀐 것이라 크기 조절이 아니다.
+            SetInvalid(false);
+            Refit();
+            return;
+        }
         if (width != start.Width || height != start.Height) SettleResize(start);
         else SettleMove(start);
     });
@@ -187,7 +196,8 @@ internal sealed partial class CardWindow
     /// <summary>끌어서 바꾼 크기를 확대 비율로 옮겨 담는다. 겹치거나 간격보다 가까워지는 크기는 잡기 전 크기로 되돌린다.</summary>
     private void SettleResize(PixelRect start)
     {
-        SetZoomClamped(_zoomStart * _rect.Width / start.Width);
+        // 화면에 눌려 있던 크기에서도 줄일 수 있게, 저장된 확대 비율이 아니라 실제로 보이던 배율에 비율을 곱한다.
+        SetZoomClamped(_scaleStart * _rect.Width / start.Width / Mgr.ZoomFactor(_dragDpi));
         var p = Placement();
         if (p != SmartGuides.Placement.Ok) SetZoomClamped(_zoomStart);
         CommitLayout();

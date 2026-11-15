@@ -75,9 +75,7 @@ internal static class EdgeBar
             Placed().Select(x =>
             {
                 var layout = Mgr.GetLayout(x.Card.Group.Name);
-                var items = x.Card.Group.Items
-                    .Select(e => new TileData(e.Path, e.Name, e.IconPixels?.Width ?? 0, e.IconPixels?.Height ?? 0, e.IconPixels?.Pixels))
-                    .ToList();
+                var items = ExpandedWindow.ToTiles(x.Card.Group);
                 return new BarCardData(x.Card.Group.Name, x.Card.Group.Name, x.Card.Group.Folder, layout.Cols, layout.Rows, Mgr.CellSize,
                     x.Item.X, x.Item.Y, x.Item.W, items);
             }).ToList(),

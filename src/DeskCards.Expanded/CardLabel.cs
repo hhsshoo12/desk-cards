@@ -6,11 +6,11 @@ namespace DeskCards.Expanded;
 
 /// <summary>
 /// 카드 아래에 떠 있는 이름 줄. 바탕화면 아이콘 이름처럼 판 없이 글자만 보인다.
-/// Windows가 그리는 카드 창(아크릴·모서리·그림자)은 한 창 안에서 일부만 투명하게 할 수 없어서 따로 띄운다.
+/// Windows가 그리는 카드 창 배경(미카·모서리·그림자)은 한 창 안에서 일부만 투명하게 할 수 없어서 따로 띄운다.
 /// 카드 창이 소유자라 z 순서는 카드를 따라가고, 위치·크기는 카드가 옮길 때마다 Place로 맞춘다.
 /// 클릭은 아래로 그대로 통과한다.
 ///
-/// XAML 창은 픽셀 단위 투명을 못 하므로, 글자를 그림으로 구워서 알파가 있는 창(UpdateLayeredWindow)에 바로 올린다.
+/// 보통 창은 픽셀 단위 투명을 못 하므로, 글자를 그림으로 구워서 알파가 있는 창(UpdateLayeredWindow)에 바로 올린다.
 /// 글자는 바탕화면 아이콘 이름처럼 흰 글자 오른쪽 아래에 짙은 그림자가 살짝 번지게 한다.
 /// 선명하게 보이도록 힌팅(획을 픽셀 격자에 맞춤)을 켠 GDI+로 실제 픽셀 크기에 바로 그리고,
 /// 그림자는 그 글자 모양을 비켜 흐려서 만든다. 투명한 창이라 ClearType 대신 흑백 부드럽게를 쓴다.
@@ -29,7 +29,7 @@ internal sealed class CardLabel : IDisposable
     private Baked? _baked;
     private IntPtr _dib;
     private IntPtr _memDc;
-    private bool _disposed;
+    private bool _disposed, _composed;
 
     /// <summary>구운 글자 그림. 픽셀은 알파가 곱해진 BGRA다.</summary>
     internal sealed record Baked(int Width, int Height, byte[] Pixels, int Left, int Top);
@@ -75,6 +75,7 @@ internal sealed class CardLabel : IDisposable
     public void Place(int x, int y, int w, int h, double t, double dpi)
     {
         if (_disposed) return;
+        if (_composed && _placed == (x, y, w, h, t, dpi)) return; // 같은 자리·크기면 다시 굽지 않는다
         _placed = (x, y, w, h, t, dpi);
         Bake();
         Compose();
@@ -158,9 +159,11 @@ internal sealed class CardLabel : IDisposable
     /// <summary>구운 그림을 창 크기의 알파 비트맵에 올려 창에 반영한다.</summary>
     private void Compose()
     {
+        _composed = false;
         if (_disposed) return;
         var (x, y, w, h, _, _) = _placed;
         if (w <= 0 || h <= 0) return;
+        _composed = true;
         if (_baked == null)
         {
             // 이름이 없으면 완전히 투명한 1×1.

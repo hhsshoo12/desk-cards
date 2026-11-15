@@ -151,6 +151,23 @@ internal sealed class WebCardManager
         running.Start(_editing);
     }
 
+    private void Lost(Running lost)
+    {
+        string id = lost.Id;
+        if (_running.TryGetValue(id, out var r) && r == lost) _running.Remove(id);
+        lost.Dispose();
+        if (_shuttingDown) return;
+        var retry = new Microsoft.UI.Xaml.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        retry.Tick += (_, _) =>
+        {
+            if (_shuttingDown) { retry.Stop(); return; }
+            if (Native.FindWindow("Progman", null) == IntPtr.Zero) return;
+            retry.Stop();
+            if (Find(id) is { } card) Open(card);
+        };
+        retry.Start();
+    }
+
     private void Close(string id)
     {
         if (_running.Remove(id, out var r)) r.Dispose();
@@ -177,7 +194,7 @@ internal sealed class WebCardManager
 
         public IWebCardHandle? Handle { get; private set; }
 
-        private string Id => _card.Manifest.Id;
+        public string Id => _card.Manifest.Id;
 
         public void Start(bool editing)
         {
@@ -248,7 +265,7 @@ internal sealed class WebCardManager
         public PixelRect Snap(string id, PixelRect rect) => ExpandedWindow.OnUi(() =>
         {
             var wa = DesktopGrid.WorkAreaAt(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
-            var others = _owner._mgr.CardRects(null).Concat(_owner.Rects(id)).ToList();
+            var others = _owner._mgr.CardRects(null, Id);
             var (x, y, lines) = SmartGuides.Snap(rect.Left, rect.Top, rect.Width, rect.Height, others, wa, Native.PrimaryScale());
             if (_owner._cfg.ShowGuides) SmartGuides.Show(wa, lines); else SmartGuides.Hide();
             return new PixelRect(x, y, x + rect.Width, y + rect.Height);
@@ -262,7 +279,16 @@ internal sealed class WebCardManager
 
         public void Activated() => Ui.Post(() => _owner._mgr.RestoreDesktopOrder());
 
-        public void Closed() { }
+        public void VisibilityChanged(bool visible) => Ui.Post(() =>
+        {
+            if (!_disposed && _placement.Shown != visible) _owner.SetShown(Id, visible);
+        });
+
+        /// <summary>창이 저절로 파괴됐다(탐색기가 재시작되면 소유자 Progman과 함께 사라진다). 바탕화면이 돌아오면 다시 띄운다.</summary>
+        public void Closed() => Ui.Post(() =>
+        {
+            if (!_disposed) _owner.Lost(this);
+        });
 
         public void Dispose()
         {

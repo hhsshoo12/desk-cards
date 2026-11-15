@@ -10,7 +10,6 @@ internal sealed class FolderCardHandle : DesktopCardHandle<FolderCardWindow>, IF
     public FolderCardHandle(FolderCardOptions options, IFolderCardHost host) => Create(() => new FolderCardWindow(options, host));
 
     public void SetFolder(FolderCardData data) => Run(() => Window.SetFolder(data));
-    public void SetDrop(bool on) => Run(() => Window.SetDrop(on));
 }
 
 /// <summary>
@@ -66,7 +65,7 @@ internal sealed class FolderCardWindow : DesktopCardWindow
         var c = CurrentContent();
         double t = _data.LabelScale * c.Width / _baseW; // 끄는 도중에도 카드 크기를 따라 글자가 커진다
         double dpi = Scale;
-        _label.Place(c.Left, c.Bottom, c.Width, (int)Math.Round(BarCardView.LabelH * t * dpi), t, dpi);
+        _label.Place(c.Left, c.Bottom, c.Width, DesktopCards.LabelPixels(t, dpi), t, dpi);
     }
 
     private static BarCardData ToBar(FolderCardData d) =>
@@ -81,8 +80,6 @@ internal sealed class FolderCardWindow : DesktopCardWindow
         if (_label != null) _label.Text = data.Name;
         FollowLabel();
     }
-
-    internal void SetDrop(bool on) { if (!Dead) _view.SetDrop(on); }
 
     private void OnDrag(object sender, DragEventArgs e)
     {

@@ -15,7 +15,7 @@ namespace DeskCards;
 /// </summary>
 internal sealed partial class CardWindow : IFolderCardHost
 {
-    public const double LabelH = 28;
+    public const double LabelH = DesktopCards.LabelHeight;
 
     private readonly IFolderCardHandle _h;
     private PixelRect _rect; // 카드 내용 영역(물리 픽셀). 이름 줄은 아래에 따로 붙는다.
@@ -81,7 +81,7 @@ internal sealed partial class CardWindow : IFolderCardHost
 
     private FolderCardData Data() => new(Group.Name, Group.Name, Group.Folder, _layout.Cols, _layout.Rows, _appliedScale,
         Mgr.HoverExpand, Mgr.HoverExpandDelay,
-        Group.Items.Select(e => new TileData(e.Path, e.Name, e.IconPixels?.Width ?? 0, e.IconPixels?.Height ?? 0, e.IconPixels?.Pixels)).ToList());
+        ExpandedWindow.ToTiles(Group));
 
     private void PushData() { if (!_closed) _h.SetFolder(Data()); }
 

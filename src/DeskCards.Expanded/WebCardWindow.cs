@@ -110,7 +110,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
     {
         _web.Visibility = Visibility.Collapsed;
         var label = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(12), VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
-        label.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_o.Palette.Fg));
+        label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         Surface.Children.Insert(0, label);
     }
 
@@ -170,7 +170,11 @@ internal sealed class WebCardWindow : DesktopCardWindow
                 _host.Bounds(X, Y, W, H);
                 break;
             case "visible":
-                SetVisible(m.TryGetProperty("v", out var v) && v.ValueKind == JsonValueKind.True);
+            {
+                bool show = m.TryGetProperty("v", out var v) && v.ValueKind == JsonValueKind.True;
+                SetVisible(show);
+                _host.VisibilityChanged(show);
+            }
                 break;
         }
     }

@@ -23,7 +23,7 @@ internal abstract class DesktopCardWindow : Window
     private readonly string _id;
     private readonly Border _outline;
     private IntPtr _zTarget;
-    private bool _dragging, _movingZ, _visibleWanted;
+    private bool _dragging, _movingZ, _visibleWanted, _priming, _hlSelected, _hlInvalid;
     private PixelRect _sizeStart;
     private Palette _palette;
 
@@ -80,14 +80,17 @@ internal abstract class DesktopCardWindow : Window
     }
 
     /// <summary>
-    /// 아크릴은 창이 한 번도 활성화된 적 없으면 단색 회색으로 그려진다. 보일 때 한 번 활성 창으로 만든 뒤 바로 바탕화면 층으로 돌려 놓는다
-    /// (다른 창의 초점은 가져가지 않는다).
+    /// 창 배경(미카·아크릴)은 창이 한 번도 활성화된 적 없으면 단색 회색으로 그려진다. 보일 때 한 번 활성 창으로 만든 뒤 바로 바탕화면 층으로 돌려 놓는다.
+    /// 같은 스레드의 다른 WPF 창(펼친 창·카드 바)이 지금 활성이면 그 창의 활성을 뺏지 않도록 건너뛴다.
     /// </summary>
     private void Prime() => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
     {
         if (Dead || Editing || !IsVisible) return;
-        SetActiveWindow(Handle);
-        SendToBottom();
+        var fg = GetForegroundWindow();
+        if (fg != IntPtr.Zero && fg != Handle && GetWindowThreadProcessId(fg, out _) == GetCurrentThreadId()) return;
+        _priming = true;
+        try { SetActiveWindow(Handle); SendToBottom(); }
+        finally { _priming = false; }
     });
 
     // ----- 파생 클래스가 정하는 것 -----
@@ -100,9 +103,6 @@ internal abstract class DesktopCardWindow : Window
     protected virtual void OnClosedCore() { }
     /// <summary>창이 옮겨지거나 크기가 바뀌었다(끄는 도중에도 불린다).</summary>
     protected virtual void OnMoved() { }
-
-    /// <summary>편집 중 띠 안쪽(내용)을 눌렀을 때의 히트 테스트. 2 = 끌어서 옮기기(HTCAPTION), 1 = 카드 내용이 받는다.</summary>
-    protected virtual int InteriorHit => 2;
 
     // ----- 창 -----
 
@@ -176,8 +176,7 @@ internal abstract class DesktopCardWindow : Window
         bool changed = Editing != editing;
         Editing = editing;
         _outline.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
-        if (!editing) SetHighlight(false, false);
-        else if (changed) SetHighlight(false, false);
+        if (!editing || changed) SetHighlight(false, false);
         ApplyBounds();
         if (changed) OnEditingChanged(editing);
         if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
@@ -188,6 +187,7 @@ internal abstract class DesktopCardWindow : Window
     internal void SetHighlight(bool selected, bool invalid)
     {
         if (Dead) return;
+        (_hlSelected, _hlInvalid) = (selected, invalid);
         var c = invalid ? Color.FromRgb(0xE8, 0x11, 0x23) : (Color)ColorConverter.ConvertFromString(_palette.Accent);
         _outline.BorderBrush = new SolidColorBrush(c);
         _outline.BorderThickness = new Thickness(invalid || selected ? 3 : 2);
@@ -216,6 +216,7 @@ internal abstract class DesktopCardWindow : Window
         var hwnd = Handle;
         SetDwm(hwnd, 20, palette.Light ? 0 : 1);
         SetDwm(hwnd, 38, BackdropType);
+        if (Editing) SetHighlight(_hlSelected, _hlInvalid); // 강조색도 새 테마로
     }
 
     private void ApplyResources(Palette p)
@@ -245,20 +246,6 @@ internal abstract class DesktopCardWindow : Window
         finally { _movingZ = false; }
     }
 
-    /// <summary>내용 영역이 바뀐 것을 앱에 알린다.</summary>
-    protected void ReportBounds() => _host.Bounds(X, Y, W, H);
-
-    /// <summary>창을 눌러서 옮기기 시작한다(내용 쪽에서 끌기를 시작할 때).</summary>
-    protected void BeginMove()
-    {
-        ReleaseCapture();
-        SendMessage(Handle, 0x00A1 /* WM_NCLBUTTONDOWN */, new IntPtr(2) /* HTCAPTION */, IntPtr.Zero);
-    }
-
-    protected void RequestMenu() => _host.Menu();
-
-    protected void RequestSelect() => _host.Selected();
-
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         switch (msg)
@@ -270,7 +257,7 @@ internal abstract class DesktopCardWindow : Window
                 handled = true;
                 return DefWindowProc(hwnd, msg, new IntPtr(1), new IntPtr(-1));
             case 0x0006 when !Editing && (wParam.ToInt64() & 0xFFFF) != 0: // WM_ACTIVATE: 눌려서 활성화되면 바탕화면이 카드 앞으로 나온다. 끝난 뒤 순서를 바로잡는다
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (Dead || Editing) return; SendToBottom(); _host.Activated(); });
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (Dead || Editing) return; SendToBottom(); if (!_priming) _host.Activated(); });
                 break;
             case 0x0021: // WM_MOUSEACTIVATE: 눌러도 활성화하지 않는다
                 handled = true;
@@ -341,7 +328,7 @@ internal abstract class DesktopCardWindow : Window
         int px = (short)(lParam.ToInt64() & 0xFFFF), py = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
         int band = Pad, edge = (int)Math.Round(EdgeBand * Scale), corner = (int)Math.Round(24 * Scale);
         bool l = px < r.Left + band, rt = px >= r.Right - band, t = py < r.Top + band, b = py >= r.Bottom - band;
-        if (!(l || rt || t || b)) return InteriorHit;
+        if (!(l || rt || t || b)) return 2; // 띠 안쪽(내용)은 끌어서 옮기기(HTCAPTION). 웹 화면은 app-region으로 같은 값을 넘겨 준다
         bool cr = px >= r.Right - corner, cb = py >= r.Bottom - corner;
         if (LockAspect) return cr && cb ? 17 : 2; // 비율을 지키는 카드: 오른쪽 아래 모서리만 크기 조절
         bool el = px < r.Left + edge, er = px >= r.Right - edge, et = py < r.Top + edge, eb = py >= r.Bottom - edge;
@@ -372,9 +359,10 @@ internal abstract class DesktopCardWindow : Window
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
 
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SetActiveWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);

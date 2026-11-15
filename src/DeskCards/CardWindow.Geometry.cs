@@ -9,7 +9,6 @@ internal sealed partial class CardWindow
 {
     private CardLayout _layout = new();
     private double _appliedScale = 1;
-    private Point? _restorePosition;
 
     public CardLayout CurrentLayout => _layout;
 
@@ -41,7 +40,7 @@ internal sealed partial class CardWindow
     // ----- 이름 줄 -----
 
     /// <summary>지금 크기의 이름 줄 높이(물리 픽셀). 이름 줄 자체는 창 라이브러리가 그린다.</summary>
-    private int LabelPx => (int)Math.Round(LabelH * _appliedScale * DpiScale);
+    private int LabelPx => DesktopCards.LabelPixels(_appliedScale, DpiScale);
 
     /// <summary>
     /// 카드와 그 아래 이름 줄을 합친 자리(물리 픽셀). 안내선·화면 맞춤·빈 자리 찾기는 이 자리로 한다.
@@ -156,7 +155,6 @@ internal sealed partial class CardWindow
 
     internal void RestorePosition(Point point)
     {
-        _restorePosition = point;
         MoveTo((int)Math.Round(point.X), (int)Math.Round(point.Y));
     }
 

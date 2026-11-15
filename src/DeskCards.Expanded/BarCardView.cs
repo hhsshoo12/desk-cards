@@ -18,7 +18,7 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal sealed class BarCardView : Grid
 {
-    public const double LabelH = 28;
+    public const double LabelH = DesktopCards.LabelHeight;
     private const string OverflowTag = "overflow";
 
     private readonly ICardViewHost _host;

@@ -10,12 +10,9 @@ namespace DeskCards;
 /// <summary>여러 창이 똑같이 쓰는 Win32 창 조작(z 순서, 창 스타일, Windows 11 모양).</summary>
 internal static class Hwnd
 {
-    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
-    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
-
     public static readonly IntPtr Topmost = new(-1);
 
-    public enum Backdrop { None = 1, Mica = 2, Acrylic = 3, DwmAcrylic = 4 }
+    public enum Backdrop { None = 1, Mica = 2, Acrylic = 3 }
 
     /// <summary>창 핸들. 창이 아직 없으면 IntPtr.Zero.</summary>
     public static IntPtr Of(Window? w)
@@ -44,19 +41,9 @@ internal static class Hwnd
     public static void MakeNoActivateTool(IntPtr hwnd, long extraExStyle = 0) =>
         MakeTool(hwnd, Native.WS_EX_NOACTIVATE | extraExStyle);
 
-    /// <summary>마우스 입력이 통과하는 비활성 도구 창으로.</summary>
-    public static void MakeClickThrough(IntPtr hwnd) =>
-        MakeNoActivateTool(hwnd, Native.WS_EX_TRANSPARENT | Native.WS_EX_LAYERED);
-
-    /// <summary>다른 창(보통 Progman)을 소유자로 둔다.</summary>
-    public static void SetOwner(IntPtr hwnd, IntPtr owner)
-    {
-        if (hwnd != IntPtr.Zero && owner != IntPtr.Zero) Native.SetWindowLongPtr(hwnd, Native.GWLP_HWNDPARENT, owner);
-    }
-
     /// <summary>
     /// Windows 11 모양: 테마에 맞는 창 틀, 둥근 모서리, 시스템 배경(Mica·아크릴).
-    /// 시스템 배경은 늘 활성으로 그려서, 눌러도 활성화되지 않는 바탕화면 카드가 단색으로 바뀌지 않게 한다.
+    /// 시스템 배경은 늘 활성으로 그려서, 눌러도 활성화되지 않는 창이 단색으로 바뀌지 않게 한다.
     /// </summary>
     public static void ApplyFluent(Window w, Backdrop backdrop = Backdrop.None, bool roundCorners = true)
     {
@@ -70,56 +57,11 @@ internal static class Hwnd
                 if (w.SystemBackdrop is ActiveBackdrop a) a.Refresh();
                 else w.SystemBackdrop = new ActiveBackdrop(acrylic: true);
                 break;
-            case Backdrop.DwmAcrylic:
-                // WinUI 컨트롤러 대신 Windows(DWM)가 직접 그리는 아크릴. WinUI 쪽은 투명하게 두고 그 밑에 DWM이 그린다(웹 카드와 같은 방식).
-                if (w.SystemBackdrop is not DwmPassthroughBackdrop) w.SystemBackdrop = new DwmPassthroughBackdrop();
-                Native.SetDwm(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);
-                var margins = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-                DwmExtendFrameIntoClientArea(hwnd, ref margins);
-                break;
             case Backdrop.Mica:
                 if (w.SystemBackdrop is ActiveBackdrop m) m.Refresh();
                 else w.SystemBackdrop = new ActiveBackdrop(acrylic: false);
                 break;
         }
-    }
-}
-
-[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-internal struct MARGINS { public int Left, Right, Top, Bottom; }
-
-/// <summary>WinUI가 창 뒤를 그리지 않게 투명 색 하나만 붙이는 시스템 배경. 그 밑에 DWM 백드롭이 보인다.</summary>
-internal sealed class DwmPassthroughBackdrop : SystemBackdrop
-{
-    private static global::Windows.UI.Composition.Compositor? _compositor;
-    private static object? _queueController;
-
-    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
-    private struct DispatcherQueueOptions { public int Size, ThreadType, ApartmentType; }
-
-    [System.Runtime.InteropServices.DllImport("CoreMessaging.dll")]
-    private static extern int CreateDispatcherQueueController(DispatcherQueueOptions options, out IntPtr controller);
-
-    /// <summary>Windows.UI.Composition(시스템 컴포지터)은 시스템 DispatcherQueue가 현재 스레드에 있어야 만들 수 있다.</summary>
-    private static global::Windows.UI.Composition.Compositor Compositor()
-    {
-        if (_compositor != null) return _compositor;
-        if (global::Windows.System.DispatcherQueue.GetForCurrentThread() == null)
-        {
-            var options = new DispatcherQueueOptions { Size = System.Runtime.InteropServices.Marshal.SizeOf<DispatcherQueueOptions>(), ThreadType = 2, ApartmentType = 2 };
-            if (CreateDispatcherQueueController(options, out var controller) == 0) _queueController = controller;
-        }
-        return _compositor = new global::Windows.UI.Composition.Compositor();
-    }
-
-    protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
-    {
-        target.SystemBackdrop = Compositor().CreateColorBrush(global::Windows.UI.Color.FromArgb(0, 0, 0, 0));
-    }
-
-    protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
-    {
-        target.SystemBackdrop = null;
     }
 }
 

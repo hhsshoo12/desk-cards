@@ -31,6 +31,8 @@ public interface IWebCardHost : IDesktopCardHost
 {
     /// <summary>페이지가 deskcard.send로 보낸 메시지(JSON 한 줄). 앱이 카드의 exe로 넘긴다.</summary>
     void FromPage(string json);
+    /// <summary>페이지가 deskcard.window.show/hide로 스스로 보이거나 숨었다.</summary>
+    void VisibilityChanged(bool visible) { }
 }
 
 /// <summary>폴더 카드 안(항목 칸)이 앱에 부탁하는 일.</summary>
@@ -68,8 +70,6 @@ public interface IDesktopCardHandle
 {
     /// <summary>창 핸들.</summary>
     IntPtr Hwnd { get; }
-    /// <summary>카드 내용 영역의 지금 자리(물리 픽셀). 편집 띠는 빠진다.</summary>
-    PixelRect ContentRect { get; }
     /// <summary>카드 내용 영역을 옮기고 크기를 바꾼다(끝난 뒤 돌아온다).</summary>
     void SetBounds(int x, int y, int width, int height);
     void SetEditing(bool editing);
@@ -93,12 +93,16 @@ public interface IFolderCardHandle : IDesktopCardHandle
 {
     /// <summary>카드 내용(칸 수·항목·이름)을 바꾼다.</summary>
     void SetFolder(FolderCardData data);
-    /// <summary>파일을 끌어다 놓을 대상으로 강조한다.</summary>
-    void SetDrop(bool on);
 }
 
 public static class DesktopCards
 {
+    /// <summary>폴더 카드 아래 이름 줄의 기준 높이(DIP, 확대 전).</summary>
+    public const double LabelHeight = 28;
+
+    /// <summary>이름 줄 높이(물리 픽셀). scale은 카드 확대 비율, dpi는 모니터 배율.</summary>
+    public static int LabelPixels(double scale, double dpi) => (int)Math.Round(LabelHeight * scale * dpi);
+
     /// <summary>앞서 보낸 창 조작이 모두 끝난 뒤에 action을 WPF 창 스레드에서 실행한다.</summary>
     public static void After(Action action) => WpfThread.Dispatcher.BeginInvoke(action);
 

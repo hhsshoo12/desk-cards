@@ -87,7 +87,10 @@ internal sealed class ExpandedWindow : IExpandedHost
 
     // ----- 내용 보내기 -----
 
-    private IReadOnlyList<TileData> Snapshot() => Group.Items
+    private IReadOnlyList<TileData> Snapshot() => ToTiles(Group);
+
+    /// <summary>그룹의 항목을 WPF 창에 넘길 칸 데이터로 바꾼다.</summary>
+    public static List<TileData> ToTiles(GroupModel group) => group.Items
         .Select(e => new TileData(e.Path, e.Name, e.IconPixels?.Width ?? 0, e.IconPixels?.Height ?? 0, e.IconPixels?.Pixels))
         .ToList();
 
