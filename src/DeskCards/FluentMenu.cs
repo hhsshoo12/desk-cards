@@ -57,7 +57,16 @@ internal sealed class FluentMenu
         _open?.Close();
         var flyout = new MenuFlyout { ShouldConstrainToRootBounds = false };
         foreach (var i in _items) flyout.Items.Add(i);
-        _open = new MenuHost(flyout, x, y, () => _open = null);
+        _open = new MenuHost(flyout, x, y, () => { _open = null; _closed?.Invoke(); });
+    }
+
+    private Action? _closed;
+
+    /// <summary>메뉴가 닫혔을 때(항목을 골랐든 아니든) 할 일.</summary>
+    public FluentMenu OnClosed(Action closed)
+    {
+        _closed = closed;
+        return this;
     }
 
     /// <summary>메뉴를 띄우는 동안만 있는 투명한 1×1 창.</summary>

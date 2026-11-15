@@ -70,7 +70,7 @@ internal sealed class LayeredWindow : IDisposable
     }
 
     /// <summary>화면 위치·크기(물리 픽셀)와 그림(미리 곱한 BGRA, 위에서 아래로)을 한꺼번에 바꾼다.</summary>
-    public void Update(int x, int y, int w, int h, byte[] pixels, byte alpha = 255)
+    public void Update(int x, int y, int w, int h, byte[] pixels)
     {
         if (_disposed || w <= 0 || h <= 0 || pixels.Length < w * h * 4) return;
         var screenDc = Native.GetDC(IntPtr.Zero);
@@ -93,7 +93,7 @@ internal sealed class LayeredWindow : IDisposable
             var dest = new Native.POINT { X = x, Y = y };
             var size = new SIZE { cx = w, cy = h };
             var src = new Native.POINT();
-            var blend = new BLENDFUNCTION { BlendOp = 0, SourceConstantAlpha = alpha, AlphaFormat = 1 };
+            var blend = new BLENDFUNCTION { BlendOp = 0, SourceConstantAlpha = 255, AlphaFormat = 1 };
             UpdateLayeredWindow(_hwnd, screenDc, ref dest, ref size, _memDc, ref src, 0, ref blend, 2);
             SelectObject(_memDc, old);
             if (_dib != IntPtr.Zero) Native.DeleteObject(_dib);
@@ -132,62 +132,6 @@ internal sealed class LayeredWindow : IDisposable
         return pixels;
     }
 
-    private byte[]? _srcPx, _halfPx;
-    private int _srcW, _srcH, _halfW, _halfH;
-
-    /// <summary>나중에 <see cref="DrawScaled"/>로 줄여 그릴 원본 그림(미리 곱한 BGRA, 위에서 아래로). 반으로 줄인 그림도 같이 만든다.</summary>
-    public void SetSource(byte[] pixels, int w, int h)
-    {
-        if (_disposed || w <= 0 || h <= 0 || pixels.Length < w * h * 4) return;
-        _srcPx = pixels; _srcW = w; _srcH = h;
-        _halfW = Math.Max(1, w / 2); _halfH = Math.Max(1, h / 2);
-        _halfPx = Resample(pixels, w, h, _halfW, _halfH);
-    }
-
-    /// <summary>
-    /// 원본 그림을 (x, y, w, h)(물리 픽셀)에 맞춰 줄이거나 늘려 보여 준다. alpha는 전체 투명도(0~255).
-    /// GDI AlphaBlend는 늘 최근접 방식이라 거칠어서, 미리 곱한 값 그대로 바이리니어로 직접 줄인다.
-    /// 절반보다 작게 줄일 때는 반으로 줄여 둔 그림에서 가져와 덜 거칠다. 크기가 같으면 그대로 복사한다.
-    /// </summary>
-    public void DrawScaled(int x, int y, int w, int h, byte alpha)
-    {
-        if (_disposed || _srcPx == null || w <= 0 || h <= 0) return;
-        byte[] px;
-        if (w == _srcW && h == _srcH) px = _srcPx;
-        else if (_halfPx != null && w < _srcW * 0.55) px = Resample(_halfPx, _halfW, _halfH, w, h);
-        else px = Resample(_srcPx, _srcW, _srcH, w, h);
-        Update(x, y, w, h, px, alpha);
-    }
-
-    /// <summary>미리 곱한 BGRA를 바이리니어로 sw×sh에서 dw×dh로 바꾼다.</summary>
-    private static byte[] Resample(byte[] src, int sw, int sh, int dw, int dh)
-    {
-        var dst = new byte[dw * dh * 4];
-        var x0 = new int[dw]; var x1 = new int[dw]; var fx = new int[dw];
-        for (int dx = 0; dx < dw; dx++)
-        {
-            double sx = Math.Clamp((dx + 0.5) * sw / dw - 0.5, 0, sw - 1);
-            int i = (int)sx;
-            x0[dx] = i; x1[dx] = Math.Min(i + 1, sw - 1); fx[dx] = (int)((sx - i) * 256);
-        }
-        for (int dy = 0; dy < dh; dy++)
-        {
-            double sy = Math.Clamp((dy + 0.5) * sh / dh - 0.5, 0, sh - 1);
-            int j = (int)sy, j1 = Math.Min(j + 1, sh - 1), fy = (int)((sy - j) * 256);
-            int r0 = j * sw * 4, r1 = j1 * sw * 4, o = dy * dw * 4;
-            for (int dx = 0; dx < dw; dx++, o += 4)
-            {
-                int a = x0[dx] * 4, b = x1[dx] * 4, f = fx[dx];
-                for (int k = 0; k < 4; k++)
-                {
-                    int top = src[r0 + a + k] * (256 - f) + src[r0 + b + k] * f;
-                    int bot = src[r1 + a + k] * (256 - f) + src[r1 + b + k] * f;
-                    dst[o + k] = (byte)((top * (256 - fy) + bot * fy + 32768) >> 16);
-                }
-            }
-        }
-        return dst;
-    }
     public void Dispose()
     {
         if (_disposed) return;

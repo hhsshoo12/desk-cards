@@ -19,6 +19,7 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <Product>Desk Cards</Product>
     <Company>hhsshoo12</Company>
+    <SatelliteResourceLanguages>en;ko</SatelliteResourceLanguages>
     <AssemblyName>DeskCards</AssemblyName>
     <RootNamespace>DeskCards</RootNamespace>
     <!-- 단일 인스턴스·업데이트 재실행 처리를 위해 Main을 직접 쓴다(Program.cs). -->
@@ -29,11 +30,16 @@
     <Compile Include="../Shared/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />
     <Compile Include="../Shared/AppFiles.cs" Link="AppFiles.cs" />
-    <InternalsVisibleTo Include="DeskCards.RegressionTests" />    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
+    <InternalsVisibleTo Include="DeskCards.RegressionTests" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
     <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\DeskCards.Expanded\DeskCards.Expanded.csproj" />
   </ItemGroup>
 
 </Project>

@@ -28,6 +28,8 @@ internal sealed class ShellEntry : INotifyPropertyChanged
     public string Name { get; }
     /// <summary>아이콘 그림. 셸에서 읽어 오면 PropertyChanged로 알린다.</summary>
     public WriteableBitmap? Icon { get; private set; }
+    /// <summary>같은 아이콘의 원본 픽셀(미리 곱한 BGRA). WPF로 만든 펼친 창이 쓴다.</summary>
+    public IconBitmap? IconPixels { get; private set; }
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private async Task LoadIconAsync(DispatcherQueue queue, CancellationToken token, Func<string, IconBitmap?>? loader)
@@ -40,6 +42,7 @@ internal sealed class ShellEntry : INotifyPropertyChanged
             var bitmap = new WriteableBitmap(icon.Width, icon.Height);
             using (var stream = bitmap.PixelBuffer.AsStream()) stream.Write(icon.Pixels, 0, icon.Pixels.Length);
             Icon = bitmap;
+            IconPixels = icon;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
         });
     }

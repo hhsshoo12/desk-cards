@@ -75,6 +75,7 @@ public partial class App : Application
         _uiSettings = new UISettings();
         _uiSettings.ColorValuesChanged += (_, _) => Ui.Post(Theme.Apply);
 
+        ExpandedWindow.Warmup();
         _mgr = new GroupManager(config: cfg);
         _mgr.Start();
         if (Environment.GetEnvironmentVariable("DESKCARDS_DIAG") == "1") Ui.Post(() => SettingsWindow.Open(_mgr));

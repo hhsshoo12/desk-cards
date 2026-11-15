@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 펼친 창만 WPF로 만든 라이브러리. WinUI 3 창은 DWM 열기 효과를 쓸 수 없어서 이 창만 WPF로 둔다. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>DeskCards.Expanded</RootNamespace>
+    <AssemblyName>DeskCards.Expanded</AssemblyName>
+  </PropertyGroup>
+
+</Project>
