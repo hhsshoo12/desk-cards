@@ -181,6 +181,7 @@ internal sealed class CardsPage : SettingsPage
     {
         Crumbs(("카드", null));
         Row("", "편집 시작", "카드를 옮기고 크기를 바꾸고 이름·칸 수를 고쳐요. 끝나면 편집 막대의 완료를 눌러요.", AccentBtn("편집", () => Mgr.BeginEditMode()));
+        Row("\uE8B7", "웹 카드", "웹 카드(.dard)를 가져오고 바탕화면에 놓아요.", null, () => Host.Go(SettingsPageKind.WebCards));
         Row("", "폴더 카드", "바탕화면에 놓인 카드 목록이에요.", null, () => Host.Go(SettingsPageKind.FolderCards));
     }
 }

@@ -78,6 +78,7 @@ public partial class App : Application
         ExpandedWindow.Warmup();
         _mgr = new GroupManager(config: cfg);
         _mgr.Start();
+        WebCardManager.Create(cfg, _mgr).Start();
         EdgeBar.Start(_mgr);
         if (Environment.GetEnvironmentVariable("DESKCARDS_DIAG") == "1") Ui.Post(() => SettingsWindow.Open(_mgr));
         _tray = new Tray("Desk Cards", () => Menus.ForTray(_mgr!, Quit).ShowAtCursor(), () => SettingsWindow.Open(_mgr!));
@@ -107,6 +108,7 @@ public partial class App : Application
         _showSettings?.Dispose();
         _quitRequest?.Dispose();
         _stopListener.Dispose();
+        WebCardManager.Instance?.Shutdown();
         _mgr?.Shutdown();
         _mgr = null;
         _tray?.Dispose();

@@ -17,6 +17,9 @@ internal sealed class Config
     /// <summary>카드 안 항목 순서. 그룹 이름 → 파일 이름 목록. 없는 그룹은 이름 순.</summary>
     public Dictionary<string, List<string>> Orders { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>바탕화면에 둔 웹 카드(.dard)의 자리. 키는 카드 id.</summary>
+    public Dictionary<string, WebCardPlacement> WebCards { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Windows 배율을 바꾸면 카드도 같은 비율로 커지고 작아질지. 기본 켜짐.</summary>
     public bool FollowWindowsScale { get; set; } = true;
 
@@ -125,6 +128,10 @@ internal sealed class Config
         foreach (var (name, p) in cfg.PositionsPx ?? new())
             if (p is { Length: 2 } && double.IsFinite(p[0]) && double.IsFinite(p[1])) positions[name] = p;
         cfg.PositionsPx = positions;
+        var webCards = new Dictionary<string, WebCardPlacement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (id, p) in cfg.WebCards ?? new())
+            if (p != null && p.Width > 0 && p.Height > 0) webCards[id] = p;
+        cfg.WebCards = webCards;
         var layouts = new Dictionary<string, CardLayout>(StringComparer.OrdinalIgnoreCase);
         foreach (var (name, layout) in cfg.Layouts ?? new())
             if (layout != null) layouts[name] = layout.Normalized();
@@ -194,6 +201,16 @@ internal sealed class Config
 }
 
 /// <summary>카드 바에 놓은 카드 하나. X·Y(왼쪽 위)와 W(너비)는 바 두께를 1로 친 값이다.</summary>
+/// <summary>웹 카드 하나의 자리(화면 물리 픽셀)와 보이는지.</summary>
+internal sealed class WebCardPlacement
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public bool Shown { get; set; } = true;
+}
+
 internal sealed class BarItem
 {
     public string Group { get; set; } = "";

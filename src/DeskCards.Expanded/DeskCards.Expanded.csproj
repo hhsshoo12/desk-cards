@@ -12,4 +12,8 @@
     <AssemblyName>DeskCards.Expanded</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+  </ItemGroup>
+
 </Project>

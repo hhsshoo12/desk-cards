@@ -25,6 +25,14 @@ internal static class Menus
         .Separator()
         .Item("", "설정", () => SettingsWindow.Open(mgr, card));
 
+    public static FluentMenu ForWebCard(WebCardManager web, GroupManager mgr, string id) => new FluentMenu()
+        .Item("\uE72C", "다시 불러오기", () => web.Reload(id))
+        .Item("\uE70F", "카드 편집 (이동 · 크기)", () => mgr.BeginEditMode())
+        .Item("\uED1A", "숨기기", () => web.SetShown(id, false))
+        .Separator()
+        .Item("\uE74D", "바탕화면에서 내리기", () => web.Unplace(id))
+        .Item("\uE713", "설정", () => SettingsWindow.OpenWebCards(mgr));
+
     public static FluentMenu ForTray(GroupManager mgr, Action quit) => new FluentMenu()
         .Item("", "설정", () => SettingsWindow.Open(mgr))
         .Item("", "카드 편집 (이동 · 크기 · 삭제)", () => mgr.BeginEditMode())

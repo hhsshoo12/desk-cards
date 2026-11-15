@@ -1,0 +1,6 @@
+{
+  "id": "com.deskcards.clock",
+  "name": "시계",
+  "size": [260, 140],
+  "html": "clock.html"
+}

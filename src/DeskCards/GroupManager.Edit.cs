@@ -27,6 +27,7 @@ internal sealed partial class GroupManager
             ExpandedWindow.CloseCurrent();
             bool toggled = DesktopShell.ShowDesktop();
             foreach (var c in AllCards) c.BeginEdit();
+            WebCardManager.Instance?.SetEditing(true);
             RefreshPlacement();
             // 바탕화면 보기가 창들을 치우는 동안 기다렸다가 막과 막대를 띄운다(먼저 띄우면 같이 치워진다).
             var delay = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(toggled ? 350 : 1) };
@@ -51,6 +52,7 @@ internal sealed partial class GroupManager
         EditDim.CloseAll();
         BalloonTip.CloseCurrent();
         foreach (var c in AllCards) c.EndEdit();
+        WebCardManager.Instance?.SetEditing(false);
         EditBar.CloseBar();
         EditChanged?.Invoke();
     }
@@ -71,6 +73,7 @@ internal sealed partial class GroupManager
     {
         if (!Editing) return;
         foreach (var c in AllCards) c.RaiseForEdit();
+        WebCardManager.Instance?.RaiseForEdit();
         EditBar.BringToTop();
     }
 }
