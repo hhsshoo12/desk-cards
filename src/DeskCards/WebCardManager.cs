@@ -52,6 +52,10 @@ internal sealed class WebCardManager
         if (Instance == this) Instance = null;
     }
 
+    /// <summary>놓인 웹 카드들의 화면 자리(물리 픽셀). 다른 카드를 옮길 때 안내선 기준이 된다.</summary>
+    public List<Native.RECT> Rects(string? except = null) => _cfg.WebCards.Where(kv => _running.ContainsKey(kv.Key) && kv.Value.Shown && !kv.Key.Equals(except, StringComparison.OrdinalIgnoreCase))
+        .Select(kv => new Native.RECT { Left = kv.Value.X, Top = kv.Value.Y, Right = kv.Value.X + kv.Value.Width, Bottom = kv.Value.Y + kv.Value.Height }).ToList();
+
     public InstalledWebCard? Find(string id) => Store.List().FirstOrDefault(c => c.Manifest.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
     public bool IsPlaced(string id) => _cfg.WebCards.ContainsKey(id);
@@ -225,6 +229,17 @@ internal sealed class WebCardManager
         public void Menu() => _owner.ShowMenu(Id);
 
         public void FromPage(string json) => _process?.Send(json);
+
+        public PixelRect Snap(string id, PixelRect rect) => ExpandedWindow.OnUi(() =>
+        {
+            var wa = DesktopGrid.WorkAreaAt(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+            var others = _owner._mgr.CardRects(null).Concat(_owner.Rects(id)).ToList();
+            var (x, y, lines) = SmartGuides.Snap(rect.Left, rect.Top, rect.Width, rect.Height, others, wa, Native.PrimaryScale());
+            if (_owner._cfg.ShowGuides) SmartGuides.Show(wa, lines); else SmartGuides.Hide();
+            return new PixelRect(x, y, x + rect.Width, y + rect.Height);
+        }, rect);
+
+        public void GuidesOff() => Ui.Post(SmartGuides.Hide);
 
         public void Closed() { }
 

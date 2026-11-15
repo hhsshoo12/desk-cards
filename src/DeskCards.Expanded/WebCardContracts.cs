@@ -16,6 +16,10 @@ public interface IWebCardHost
     void Menu();
     /// <summary>페이지가 deskcard.send로 보낸 메시지(JSON 한 줄). 앱이 카드의 exe로 넘긴다.</summary>
     void FromPage(string json);
+    /// <summary>옮기는 중인 카드(물리 픽셀)를 다른 카드·가장자리에 맞춰 주고 안내선을 그린다. 돌려주는 자리로 옮긴다.</summary>
+    PixelRect Snap(string id, PixelRect rect);
+    /// <summary>옮기기·크기 조절이 끝났다(안내선을 지운다).</summary>
+    void GuidesOff();
     /// <summary>창이 닫혔다(앱이 닫은 경우 포함).</summary>
     void Closed();
 }

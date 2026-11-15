@@ -17,11 +17,14 @@ internal sealed partial class GroupManager
     }
 
     /// <summary>다른 카드들의 화면 위치(픽셀). 옮길 때 안내선 기준으로 쓴다.</summary>
-    public IReadOnlyList<Native.RECT> CardRects(CardWindow except) =>
+    public IReadOnlyList<Native.RECT> CardRects(CardWindow? except) =>
         AllCards.Where(c => c != except)
             .Select(c => c.Footprint)
             .Where(r => r.Right > r.Left)
+            .Concat(WebCardManager.Instance?.Rects() ?? new())
             .ToList();
+
+    internal void RaiseEditLayerNow() => RaiseEditLayer();
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Ui.Post(() =>
     {
