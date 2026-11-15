@@ -16,7 +16,7 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal abstract class DesktopCardWindow : Window
 {
-    private const int Band = 12, EdgeBand = 6; // 편집 띠 두께(DIP): 바깥쪽 EdgeBand는 크기 조절, 안쪽은 끌기
+    private const int EdgeBand = 6; // 크기 조절 가장자리 두께(DIP, 카드 안쪽). 웹 카드는 편집 중 화면을 이만큼 안으로 들인다
     private const int BackdropType = 2; // DWMSBT_MAINWINDOW = 미카. 폴더·웹 카드가 같은 값을 쓴다.
 
     private readonly IDesktopCardHost _host;
@@ -110,7 +110,6 @@ internal abstract class DesktopCardWindow : Window
 
     protected double Scale => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
-    protected int Pad => Editing ? (int)Math.Round(Band * Scale) : 0;
 
     public PixelRect ContentRect => new(X, Y, X + W, Y + H);
 
@@ -118,8 +117,7 @@ internal abstract class DesktopCardWindow : Window
     protected PixelRect CurrentContent()
     {
         if (!GetWindowRect(Handle, out var r)) return ContentRect;
-        int pad = Pad;
-        return new PixelRect(r.Left + pad, r.Top + pad, r.Right - pad, r.Bottom - pad);
+        return new PixelRect(r.Left, r.Top, r.Right, r.Bottom);
     }
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
@@ -155,11 +153,9 @@ internal abstract class DesktopCardWindow : Window
 
     private void ApplyBounds()
     {
-        int pad = Pad;
-        double k = Scale;
-        SetWindowPos(Handle, IntPtr.Zero, X - pad, Y - pad, W + 2 * pad, H + 2 * pad, 0x0004 | 0x0010);
-        Surface.Margin = new Thickness(pad / k);
-        _outline.Margin = new Thickness(pad / k - 2);
+        SetWindowPos(Handle, IntPtr.Zero, X, Y, W, H, 0x0004 | 0x0010);
+        // 창 크기 = 카드 크기다(보이지 않는 여백 없음). 웹 카드는 화면이 가장자리 조절 영역을 덮지 않게 편집 중에만 안으로 들인다.
+        Surface.Margin = new Thickness(Editing && !LockAspect ? EdgeBand : 0);
         OnBoundsChanged();
     }
 
@@ -300,23 +296,22 @@ internal abstract class DesktopCardWindow : Window
         }
         if (Editing && _dragging && GetWindowRect(hwnd, out var cur))
         {
-            int pad = Pad;
             bool sizing = (wp.flags & 0x0001) == 0 && (wp.cx != cur.Right - cur.Left || wp.cy != cur.Bottom - cur.Top);
             if (sizing && LockAspect)
             {
                 // 오른쪽 아래 모서리로만 크기를 바꾼다. 가로·세로 늘어난 비율의 평균으로 카드 전체를 같은 비율로 키운다.
                 double w0 = _sizeStart.Width, h0 = _sizeStart.Height;
-                double g = ((wp.cx - 2 * pad) / w0 + (wp.cy - 2 * pad) / h0) / 2;
+                double g = (wp.cx / w0 + wp.cy / h0) / 2;
                 g = Math.Max(g, 48 / Math.Min(w0, h0));
                 g = _host.SnapScale(_id, _sizeStart, g);
-                wp.cx = (int)Math.Round(w0 * g) + 2 * pad;
-                wp.cy = (int)Math.Round(h0 * g) + 2 * pad;
+                wp.cx = (int)Math.Round(w0 * g);
+                wp.cy = (int)Math.Round(h0 * g);
             }
             else if (!sizing && (wp.flags & 0x0002) == 0 && wp.cx == cur.Right - cur.Left && wp.cy == cur.Bottom - cur.Top)
             {
-                var snapped = _host.Snap(_id, new PixelRect(wp.x + pad, wp.y + pad, wp.x + wp.cx - pad, wp.y + wp.cy - pad));
-                wp.x = snapped.Left - pad;
-                wp.y = snapped.Top - pad;
+                var snapped = _host.Snap(_id, new PixelRect(wp.x, wp.y, wp.x + wp.cx, wp.y + wp.cy));
+                wp.x = snapped.Left;
+                wp.y = snapped.Top;
             }
         }
         Marshal.StructureToPtr(wp, lParam, false);
@@ -326,12 +321,11 @@ internal abstract class DesktopCardWindow : Window
     {
         GetWindowRect(Handle, out var r);
         int px = (short)(lParam.ToInt64() & 0xFFFF), py = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
-        int band = Pad, edge = (int)Math.Round(EdgeBand * Scale), corner = (int)Math.Round(24 * Scale);
-        bool l = px < r.Left + band, rt = px >= r.Right - band, t = py < r.Top + band, b = py >= r.Bottom - band;
-        if (!(l || rt || t || b)) return 2; // 띠 안쪽(내용)은 끌어서 옮기기(HTCAPTION). 웹 화면은 app-region으로 같은 값을 넘겨 준다
+        int edge = (int)Math.Round(EdgeBand * Scale), corner = (int)Math.Round(24 * Scale);
         bool cr = px >= r.Right - corner, cb = py >= r.Bottom - corner;
-        if (LockAspect) return cr && cb ? 17 : 2; // 비율을 지키는 카드: 오른쪽 아래 모서리만 크기 조절
+        if (LockAspect) return cr && cb ? 17 : 2; // 비율을 지키는 카드: 오른쪽 아래 모서리만 크기 조절, 나머지는 끌어서 옮기기
         bool el = px < r.Left + edge, er = px >= r.Right - edge, et = py < r.Top + edge, eb = py >= r.Bottom - edge;
+        if (!(el || er || et || eb)) return 2; // 안쪽: 끌어서 옮기기(HTCAPTION). 웹 화면은 app-region으로 같은 값을 넘겨 준다
         bool cl = px < r.Left + corner, ct = py < r.Top + corner;
         if ((el || et) && cl && ct) return 13;
         if ((er || et) && cr && ct) return 14;
@@ -347,8 +341,7 @@ internal abstract class DesktopCardWindow : Window
     private void ReadBounds()
     {
         if (Dead || !GetWindowRect(Handle, out var r)) return;
-        int pad = Pad;
-        (X, Y, W, H) = (r.Left + pad, r.Top + pad, Math.Max(1, r.Right - r.Left - 2 * pad), Math.Max(1, r.Bottom - r.Top - 2 * pad));
+        (X, Y, W, H) = (r.Left, r.Top, Math.Max(1, r.Right - r.Left), Math.Max(1, r.Bottom - r.Top));
         OnBoundsChanged();
         _host.Bounds(X, Y, W, H);
     }
