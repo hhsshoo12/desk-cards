@@ -19,7 +19,7 @@
 - 설치 위치 선택(고정 경로만 사용)
 - 설치할 때 최신 버전 찾기(설치기에 든 버전을 설치하고, 이후는 앱의 자체 업데이트가 맡는다)
 - 코드 서명, `.dard` 파일 연결
-- 앱 본체(`src/DeskCards`)의 .NET 버전 변경. 앱은 계속 .NET 10 self-contained다.
+- 앱 본체(`src/DeskCards`)의 .NET 버전 변경. 앱은 .NET 10 런타임 미포함(framework-dependent)이다. 런타임 설치는 이 설치기가 하지 않는다.
 
 ## 3. 저장소 구성
 
@@ -74,7 +74,7 @@ README의 `releases/latest/download/DeskCards-Setup.exe` 주소가 그 설치기
 | 파일 | 내용 |
 |---|---|
 | `DeskCards-Setup.exe` | 앱 zip(아래)을 리소스 `DeskCards-win-x64.zip`으로 품은 설치기 |
-| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(self-contained 단일 exe), `uninstall.exe`(제거기 전용 빌드), `version.txt`(`X.Y.Z` 한 줄, BOM 없는 UTF-8) |
+| `DeskCards-win-x64.zip` | 루트에 `DeskCards.exe`(런타임 미포함, 옆에 DLL들), `uninstall.exe`(제거기 전용 빌드), `version.txt`(`X.Y.Z` 한 줄, BOM 없는 UTF-8) |
 | `DeskCards-win-x64.zip.sha256` | zip의 SHA-256 소문자 16진수 64자 |
 
 ### 배포된 버전과의 약속 (바꾸면 안 됨)
@@ -100,7 +100,7 @@ README의 `releases/latest/download/DeskCards-Setup.exe` 주소가 그 설치기
 ## 7. 빌드 (`installer/build.ps1`)
 
 1. `Directory.Build.props`의 `<Version>`을 읽는다.
-2. 앱을 게시한다: `-c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none`.
+2. 앱을 게시한다: `-c Release -r win-x64 --self-contained false -p:DebugType=none`.
 3. 제거기를 빌드한다: 설치기 프로젝트를 `-p:Uninstaller=true`로, 출력·중간 폴더를 따로 두고 빌드한다.
 4. `installer/dist/release/`에 앱 zip(앱, 제거기, `version.txt`)과 `.sha256`을 만든다.
 5. 설치기를 `-p:AppPackage=<앱 zip>`으로 빌드해 `installer/dist/release/DeskCards-Setup.exe`로 복사한다.

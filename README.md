@@ -210,7 +210,7 @@ dotnet build src/DeskCards -c Release
 
 실행 파일은 `src/DeskCards/bin/Release/net10.0-windows/DeskCards.exe`에 생깁니다.
 
-설치 파일까지 만들려면 아래를 실행합니다. 설치기는 `net48` WPF이고, .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드됩니다. 앱은 .NET 10 self-contained를 유지합니다.
+설치 파일까지 만들려면 아래를 실행합니다. 설치기는 `net48` WPF이고, .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드됩니다. 앱은 .NET 10 런타임 미포함(framework-dependent)이라 PC에 .NET 10 데스크톱 런타임과 Windows App SDK 런타임이 있어야 합니다.
 
 ```
 pwsh -File installer/build.ps1

@@ -32,7 +32,7 @@ $uninstallerDir = Join-Path $dist ('uninstaller-' + [guid]::NewGuid().ToString('
 $zipStage = Join-Path $dist ('zip-' + [guid]::NewGuid().ToString('N'))
 try {
     # 1. 앱
-    dotnet publish $appProject -c Release -r win-x64 --self-contained true `
+    dotnet publish $appProject -c Release -r win-x64 --self-contained false `
         -p:DebugType=none -o $publishDir -warnaserror
     if ($LASTEXITCODE -ne 0) { throw '앱 게시 실패' }
 
