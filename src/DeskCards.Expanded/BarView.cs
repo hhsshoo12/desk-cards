@@ -29,6 +29,10 @@ public interface IBarHost
     void RemoveRequested(string group);
     /// <summary>바 옆 설정 버튼을 눌렀다.</summary>
     void SettingsRequested();
+    /// <summary>바 옆 알약의 연필(편집)을 눌렀다.</summary>
+    void EditRequested();
+    /// <summary>편집 중 알약의 톱니를 눌렀다(편집 막대 펼치기·접기).</summary>
+    void ToggleEditBar();
     /// <summary>카드를 끌 때 안내선에 맞춰 붙은 자리(앱이 안내선도 그린다). 화면 물리 픽셀.</summary>
     PixelRect SnapMove(string group, PixelRect rect);
     /// <summary>비율을 지키며 크기를 바꿀 때 안내선에 맞춘 배율(start는 바꾸기 시작할 때 자리).</summary>
@@ -102,6 +106,8 @@ public sealed class BarView
         public void EditEnded() { }
         public void RemoveRequested(string group) { }
         public void SettingsRequested() { }
+        public void EditRequested() { }
+        public void ToggleEditBar() { }
         public PixelRect SnapMove(string group, PixelRect rect) => rect;
         public double SnapScale(string group, PixelRect start, double scale) => scale;
         public int Placement(string group, PixelRect rect) => 0;

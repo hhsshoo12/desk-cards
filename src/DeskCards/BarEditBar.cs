@@ -8,8 +8,8 @@ using Microsoft.UI.Xaml.Media;
 namespace DeskCards;
 
 /// <summary>
-/// 카드 바를 편집하는 동안 바 옆(바 길이의 가운데)에 세로로 뜨는 막대. 메뉴는 화면 편집 막대와 같다.
-/// 바 안에서 고른 카드의 이름·칸 수를 바꾸고 바에서 뺀다.
+/// 카드 바를 편집하는 동안 바 옆 알약의 톱니에서 가로로 펼쳐지는 편집 막대. 메뉴는 화면 편집 막대와 같다.
+/// 바 안에서 고른 카드의 이름·칸 수를 바꾸고 바에서 뺀다. 톱니를 누르면 접고 다시 누르면 펼친다.
 /// </summary>
 internal sealed class BarEditBar : ToolWindow
 {
@@ -18,20 +18,27 @@ internal sealed class BarEditBar : ToolWindow
     private readonly TextBlock _name;
     private readonly Button[] _cardButtons;
     private readonly Func<string?> _selected;
-    private readonly Action _ended;
-    private Flyout? _gridFlyout;
     private readonly GroupManager _mgr;
-    private readonly bool _flyLeft;
+    private readonly int _dir;           // +1: 알약 오른쪽으로 펼침, -1: 왼쪽으로 펼침
+    private readonly Windows.Foundation.Size _full; // 다 펼쳤을 때 크기(DIP)
+    private readonly System.Drawing.Point _anchor;  // 알약 쪽 가장자리의 가운데(물리 픽셀)
+    private Flyout? _gridFlyout;
+    private bool _expanded = true, _closed;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _anim;
+    private System.Diagnostics.Stopwatch? _clock;
+    private double _from, _to, _k;       // 펼친 정도(0~1)
 
-    private BarEditBar(Border root, TextBlock name, Button[] cardButtons, GroupManager mgr, Func<string?> selected, Action ended, bool flyLeft)
-        : base("Desk Cards 카드 바 편집", root)
+    private BarEditBar(FrameworkElement outer, TextBlock name, Button[] cardButtons, GroupManager mgr, Func<string?> selected,
+        int dir, Windows.Foundation.Size full, System.Drawing.Point anchor)
+        : base("Desk Cards 카드 바 편집", outer)
     {
         _name = name;
         _cardButtons = cardButtons;
         _mgr = mgr;
         _selected = selected;
-        _ended = ended;
-        _flyLeft = flyLeft;
+        _dir = dir;
+        _full = full;
+        _anchor = anchor;
     }
 
     public interface IOwner
@@ -39,7 +46,8 @@ internal sealed class BarEditBar : ToolWindow
         GroupManager Mgr { get; }
         string? Selected { get; }
         ScreenEdge Edge { get; }
-        System.Drawing.Rectangle Final { get; }
+        /// <summary>편집 중 알약(톱니 한 칸)의 자리(물리 픽셀).</summary>
+        System.Drawing.Rectangle GearRect { get; }
         void ShowAddMenu();
         void Rename(string group);
         void RemoveFromBar(string group);
@@ -50,11 +58,23 @@ internal sealed class BarEditBar : ToolWindow
     {
         if (_bar != null) return;
         var mgr = o.Mgr;
-        var items = new StackPanel { Orientation = Orientation.Vertical, Spacing = 2 };
+        var items = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
         var root = new Border { Padding = new Thickness(6), Background = Theme.Brush("PopupBg"), Child = items };
 
-        // 화면 편집 막대와 같은 단추(폭 40, 높이 36)·간격·강조색을 그대로 쓰고 세로로만 늘어놓는다. 이름은 바 안의 선택 테두리로 알 수 있어 글자는 두지 않는다.
-        var name = new TextBlock(); // 안 보이는 자리표시(선택 이름은 단추 툴팁으로)
+        var guides = new ToggleButton { Content = EditBar.Glyph("\uE80A"), MinWidth = 40, Height = 36, IsChecked = mgr.ShowGuides };
+        ToolTipService.SetToolTip(guides, "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(guides, "안내선");
+        guides.Click += (_, _) => mgr.ShowGuides = guides.IsChecked == true;
+
+        var name = new TextBlock
+        {
+            FontSize = 13,
+            MinWidth = 96,
+            MaxWidth = 160,
+            Margin = new Thickness(8, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
         BarEditBar? self = null;
         var gridButton = EditBar.Btn("\uE80A", "미리보기 칸 수", () => { });
         gridButton.Content = EditBar.GridContent();
@@ -63,32 +83,41 @@ internal sealed class BarEditBar : ToolWindow
         var remove = EditBar.Btn("\uE738", "카드 바에서 빼기 (Delete)", () => { if (o.Selected is { } g) o.RemoveFromBar(g); });
         var cardButtons = new[] { rename, gridButton, remove };
 
-        items.Children.Add(EditBar.Btn("\uE710", "카드 넣기", o.ShowAddMenu));
-        var guides = new ToggleButton { Content = EditBar.Glyph("\uE80A"), MinWidth = 40, Height = 36, IsChecked = mgr.ShowGuides };
-        ToolTipService.SetToolTip(guides, "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)");
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(guides, "안내선");
-        guides.Click += (_, _) => mgr.ShowGuides = guides.IsChecked == true;
-        items.Children.Add(guides);
-        items.Children.Add(EditBar.Sep2());
-        foreach (var b in cardButtons) items.Children.Add(b);
-        items.Children.Add(EditBar.Sep2());
-        items.Children.Add(EditBar.Btn("\uE713", "설정", () => SettingsWindow.Open(mgr, null)));
-        var done = new Button
+        var doneContent = new StackPanel
         {
-            Content = EditBar.Glyph("\uE73E", 14),
-            Height = 32,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
-            Margin = new Thickness(0, 4, 0, 0),
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                EditBar.Glyph("\uE73E", 14),
+                new TextBlock { Text = "완료", FontSize = 14, Margin = new Thickness(8, 0, 0, 1), VerticalAlignment = VerticalAlignment.Center },
+            },
         };
+        var done = new Button { Content = doneContent, Height = 32, Style = (Style)Application.Current.Resources["AccentButtonStyle"], Margin = new Thickness(4, 0, 2, 0) };
         ToolTipService.SetToolTip(done, "편집 끝내기 (Esc)");
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(done, "완료");
         done.Click += (_, _) => o.End();
-        items.Children.Add(done);
-        foreach (var child in items.Children)
-            if (child is Control btn) { btn.HorizontalAlignment = HorizontalAlignment.Stretch; btn.HorizontalContentAlignment = HorizontalAlignment.Center; }
 
-        self = new BarEditBar(root, name, cardButtons, mgr, () => o.Selected, o.End, o.Edge == ScreenEdge.Right);
+        items.Children.Add(EditBar.Btn("\uE710", "카드 넣기", o.ShowAddMenu));
+        items.Children.Add(guides);
+        items.Children.Add(EditBar.Sep());
+        items.Children.Add(name);
+        foreach (var b in cardButtons) items.Children.Add(b);
+        items.Children.Add(EditBar.Sep());
+        items.Children.Add(EditBar.Btn("\uE713", "설정", () => SettingsWindow.Open(mgr, null)));
+        items.Children.Add(done);
+
+        // 다 펼쳤을 때 크기를 재고, 알약 쪽에 붙여 두어 창이 커지는 만큼만 드러나게 한다.
+        root.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var full = root.DesiredSize;
+        int dir = o.Edge == ScreenEdge.Left ? -1 : 1;
+        root.Width = full.Width;
+        root.HorizontalAlignment = dir > 0 ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        root.VerticalAlignment = VerticalAlignment.Top;
+        var outer = new Grid { Children = { root } };
+
+        var gear = o.GearRect;
+        var anchor = new System.Drawing.Point(dir > 0 ? gear.Right : gear.Left, gear.Top + gear.Height / 2);
+        self = new BarEditBar(outer, name, cardButtons, mgr, () => o.Selected, dir, full, anchor);
         _bar = self;
         self.Closed += (_, _) =>
         {
@@ -97,39 +126,76 @@ internal sealed class BarEditBar : ToolWindow
             o.End(); // Alt+F4 등으로 막대만 닫혔으면 바 편집도 끝낸다.
         };
         self.Refresh();
-        self.PlaceBeside(o.Edge, o.Final);
+        self.Apply(0);
         self.AppWindow.Show();
+        self.Animate(1);
     }
 
     public static void CloseBar()
     {
         var bar = _bar;
         _bar = null;
-        bar?.Close();
+        if (bar == null) return;
+        bar._closed = true;
+        bar.StopAnim();
+        bar.Close();
     }
 
     public static void Update() => _bar?.Refresh();
 
-    /// <summary>바 옆, 바 길이의 가운데에 둔다. 왼쪽·위 바는 오른쪽·아래에, 오른쪽·아래 바는 왼쪽·위에 붙는다.</summary>
-    private void PlaceBeside(ScreenEdge edge, System.Drawing.Rectangle bar)
+    /// <summary>톱니를 눌렀을 때: 펼쳐져 있으면 접고, 접혀 있으면 펼친다.</summary>
+    public static void Toggle()
     {
-        var wa = Screens.FromPoint(bar.Left + bar.Width / 2, bar.Top + bar.Height / 2).WorkArea;
-        double s = Native.MonitorScaleAt(bar.Left + bar.Width / 2, bar.Top + bar.Height / 2);
-        int gap = (int)Math.Round(8 * s);
-        int cx = bar.Left + bar.Width / 2, cy = bar.Top + bar.Height / 2;
-        switch (edge)
+        if (_bar is not { } b) return;
+        b._expanded = !b._expanded;
+        if (b._expanded) b.AppWindow.Show();
+        b.Animate(b._expanded ? 1 : 0);
+    }
+
+    // ----- 펼치고 접기 -----
+
+    private void Apply(double k)
+    {
+        _k = k;
+        double scale = Native.MonitorScaleAt(_anchor.X, _anchor.Y);
+        int w = Math.Max(1, (int)Math.Round(_full.Width * scale * k)), h = (int)Math.Round(_full.Height * scale);
+        int x = _dir > 0 ? _anchor.X : _anchor.X - w;
+        Resize(new Windows.Graphics.RectInt32(x, _anchor.Y - h / 2, w, h));
+    }
+
+    private void Animate(double to)
+    {
+        StopAnim();
+        _from = _k;
+        _to = to;
+        _clock = System.Diagnostics.Stopwatch.StartNew();
+        _anim = Ui.Queue.CreateTimer();
+        _anim.Interval = TimeSpan.FromMilliseconds(8);
+        double ms = to > _from ? 280 : 200;
+        _anim.Tick += (_, _) =>
         {
-            case ScreenEdge.Left: Place(bar.Right + gap, cy, anchorY: 0.5); break;
-            case ScreenEdge.Right: Place(bar.Left - gap, cy, anchorX: 1, anchorY: 0.5); break;
-            case ScreenEdge.Top: Place(cx, bar.Bottom + gap, centerX: true); break;
-            default: Place(cx, bar.Top - gap, centerX: true, anchorY: 1); break;
-        }
-        _ = wa;
+            double t = Math.Min(1, _clock!.ElapsedMilliseconds / ms);
+            double c = Math.Cbrt(t), eased = t >= 1 ? 1 : 3 * (1 - c) * c * c + c * c * c; // 감속(cubic-bezier(0,0,0,1))
+            Apply(_from + (_to - _from) * eased);
+            if (t < 1) return;
+            StopAnim();
+            if (_to == 0 && !_closed) AppWindow.Hide();
+        };
+        _anim.Start();
+    }
+
+    private void StopAnim()
+    {
+        _anim?.Stop();
+        _anim = null;
     }
 
     private void Refresh()
     {
         var sel = _selected();
+        _name.Text = sel ?? "카드를 누르세요";
+        _name.Foreground = Theme.Brush(sel != null ? "Fg" : "SubFg");
+        ToolTipService.SetToolTip(_name, sel);
         foreach (var b in _cardButtons) b.IsEnabled = sel != null;
     }
 
@@ -160,7 +226,7 @@ internal sealed class BarEditBar : ToolWindow
         _gridFlyout = new Flyout
         {
             Content = new StackPanel { Children = { grid, hint } },
-            Placement = _flyLeft ? FlyoutPlacementMode.Left : FlyoutPlacementMode.Right,
+            Placement = FlyoutPlacementMode.Bottom,
             ShouldConstrainToRootBounds = false,
         };
         _gridFlyout.ShowAt(target);

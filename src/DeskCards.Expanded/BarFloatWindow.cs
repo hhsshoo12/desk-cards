@@ -5,28 +5,39 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 
 namespace DeskCards.Expanded;
 
 /// <summary>
-/// 카드 바 옆(화면 안쪽, 바의 시작 모서리)에 떠 있는 작은 설정 버튼. 바 안의 카드를 가리지 않으려고 바 밖에 따로 띄운다.
+/// 카드 바 옆(화면 안쪽, 바의 시작 모서리)에 떠 있는 알약: 설정(톱니)과 편집(연필) 두 칸. 바 안의 카드를 가리지 않으려고 바 밖에 따로 띄운다.
 /// 바가 다 나오면 가장 가까운 화면 모서리 쪽에서 미끄러져 들어오고, 바가 들어가기 시작하면 그쪽으로 나간다. 활성 창을 빼앗지 않는다.
+/// 편집을 시작하면 연필이 톱니 쪽으로 들어가 한 칸이 되고, 그 톱니가 편집 막대를 펼치고 접는 단추가 된다.
 /// </summary>
 internal sealed class BarFloatWindow : Window
 {
     public const double Size = 36;
     private const double Shadow = 12; // 그림자가 잘리지 않게 두는 여백
 
-    private readonly Border _body;
+    private readonly bool _vertical;
+    private readonly Border _body, _gearCell, _penCell;
+    private readonly TextBlock _gear, _pen;
+    private readonly TranslateTransform _penShift = new();
     private readonly Stopwatch _clock = new();
+    private readonly Action _settings, _edit, _toggle;
     private (int X, int Y) _home, _away, _from, _to, _now; // 창 왼쪽 위(물리 픽셀)
     private double _ms;
-    private bool _moving, _leaving;
+    private bool _moving, _leaving, _editing;
     private IntPtr _handle;
 
-    public BarFloatWindow(Palette palette, Action click)
+    /// <param name="vertical">바가 왼쪽·오른쪽이면 세로 알약(두 칸이 위아래), 위·아래면 가로 알약.</param>
+    public BarFloatWindow(Palette palette, bool vertical, Action settings, Action edit, Action toggle)
     {
+        _vertical = vertical;
+        _settings = settings;
+        _edit = edit;
+        _toggle = toggle;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -34,50 +45,82 @@ internal sealed class BarFloatWindow : Window
         ShowActivated = false;
         Topmost = true;
         ResizeMode = ResizeMode.NoResize;
-        Width = Height = Size + 2 * Shadow;
+        Width = (vertical ? Size : 2 * Size) + 2 * Shadow;
+        Height = (vertical ? 2 * Size : Size) + 2 * Shadow;
         Left = Top = -32000;
         Title = "Desk Cards 카드 바 설정";
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI, Malgun Gothic");
 
         var fg = Brush(palette.Fg);
-        var icon = new TextBlock
-        {
-            Text = "\uE713",
-            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-            FontSize = 16,
-            Foreground = fg,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
         var hover = Brush(palette.HoverBg);
+        _gear = Glyph("\uE713", fg);
+        _pen = Glyph("\uE70F", fg);
+        _pen.RenderTransform = _penShift;
+        _gearCell = Cell(_gear, hover, () => { if (_editing) _toggle(); else _settings(); });
+        _penCell = Cell(_pen, hover, () => _edit());
+        _gearCell.ToolTip = "카드 바 설정";
+        _penCell.ToolTip = "카드 바 편집";
+
+        var grid = new Grid { Width = vertical ? Size : 2 * Size, Height = vertical ? 2 * Size : Size };
+        if (vertical)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Size) });
+            Grid.SetRow(_penCell, 1);
+        }
+        else
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Size) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Size) });
+            Grid.SetColumn(_penCell, 1);
+        }
+        grid.Children.Add(_gearCell);
+        grid.Children.Add(_penCell);
+
         var popup = (Color)ColorConverter.ConvertFromString(palette.PopupBg);
         popup.A = 0xF2;
         _body = new Border
         {
-            Width = Size,
-            Height = Size,
+            Width = grid.Width,
+            Height = grid.Height,
             Margin = new Thickness(Shadow),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
             Background = new SolidColorBrush(popup),
             BorderBrush = Brush(palette.CardBorder),
-            Child = icon,
-            ToolTip = "카드 바 설정",
+            ClipToBounds = true,
+            Child = grid,
             Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Direction = 270, Opacity = 0.18 },
         };
-        var normal = _body.Background;
-        _body.MouseEnter += (_, _) => _body.Background = Blend(popup, hover);
-        _body.MouseLeave += (_, _) => { _body.Background = normal; icon.Opacity = 1; };
-        _body.MouseLeftButtonDown += (_, e) => { e.Handled = true; icon.Opacity = 0.7; };
-        _body.MouseLeftButtonUp += (_, e) => { e.Handled = true; icon.Opacity = 1; click(); };
         Content = _body;
         SourceInitialized += (_, _) =>
         {
             _handle = new WindowInteropHelper(this).Handle;
-            // 활성 창을 빼앗지 않는 도구 창
             long ex = GetWindowLongPtr(_handle, -20).ToInt64();
-            SetWindowLongPtr(_handle, -20, new IntPtr(ex | 0x80L | 0x08000000L));
+            SetWindowLongPtr(_handle, -20, new IntPtr(ex | 0x80L | 0x08000000L)); // 도구 창 + 활성 창을 빼앗지 않음
         };
+    }
+
+    private static TextBlock Glyph(string glyph, Brush fg) => new()
+    {
+        Text = glyph,
+        FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+        FontSize = 16,
+        Foreground = fg,
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center,
+    };
+
+    private static Border Cell(TextBlock icon, Brush hover, Action click)
+    {
+        var cell = new Border { Width = Size, Height = Size, Background = Brushes.Transparent, Child = icon, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+        cell.MouseEnter += (_, _) => cell.Background = hover;
+        cell.MouseLeave += (_, _) => { cell.Background = Brushes.Transparent; icon.Opacity = cell.Tag is true ? 0 : 1; };
+        cell.MouseLeftButtonDown += (_, e) => { e.Handled = true; icon.Opacity = 0.7; };
+        cell.MouseLeftButtonUp += (_, e) => { e.Handled = true; icon.Opacity = 1; click(); };
+        return cell;
     }
 
     private static Brush Brush(string argb)
@@ -87,24 +130,33 @@ internal sealed class BarFloatWindow : Window
         return b;
     }
 
-    private static Brush Blend(Color baseColor, Brush overlay)
+    /// <summary>편집 중이면 연필이 톱니 칸으로 들어가 알약이 한 칸이 된다. 끝나면 다시 두 칸.</summary>
+    public void SetEditing(bool editing)
     {
-        var o = ((SolidColorBrush)overlay).Color;
-        double a = o.A / 255.0;
-        byte Mix(byte x, byte y) => (byte)Math.Round(x * (1 - a) + y * a);
-        return new SolidColorBrush(Color.FromArgb(baseColor.A, Mix(baseColor.R, o.R), Mix(baseColor.G, o.G), Mix(baseColor.B, o.B)));
+        if (_editing == editing) return;
+        _editing = editing;
+        _gearCell.ToolTip = editing ? "편집 막대 펼치기 · 접기" : "카드 바 설정";
+        double len = Size;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var dur = TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? 220 : 0);
+        var side = _vertical ? Border.HeightProperty : Border.WidthProperty;
+        var shift = _vertical ? TranslateTransform.YProperty : TranslateTransform.XProperty;
+        _body.BeginAnimation(side, new DoubleAnimation(editing ? 2 * len : len, editing ? len : 2 * len, dur) { EasingFunction = ease });
+        _penShift.BeginAnimation(shift, new DoubleAnimation(editing ? 0 : -len, editing ? -len : 0, dur) { EasingFunction = ease });
+        _pen.BeginAnimation(OpacityProperty, new DoubleAnimation(editing ? 1 : 0, editing ? 0 : 1, dur) { EasingFunction = ease });
+        _penCell.IsHitTestVisible = !editing;
     }
 
-    /// <summary>버튼 본체(그림자 제외)의 왼쪽 위가 body.Left/Top에 오도록 들어온다. bounds에서 가장 가까운 모서리 바깥에서 출발한다.</summary>
+    /// <summary>알약 전체(두 칸)의 왼쪽 위가 body.Left/Top에 오도록 들어온다. bounds에서 가장 가까운 모서리 바깥에서 출발한다.</summary>
     public void Enter(PixelRect body, PixelRect bounds, double scale)
     {
-        int pad = (int)Math.Round(Shadow * scale), size = (int)Math.Round(Size * scale);
+        int pad = (int)Math.Round(Shadow * scale), w = body.Width, h = body.Height;
         _home = (body.Left - pad, body.Top - pad);
-        int toLeft = body.Left - bounds.Left, toRight = bounds.Right - (body.Left + size), toTop = body.Top - bounds.Top, toBottom = bounds.Bottom - (body.Top + size);
+        int toLeft = body.Left - bounds.Left, toRight = bounds.Right - (body.Left + w), toTop = body.Top - bounds.Top, toBottom = bounds.Bottom - (body.Top + h);
         int min = Math.Min(Math.Min(toLeft, toRight), Math.Min(toTop, toBottom));
-        _away = min == toTop ? (_home.X, bounds.Top - size - 2 * pad)
+        _away = min == toTop ? (_home.X, bounds.Top - h - 2 * pad)
             : min == toBottom ? (_home.X, bounds.Bottom)
-            : min == toLeft ? (bounds.Left - size - 2 * pad, _home.Y)
+            : min == toLeft ? (bounds.Left - w - 2 * pad, _home.Y)
             : (bounds.Right, _home.Y);
         _leaving = false;
         if (!IsVisible)

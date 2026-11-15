@@ -47,7 +47,10 @@ internal static class EdgeBar
         public string? Selected { get; private set; }
         GroupManager BarEditBar.IOwner.Mgr => Mgr;
         ScreenEdge BarEditBar.IOwner.Edge => Edge;
-        Rectangle BarEditBar.IOwner.Final => Final;
+        Rectangle BarEditBar.IOwner.GearRect
+        {
+            get { var f = FloatBody(); int s = (int)Math.Round(BarFloat * Scale); return new Rectangle(f.Left, f.Top, s, s); }
+        }
         private List<ShellEntry> _watched = new();
         private bool _pushQueued;
 
@@ -266,16 +269,20 @@ internal static class EdgeBar
 
         public void SettingsRequested() => Ui.Post(() => SettingsWindow.OpenBar(Mgr));
 
-        /// <summary>바 옆 설정 버튼 본체의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳.</summary>
+        public void EditRequested() => Ui.Post(Begin);
+
+        public void ToggleEditBar() => Ui.Post(BarEditBar.Toggle);
+
+        /// <summary>바 옆 알약(설정·편집 두 칸)의 자리(물리 픽셀): 바의 시작 모서리, 화면 안쪽으로 틈만큼 떨어진 곳. 왼·오른쪽 바는 세로로, 위·아래 바는 가로로 두 칸.</summary>
         public Rectangle FloatBody()
         {
             int size = (int)Math.Round(BarFloat * Scale), gap = (int)Math.Round(Gap * Scale);
             return Edge switch
             {
-                ScreenEdge.Left => new(Final.Right + gap, Final.Top, size, size),
-                ScreenEdge.Right => new(Final.Left - gap - size, Final.Top, size, size),
-                ScreenEdge.Top => new(Final.Left, Final.Bottom + gap, size, size),
-                _ => new(Final.Left, Final.Top - gap - size, size, size),
+                ScreenEdge.Left => new(Final.Right + gap, Final.Top, size, 2 * size),
+                ScreenEdge.Right => new(Final.Left - gap - size, Final.Top, size, 2 * size),
+                ScreenEdge.Top => new(Final.Left, Final.Bottom + gap, 2 * size, size),
+                _ => new(Final.Left, Final.Top - gap - size, 2 * size, size),
             };
         }
 

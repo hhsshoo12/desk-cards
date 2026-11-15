@@ -106,8 +106,9 @@ internal sealed partial class BarWindow : Window
     /// <summary>바 옆 설정 버튼을 띄운다(편집 중에는 편집 막대에 설정이 있어 숨긴다).</summary>
     private void ShowFloat()
     {
-        if (_o.FloatBody is not { } body || _closing || _editing) return;
-        _float ??= new BarFloatWindow(_o.Palette, _host.SettingsRequested);
+        if (_o.FloatBody is not { } body || _closing) return;
+        _float ??= new BarFloatWindow(_o.Palette, Side, _host.SettingsRequested, _host.EditRequested, _host.ToggleEditBar);
+        _float.SetEditing(_editing);
         _float.Enter(body, _o.Bounds, _o.Scale);
     }
 
