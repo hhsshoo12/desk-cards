@@ -5,17 +5,10 @@ using System.Windows.Threading;
 namespace DeskCards.Expanded;
 
 /// <summary>카드 바가 앱에 알리는 일. 구현은 앱 UI 스레드로 넘겨서 처리한다.</summary>
-public interface IBarHost
+public interface IBarHost : ICardViewHost
 {
     /// <summary>바가 다 들어가서 창이 닫혔다.</summary>
     void Closed();
-    void Launch(string path);
-    /// <summary>카드 안 항목의 우클릭 메뉴(앱이 연다).</summary>
-    void ItemMenu(string path);
-    /// <summary>카드의 아이콘이 아닌 곳을 우클릭했을 때의 메뉴(앱이 연다).</summary>
-    void CardMenu(string group);
-    /// <summary>카드를 펼친다. cardRect는 그 카드가 화면에 있는 자리(물리 픽셀).</summary>
-    void Expand(string group, bool hover, PixelRect cardRect);
     void AddToGroup(string group, IReadOnlyList<string> paths);
     /// <summary>비어 있는 바를 눌렀다(카드를 넣는 메뉴를 연다).</summary>
     void EmptyClicked(PixelRect barRect);

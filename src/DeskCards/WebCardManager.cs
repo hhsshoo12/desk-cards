@@ -129,7 +129,7 @@ internal sealed class WebCardManager
         if (!_editing) return;
         foreach (var r in _running.Values) r.Handle?.SetEditing(true);
         // 카드 올리기는 창 스레드에서 비동기로 끝나므로, 그 뒤에 편집 막대를 다시 맨 위로 올린다.
-        WebCards.After(() => Ui.Post(EditBar.BringToTop));
+        DesktopCards.After(() => Ui.Post(EditBar.BringToTop));
     }
 
     private void Open(InstalledWebCard card)
@@ -174,7 +174,7 @@ internal sealed class WebCardManager
             var m = _card.Manifest;
             if (m.Html != null)
             {
-                Handle = WebCards.Open(new WebCardOptions(Id, m.Name, _card.Directory, m.Html,
+                Handle = DesktopCards.OpenWeb(new WebCardOptions(Id, m.Name, _card.Directory, m.Html,
                     Path.Combine(AppPaths.LocalDataDir, "webdata"),
                     _placement.X, _placement.Y, _placement.Width, _placement.Height, _placement.Shown, ExpandedWindow.CurrentPalette()), this);
                 if (editing) Handle.SetEditing(true);
@@ -243,6 +243,10 @@ internal sealed class WebCardManager
             if (_owner._cfg.ShowGuides) SmartGuides.Show(wa, lines); else SmartGuides.Hide();
             return new PixelRect(x, y, x + rect.Width, y + rect.Height);
         }, rect);
+
+        public double SnapScale(string id, PixelRect start, double scale) => scale;
+
+        public void Selected() { }
 
         public void GuidesOff() => Ui.Post(SmartGuides.Hide);
 

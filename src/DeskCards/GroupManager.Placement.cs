@@ -92,7 +92,7 @@ internal sealed partial class GroupManager
     {
         double s = Native.PrimaryScale();
         var wa = Screens.Primary.WorkArea; // 물리 픽셀
-        var taken = AllCards.Where(c => Hwnd.Of(c) != IntPtr.Zero).Select(c => c.Footprint).ToList();
+        var taken = AllCards.Where(c => c.Handle != IntPtr.Zero).Select(c => c.Footprint).ToList();
 
         double k = _cfg.DefaultZoom * ZoomFactor(s);
         var size = baseSize ?? CardWindow.BaseSize(new CardLayout(), CellSize);

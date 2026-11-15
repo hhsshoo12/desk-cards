@@ -21,7 +21,9 @@ internal sealed class BarCardView : Grid
     public const double LabelH = 28;
     private const string OverflowTag = "overflow";
 
-    private readonly IBarHost _host;
+    private readonly ICardViewHost _host;
+    private readonly bool _desktop;
+    private bool _dirty = true;
     private readonly UniformGrid _cells = new() { Rows = 2, Columns = 2 };
     private readonly TextBlock _placeholder, _label;
     private readonly DispatcherTimer _hoverTimer = new();
@@ -32,21 +34,27 @@ internal sealed class BarCardView : Grid
     private BarCardData _data;
     private bool _hoverExpand;
 
-    public BarCardView(IBarHost host, BarCardData data)
+    /// <param name="desktop">바탕화면 카드면 Windows가 그리는 창 배경 위에 칸만 그린다(판·그림자·이름 줄 없음, 크기는 창을 따른다).</param>
+    public BarCardView(ICardViewHost host, BarCardData data, bool desktop = false)
     {
         _host = host;
         _data = data;
+        _desktop = desktop;
         RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        RowDefinitions.Add(new RowDefinition { Height = new GridLength(LabelH) });
+        RowDefinitions.Add(new RowDefinition { Height = new GridLength(desktop ? 0 : LabelH) });
 
         Card = new Border
         {
-            CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
-            Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 },
+            CornerRadius = new CornerRadius(desktop ? 4 : 8),
+            BorderThickness = new Thickness(desktop ? 0 : 1),
         };
-        Card.SetResourceReference(Border.BackgroundProperty, "CardBg");
-        Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+        if (desktop) Card.Background = Brushes.Transparent;
+        else
+        {
+            Card.Effect = new DropShadowEffect { BlurRadius = 10, ShadowDepth = 2, Direction = 270, Opacity = 0.22 };
+            Card.SetResourceReference(Border.BackgroundProperty, "CardBg");
+            Card.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+        }
         Children.Add(Card);
         Children.Add(_cells);
 
@@ -71,7 +79,9 @@ internal sealed class BarCardView : Grid
         };
         _label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         SetRow(_label, 1);
+        if (desktop) _label.Visibility = Visibility.Collapsed;
         Children.Add(_label);
+        if (desktop) SizeChanged += (_, _) => Relayout();
 
         _hoverTimer.Tick += (_, _) =>
         {
@@ -125,6 +135,13 @@ internal sealed class BarCardView : Grid
         box.Loaded += (_, _) => { Keyboard.Focus(box); box.SelectAll(); };
     }
 
+    /// <summary>바탕화면 카드: 파일을 끌어다 놓을 대상일 때의 강조 테두리.</summary>
+    public void SetDrop(bool on)
+    {
+        Card.BorderThickness = new Thickness(on ? 3 : 0);
+        if (on) Card.SetResourceReference(Border.BorderBrushProperty, "Accent");
+        else Card.ClearValue(Border.BorderBrushProperty);
+    }
     /// <summary>카드 배경 판. 드롭 대상 강조 테두리는 쓰는 쪽이 여기에 칠한다.</summary>
     public Border Card { get; }
 
@@ -142,14 +159,30 @@ internal sealed class BarCardView : Grid
         _data = data;
         _hoverExpand = hoverExpand;
         _hoverTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1, hoverDelayMs));
+        _dirty = true;
+        if (_desktop) { Relayout(); return; }
         double cell = data.Cell;
         Width = data.Cols * cell;
         Height = data.Rows * cell + LabelH;
+        Layout(cell);
+        Rebuild();
+    }
+
+    private void Layout(double cell)
+    {
         double pad = cell * 0.17;
         _cells.Margin = new Thickness(pad);
-        double inner = (cell * data.Cols - 2 * pad) / data.Cols - 6;
+        double inner = (cell * _data.Cols - 2 * pad) / _data.Cols - 6;
         _iconSize = Math.Clamp(Math.Round(inner * 0.74), 16, 128);
-        Rebuild();
+    }
+
+    /// <summary>바탕화면 카드: 창 크기에서 칸 크기를 정한다. 내용이나 아이콘 크기가 바뀔 때만 다시 만든다.</summary>
+    private void Relayout()
+    {
+        if (ActualWidth <= 0 || _data.Cols <= 0) return;
+        double old = _iconSize;
+        Layout(ActualWidth / _data.Cols);
+        if (_dirty || old != _iconSize) Rebuild();
     }
 
     private static BitmapSource? IconOf(TileData d)
@@ -162,6 +195,7 @@ internal sealed class BarCardView : Grid
 
     private void Rebuild()
     {
+        _dirty = false;
         _label.Text = _data.Name;
         _cells.Children.Clear();
         _cells.Columns = _data.Cols;

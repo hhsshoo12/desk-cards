@@ -53,7 +53,7 @@ internal sealed class ExpandedWindow : IExpandedHost
         var options = new ExpandedOptions(
             new Palette(Hex("Fg"), Hex("SubFg"), Hex("HoverBg"), Hex("PopupBg"), Theme.IsLight),
             EditTitle: editTitle, Hover: hover, Topmost: mgr.Editing || anchor != IntPtr.Zero,
-            Reference: anchor != IntPtr.Zero ? anchor : Hwnd.Of(card));
+            Reference: anchor != IntPtr.Zero ? anchor : card.Handle);
         w._view = ExpandedView.Open(w, options, card.Group.Name, card.Group.Folder, w.Snapshot());
         card.Group.Changed += w.Push;
         w.Watch();
@@ -127,7 +127,7 @@ internal sealed class ExpandedWindow : IExpandedHost
 
     public (int X, int Y) Place(int widthPx, int heightPx) => OnUi(() =>
     {
-        var reference = _anchor != IntPtr.Zero ? _anchor : Hwnd.Of(_card);
+        var reference = _anchor != IntPtr.Zero ? _anchor : _card.Handle;
         Point p;
         if (_place != null) p = _place(widthPx, heightPx);
         else

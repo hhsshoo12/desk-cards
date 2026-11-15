@@ -117,7 +117,7 @@ internal sealed partial class GroupManager
     private void RecreateCard(CardWindow card)
     {
         // 화면상 왼쪽 위(물리 픽셀)를 그대로 저장한 뒤 다시 띄운다.
-        var hwnd = Hwnd.Of(card);
+        var hwnd = card.Handle;
         if (Native.GetWindowRect(hwnd, out var r))
         {
             _cfg.PositionsPx[card.Key] = new[] { (double)r.Left, r.Top };

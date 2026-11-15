@@ -2,7 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Gdi = System.Drawing;
 
-namespace DeskCards;
+namespace DeskCards.Expanded;
 
 /// <summary>
 /// 카드 아래에 떠 있는 이름 줄. 바탕화면 아이콘 이름처럼 판 없이 글자만 보인다.
@@ -267,4 +267,20 @@ internal sealed class CardLabel : IDisposable
     [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr dc);
     [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr dc, IntPtr obj);
     [DllImport("gdi32.dll")] private static extern IntPtr CreateDIBSection(IntPtr dc, ref Native.BITMAPINFOHEADER info, uint usage, out IntPtr bits, IntPtr section, uint offset);
-}
+
+    private static class Native
+    {
+        public const long WS_EX_TOOLWINDOW = 0x80, WS_EX_NOACTIVATE = 0x08000000, WS_EX_TRANSPARENT = 0x20, WS_EX_LAYERED = 0x80000;
+        public const uint SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+        [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BITMAPINFOHEADER
+        {
+            public uint biSize; public int biWidth, biHeight; public ushort biPlanes, biBitCount; public uint biCompression, biSizeImage;
+            public int biXPelsPerMeter, biYPelsPerMeter; public uint biClrUsed, biClrImportant;
+        }
+        [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hwnd);
+        [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+        [DllImport("user32.dll")] public static extern bool DestroyWindow(IntPtr hwnd);
+        [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr obj);
+    }}
