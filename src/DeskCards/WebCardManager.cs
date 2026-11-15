@@ -258,12 +258,42 @@ internal sealed class WebCardManager
 
         // ----- IWebCardHost (WPF 창 스레드에서 불린다) -----
 
+        /// <summary>
+        /// 옮기거나 크기를 바꾸고 놓았다. 편집 중이면 폴더 카드와 같은 규칙으로 자리를 검사한다:
+        /// 겹쳤으면 끌기 전 자리로 돌려놓고, 간격보다 가까우면 간격만큼 떼어 놓는다.
+        /// </summary>
         public void Bounds(int x, int y, int width, int height) => Ui.Post(() =>
         {
-            _placement.X = x; _placement.Y = y; _placement.Width = width; _placement.Height = height;
+            if (_disposed) return;
+            var prev = new PixelRect(_placement.X, _placement.Y, _placement.X + _placement.Width, _placement.Y + _placement.Height);
+            var now = new PixelRect(x, y, x + width, y + height);
+            if (_owner._editing) now = Settle(prev, now);
+            _placement.X = now.Left; _placement.Y = now.Top; _placement.Width = now.Width; _placement.Height = now.Height;
             _owner._cfg.Save();
+            Handle?.SetHighlight(false, false);
+            _owner._mgr.RefreshPlacement();
             _owner._mgr.RaiseEditLayerNow();
         });
+
+        private PixelRect Settle(PixelRect prev, PixelRect now)
+        {
+            var others = _owner._mgr.CardRects(null, Id);
+            int gap = SmartGuides.GapPx(Native.MonitorScaleOf(Handle?.Hwnd ?? IntPtr.Zero));
+            var me = new Native.RECT { Left = now.Left, Top = now.Top, Right = now.Right, Bottom = now.Bottom };
+            var p = SmartGuides.Check(me, others, gap);
+            if (p == SmartGuides.Placement.Ok) return now;
+            if (p == SmartGuides.Placement.Overlap) now = prev;
+            else
+            {
+                var (dx, dy) = SmartGuides.PushApart(me, others, gap);
+                var wa = DesktopGrid.WorkAreaAt(now.Left + now.Width / 2, now.Top + now.Height / 2);
+                int nx = Math.Max(wa.Left, Math.Min(now.Left + dx, wa.Right - now.Width));
+                int ny = Math.Max(wa.Top, Math.Min(now.Top + dy, wa.Bottom - now.Height));
+                now = new PixelRect(nx, ny, nx + now.Width, ny + now.Height);
+            }
+            Handle?.SetBounds(now.Left, now.Top, now.Width, now.Height);
+            return now;
+        }
 
         public void Menu() => _owner.ShowMenu(Id);
 
@@ -273,8 +303,12 @@ internal sealed class WebCardManager
         {
             var wa = DesktopGrid.WorkAreaAt(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
             var others = _owner._mgr.CardRects(null, Id);
-            var (x, y, lines) = SmartGuides.Snap(rect.Left, rect.Top, rect.Width, rect.Height, others, wa, Native.PrimaryScale());
+            double scale = Native.MonitorScaleOf(Handle?.Hwnd ?? IntPtr.Zero);
+            var (x, y, lines) = SmartGuides.Snap(rect.Left, rect.Top, rect.Width, rect.Height, others, wa, scale);
             if (_owner._cfg.ShowGuides) SmartGuides.Show(wa, lines); else SmartGuides.Hide();
+            // 안 되는 자리면 끄는 동안 빨간 테두리(폴더 카드와 같다)
+            var placed = new Native.RECT { Left = x, Top = y, Right = x + rect.Width, Bottom = y + rect.Height };
+            Handle?.SetHighlight(false, SmartGuides.Check(placed, others, SmartGuides.GapPx(scale)) != SmartGuides.Placement.Ok);
             return new PixelRect(x, y, x + rect.Width, y + rect.Height);
         }, rect);
 
