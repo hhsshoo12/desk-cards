@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8">
+<style>
+ body{margin:0;padding:10px;font:13px 'Segoe UI';color:#222;line-height:1.7}
+ [data-theme=dark] body{color:#eee}
+ button{margin:2px 0;padding:4px 10px}
+</style>
+<div>테마: <b id="t">-</b></div>
+<div>편집 모드: <b id="e">-</b></div>
+<div>exe: <b id="x">-</b> (이 카드는 exe가 없어 항상 꺼짐)</div>
+<div>크기: <b id="b">-</b></div>
+<button id="o">임시 창 열기</button>
+<div id="m"></div>
+<script>
+const $=i=>document.getElementById(i);
+const d=window.deskcard;
+const show=()=>{$('t').textContent=d.theme;$('e').textContent=d.editing;$('x').textContent=d.exe;
+ $('b').textContent=d.bounds?Math.round(d.bounds.w)+' × '+Math.round(d.bounds.h):'-'};
+d.ontheme=d.onediting=d.onexe=d.onbounds=show; show();
+$('o').onclick=()=>d.overlay.open({url:'popup.html',x:0,y:d.bounds?d.bounds.h+8:210,width:280,height:160});
+d.overlay.onmessage=v=>{$('m').textContent='임시 창에서: '+v};
+</script>
