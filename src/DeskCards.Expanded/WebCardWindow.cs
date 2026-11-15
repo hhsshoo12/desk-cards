@@ -46,7 +46,13 @@ internal sealed class WebCardWindow : DesktopCardWindow
 
     protected override void OnBoundsChanged() => PushBounds();
 
-    protected override void OnVisibilityChanged(bool visible) => PostEvent("visibility", visible);
+    protected override void OnVisibilityChanged(bool visible)
+    {
+        if (!visible) CloseOverlay();
+        PostEvent("visibility", visible);
+    }
+
+    protected override void OnClosedCore() => _overlay?.Dismiss();
 
     protected override void OnPaletteChanged(Palette palette) => PostEvent("theme", palette.Light ? "light" : "dark");
 
@@ -73,8 +79,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
         _booted = true;
         try
         {
-            _environment ??= CoreWebView2Environment.CreateAsync(null, _o.BrowserDataDir);
-            await _web.EnsureCoreWebView2Async(await _environment);
+            await _web.EnsureCoreWebView2Async(await GetEnvironment(_o.BrowserDataDir));
         }
         catch (Exception ex)
         {
@@ -133,8 +138,82 @@ internal sealed class WebCardWindow : DesktopCardWindow
 
     internal void ToPage(string json) => Post("{\"t\":\"msg\",\"d\":" + json + "}");
 
-    private void PostEvent(string name, object value) =>
-        Post(JsonSerializer.Serialize(new Dictionary<string, object> { ["t"] = "evt", ["n"] = name, ["v"] = value }));
+    internal static string Evt(string name, object value) =>
+        JsonSerializer.Serialize(new Dictionary<string, object> { ["t"] = "evt", ["n"] = name, ["v"] = value });
+
+    private void PostEvent(string name, object value) => Post(Evt(name, value));
+
+    internal static Task<CoreWebView2Environment> GetEnvironment(string browserDataDir) => _environment ??= CoreWebView2Environment.CreateAsync(null, browserDataDir);
+
+    // ----- 임시 창(overlay) -----
+
+    private CardOverlayWindow? _overlay;
+
+    /// <summary>카드 화면이 deskcard.overlay.open으로 요청했다. 위치(x,y)는 카드 왼쪽 위 기준 CSS 픽셀이고 카드 밖(음수·큰 값)도 된다.</summary>
+    private void OpenOverlay(JsonElement m)
+    {
+        double k = Scale;
+        double Num(string key, double fallback) => m.TryGetProperty(key, out var v) && v.TryGetDouble(out double d) && double.IsFinite(d) ? d : fallback;
+        string? url = m.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+        if (string.IsNullOrWhiteSpace(url) || url.Contains("://") || url.Contains("..")) return; // 카드 폴더 안의 상대 주소만
+        int w = (int)Math.Round(Math.Clamp(Num("w", 320), 40, 4000) * k), h = (int)Math.Round(Math.Clamp(Num("h", 240), 40, 4000) * k);
+        int x = X + (int)Math.Round(Num("x", 0) * k), y = Y + (int)Math.Round(Num("y", 0) * k);
+        var wa = WorkAreaOf(new PixelRect(x, y, x + w, y + h));
+        x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
+        y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
+        CloseOverlay();
+        var o = new CardOverlayWindow(this, _o.Id + ".deskcard", _o.Folder, url, _o.BrowserDataDir, Light, new PixelRect(x, y, x + Math.Min(w, wa.Width), y + Math.Min(h, wa.Height)));
+        _overlay = o;
+        o.Present();
+    }
+
+    internal void CloseOverlay()
+    {
+        var o = _overlay;
+        if (o == null) return;
+        _overlay = null;
+        o.Dismiss();
+        PostEvent("overlayclose", true);
+    }
+
+    /// <summary>임시 창이 저절로 사라졌다(다른 곳을 눌렀다 등).</summary>
+    internal void OverlayDismissed(CardOverlayWindow o)
+    {
+        if (_overlay != o) return;
+        _overlay = null;
+        o.Dismiss();
+        PostEvent("overlayclose", true);
+    }
+
+    /// <summary>임시 창 화면이 보낸 요청.</summary>
+    internal void FromOverlay(CardOverlayWindow from, string? t, JsonElement root)
+    {
+        if (_overlay != from) return;
+        switch (t)
+        {
+            case "msg": _host.FromPage(root.GetProperty("d").GetRawText()); break;
+            case "ovl":
+                switch (root.GetProperty("a").GetString())
+                {
+                    case "send": PostEvent("overlay", root.GetProperty("d")); break;
+                    case "close": CloseOverlay(); break;
+                }
+                break;
+        }
+    }
+
+    private static PixelRect WorkAreaOf(PixelRect r)
+    {
+        var rc = new RECT { Left = r.Left, Top = r.Top, Right = r.Right, Bottom = r.Bottom };
+        var mon = MonitorFromRect(ref rc, 2);
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        return GetMonitorInfo(mon, ref info) ? new PixelRect(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom) : r;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromRect(ref RECT rect, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
 
     /// <summary>페이지가 준비되면 현재 상태를 한꺼번에 알려 준다.</summary>
     private void PushState()
@@ -170,6 +249,14 @@ internal sealed class WebCardWindow : DesktopCardWindow
                 case "menu": _host.Menu(); break;
                 case "ready": PushState(); break;
                 case "win": OnWindowRequest(root); break;
+                case "ovl":
+                    switch (root.GetProperty("a").GetString())
+                    {
+                        case "open": OpenOverlay(root); break;
+                        case "close": CloseOverlay(); break;
+                        case "send": _overlay?.Post(Evt("overlay", root.GetProperty("d"))); break;
+                    }
+                    break;
             }
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException) { }
@@ -200,20 +287,27 @@ internal sealed class WebCardWindow : DesktopCardWindow
         }
     }
 
-    private const string Shim = """
+    internal const string Shim = """
 (()=>{const w=window.chrome.webview;
 const d=window.deskcard={bounds:null,visible:true,theme:'light',editing:false,exe:false,onmessage:null,onbounds:null,onvisibility:null,ontheme:null,onediting:null,onexe:null,
  send:x=>w.postMessage({t:'msg',d:x}),
  window:{resize:(width,height)=>w.postMessage({t:'win',a:'resize',w:width,h:height}),
   move:(x,y)=>w.postMessage({t:'win',a:'move',x:x,y:y}),
   show:()=>w.postMessage({t:'win',a:'visible',v:true}),
-  hide:()=>w.postMessage({t:'win',a:'visible',v:false})}};
+  hide:()=>w.postMessage({t:'win',a:'visible',v:false})},
+ overlay:{isOverlay:!!window.__dcOverlay,onmessage:null,onclose:null,
+  open:o=>w.postMessage({t:'ovl',a:'open',url:o.url,x:o.x||0,y:o.y||0,w:o.width,h:o.height}),
+  close:()=>w.postMessage({t:'ovl',a:'close'}),
+  send:x=>w.postMessage({t:'ovl',a:'send',d:x})}};
+if(window.__dcOverlay)window.addEventListener('keydown',e=>{if(e.key==='Escape')w.postMessage({t:'ovl',a:'close'});});
 w.addEventListener('message',e=>{const m=e.data;if(!m)return;
  if(m.t==='msg'){if(typeof d.onmessage==='function')d.onmessage(m.d);window.dispatchEvent(new CustomEvent('deskcard',{detail:m.d}));}
  else if(m.t==='evt'){if(m.n==='bounds'){d.bounds=m.v;if(typeof d.onbounds==='function')d.onbounds(m.v);}
   else if(m.n==='visibility'){d.visible=m.v;if(typeof d.onvisibility==='function')d.onvisibility(m.v);}
   else if(m.n==='theme'){d.theme=m.v;document.documentElement.dataset.theme=m.v;if(typeof d.ontheme==='function')d.ontheme(m.v);}
   else if(m.n==='editing'){d.editing=m.v;if(typeof d.onediting==='function')d.onediting(m.v);}
+  else if(m.n==='overlay'){if(typeof d.overlay.onmessage==='function')d.overlay.onmessage(m.v);}
+  else if(m.n==='overlayclose'){if(typeof d.overlay.onclose==='function')d.overlay.onclose();}
   else if(m.n==='exe'){d.exe=m.v;if(typeof d.onexe==='function')d.onexe(m.v);}}});
 window.addEventListener('contextmenu',e=>{e.preventDefault();w.postMessage({t:'menu'});},true);
 w.postMessage({t:'ready'});})();
