@@ -14,10 +14,10 @@ internal static class Menus
         .Item("", "바탕화면으로 꺼내기", () => FileOps.MoveTo(entry.Path, FileOps.UserDesktop))
         .Item("", "휴지통으로 이동", () => FileOps.Recycle(entry.Path));
 
-    public static FluentMenu ForCard(CardWindow card, GroupManager mgr) => new FluentMenu()
-        .Item("", "펼치기", () => ExpandedWindow.Open(card, mgr))
-        .Item("", "카드 편집 (이동 · 크기 · 삭제)", () => mgr.BeginEditMode(card))
-        .Item("", "이름 바꾸기", () => ExpandedWindow.Open(card, mgr, editTitle: true))
+    public static FluentMenu ForCard(CardWindow card, GroupManager mgr, Action? expand = null, Action? edit = null, Action? rename = null) => new FluentMenu()
+        .Item("", "펼치기", expand ?? (() => ExpandedWindow.Open(card, mgr)))
+        .Item("", "카드 편집 (이동 · 크기 · 삭제)", edit ?? (() => mgr.BeginEditMode(card)))
+        .Item("", "이름 바꾸기", rename ?? (() => ExpandedWindow.Open(card, mgr, editTitle: true)))
         .Item("", "폴더 열기", () => FileOps.OpenFolder(card.Group.Folder))
         .Separator()
         .Item("", "새 그룹", () => mgr.NewGroup())

@@ -243,7 +243,7 @@ internal sealed class CardPage : SettingsPage
             Stepper(() => card.CurrentLayout.Cols, v => card.SetGrid(v, card.CurrentLayout.Rows), CardLayout.MinCells, CardLayout.MaxCells, v => $"{v}칸"));
         Row("", "세로 칸", null,
             Stepper(() => card.CurrentLayout.Rows, v => card.SetGrid(card.CurrentLayout.Cols, v), CardLayout.MinCells, CardLayout.MaxCells, v => $"{v}칸"));
-        Row("", "편집", "이 카드를 골라 편집 모드를 시작해요.", Btn("편집", () => Mgr.BeginEditMode(card)));
+        Row("", "편집", "이 카드를 골라 편집 모드를 시작해요.", Btn("편집", () => { if (!EdgeBar.TryBeginEdit(card)) Mgr.BeginEditMode(card); }));
         Row("", "폴더 열기", card.Group.Folder, Btn("열기", () => FileOps.OpenFolder(card.Group.Folder)));
         Row("", "카드 삭제", "카드와 그룹 폴더를 지워요.", Btn("삭제", () =>
         {

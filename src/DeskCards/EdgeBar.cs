@@ -124,8 +124,7 @@ internal static class EdgeBar
         public void CardMenu(string group) => Ui.Post(() =>
         {
             if (Mgr.GroupCard(group) is not { } card) return;
-            var m = Menus.ForCard(card, Mgr).Separator();
-            if (!Editing) m.Item("", "카드 바 편집", Begin);
+            var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => Rename(group)).Separator();
             m.Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
         });
 
@@ -137,11 +136,17 @@ internal static class EdgeBar
         public void Expand(string group, bool hover, PixelRect cardRect) => Ui.Post(() =>
         {
             if (Mgr.GroupCard(group) is not { } card) return;
+            ExpandFor(card, hover, cardRect);
+        });
+
+        private void ExpandFor(CardWindow card, bool hover, PixelRect? cardRect)
+        {
             if (hover && ExpandedWindow.IsOpenFor(card)) return;
             ExpandedWindow.Open(card, Mgr, hover: hover, anchor: View.Handle, place: (w, h) =>
             {
+                if (cardRect is not { } r) return CenterIn(w, h);
                 // 시작 메뉴 폴더처럼 누른 카드 자리 가운데에 바 안쪽으로 펼친다(바보다 크면 바 가운데, 화면 밖으로는 나가지 않게).
-                double cx = (cardRect.Left + cardRect.Right) / 2.0, cy = (cardRect.Top + cardRect.Bottom) / 2.0;
+                double cx = (r.Left + r.Right) / 2.0, cy = (r.Top + r.Bottom) / 2.0;
                 double x = Math.Clamp(cx - w / 2.0, Final.Left, Math.Max(Final.Left, Final.Right - w));
                 double y = Math.Clamp(cy - h / 2.0, Final.Top, Math.Max(Final.Top, Final.Bottom - h));
                 if (w > Final.Width) x = (Final.Left + Final.Right - w) / 2.0;
@@ -150,7 +155,7 @@ internal static class EdgeBar
                 y = Math.Clamp(y, WorkArea.Top, Math.Max(WorkArea.Top, WorkArea.Bottom - h));
                 return new Windows.Foundation.Point(x, y);
             });
-        });
+        }
 
         public void EmptyClicked(PixelRect barRect) => Ui.Post(() =>
         {
@@ -279,6 +284,14 @@ internal static class EdgeBar
             return Side ? (c0, 0) : (0, c0);
         }
     }
+    /// <summary>이 카드가 지금 떠 있는 카드 바 안에 있으면 바 편집을 시작한다(설정의 "편집" 버튼용).</summary>
+    public static bool TryBeginEdit(CardWindow card)
+    {
+        if (_bar is not { Gone: false } bar || bar.Mgr.BarItems.All(i => !string.Equals(i.Group, card.Group.Name, StringComparison.OrdinalIgnoreCase))) return false;
+        bar.Begin();
+        return true;
+    }
+
     public static void Start(GroupManager mgr)
     {
         _mgr = mgr;
