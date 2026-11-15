@@ -57,11 +57,31 @@ internal sealed class CardOverlayWindow : Window
 
         SourceInitialized += OnSourceInitialized;
         Loaded += async (_, _) => await StartAsync();
-        Deactivated += (_, _) => { if (IsLoaded) _owner.OverlayDismissed(this); };
-        Closed += (_, _) => { try { _web.Dispose(); } catch (Exception) { } _owner.OverlayDismissed(this); };
+        Deactivated += (_, _) => OnDeactivated();
+        Closed += (_, _) => { CardLog.Write("overlay 닫힘(Closed)"); try { _web.Dispose(); } catch (Exception) { } _owner.OverlayDismissed(this); };
     }
 
     private readonly PixelRect _screen;
+    private readonly System.Diagnostics.Stopwatch _age = System.Diagnostics.Stopwatch.StartNew();
+
+    /// <summary>
+    /// 활성이 풀렸다. 열리는 순간(WebView2가 초점을 가져가는 사이)에는 잠깐 풀렸다 돌아오므로, 열린 지 0.6초가 안 됐거나
+    /// 0.15초 뒤에도 활성이 아닐 때만 닫는다.
+    /// </summary>
+    private void OnDeactivated()
+    {
+        CardLog.Write($"overlay 활성 해제 (열린 지 {_age.ElapsedMilliseconds}ms)");
+        if (!IsLoaded || _closing) return;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (_closing || IsActive || _age.ElapsedMilliseconds < 600) { CardLog.Write("overlay 활성 해제 무시"); return; }
+            CardLog.Write("overlay 닫음: 다른 곳이 활성");
+            _owner.OverlayDismissed(this);
+        };
+        timer.Start();
+    }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
@@ -80,6 +100,7 @@ internal sealed class CardOverlayWindow : Window
     /// <summary>창을 띄운다(카드 창이 부른다).</summary>
     public void Present()
     {
+        CardLog.Write("overlay 열기");
         Show();
         Activate();
     }
