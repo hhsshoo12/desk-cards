@@ -155,7 +155,10 @@ internal sealed partial class CardWindow
 
     internal void RestorePosition(Point point)
     {
-        MoveTo((int)Math.Round(point.X), (int)Math.Round(point.Y));
+        // 보조 모니터(다른 배율)에 있던 카드면 창이 그 모니터로 옮겨진 뒤의 배율로 크기를 정해야 하므로 끝날 때까지 기다린다.
+        int x = (int)Math.Round(point.X), y = (int)Math.Round(point.Y);
+        _rect = new PixelRect(x, y, x + _rect.Width, y + _rect.Height);
+        if (!_closed) _h.SetBoundsNow(x, y, _rect.Width, _rect.Height);
     }
 
     /// <summary>크기와 층은 그대로 두고 물리 픽셀 위치로 옮긴다.</summary>

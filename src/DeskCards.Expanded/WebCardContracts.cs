@@ -72,6 +72,8 @@ public interface IDesktopCardHandle
     IntPtr Hwnd { get; }
     /// <summary>카드 내용 영역을 옮기고 크기를 바꾼다(끝난 뒤 돌아온다).</summary>
     void SetBounds(int x, int y, int width, int height);
+    /// <summary>SetBounds와 같지만 끝날 때까지 기다린다(다른 모니터로 옮겨서 배율이 바뀐 뒤의 값을 바로 읽어야 할 때).</summary>
+    void SetBoundsNow(int x, int y, int width, int height);
     void SetEditing(bool editing);
     /// <summary>편집 중 강조: 고른 카드, 안 되는 자리(빨강).</summary>
     void SetHighlight(bool selected, bool invalid);

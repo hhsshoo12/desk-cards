@@ -31,6 +31,7 @@ internal sealed partial class GroupManager
     {
         if (Editing || _shuttingDown) return;
         foreach (var c in AllCards) c.RestackAtBottom();
+        WebCardManager.Instance?.Restack();
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Ui.Post(() =>

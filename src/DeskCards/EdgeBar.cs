@@ -576,9 +576,12 @@ internal static class EdgeBar
     /// 마우스가 바(와 가장자리 사이 틈) 밖으로 나가면 들어간다.
     /// 펼친 창·우클릭 메뉴가 떠 있거나 항목을 끌어내는 중에는 기다린다.
     /// </summary>
+    /// <summary>왼쪽 버튼을 누르고 있는지(항목을 바 밖으로 끌어내는 동안 바가 닫히지 않게).</summary>
+    private static bool LeftButtonDown() => (Native.GetAsyncKeyState(0x01) & 0x8000) != 0;
+
     private static void CheckLeave(OpenBar bar)
     {
-        if (bar.Closing || bar.Editing || FileOps.Dragging || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
+        if (bar.Closing || bar.Editing || LeftButtonDown() || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
         if (!Native.GetCursorPos(out var pt)) return;
         var r = bar.Final;
         var b = bar.Bounds;

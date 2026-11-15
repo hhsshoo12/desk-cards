@@ -462,6 +462,7 @@ internal sealed class LibrariesPage : SettingsPage
         Header("앱에 포함");
         Lib(".NET 10 런타임", "MIT 라이선스 · .NET Foundation, Microsoft", "https://github.com/dotnet/runtime/blob/main/LICENSE.TXT");
         Lib("Windows App SDK · WinUI 3", "MIT 라이선스 · Microsoft", "https://github.com/microsoft/WindowsAppSDK/blob/main/LICENSE");
+        Lib("Microsoft Edge WebView2 SDK", "웹 카드 화면 · Microsoft 소프트웨어 라이선스 조건", "https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3719.77/License");
         Lib("Windows Community Toolkit (설정 컨트롤)", "MIT 라이선스 · .NET Foundation", "https://github.com/CommunityToolkit/Windows/blob/main/License.md");
         Lib(".NET 런타임에 포함된 제3자 구성 요소", "런타임이 함께 싣고 있는 오픈 소스 목록이에요.", "https://github.com/dotnet/runtime/blob/main/THIRD-PARTY-NOTICES.TXT", "목록");
         Header("Windows 구성 요소 (앱에 포함하지 않음)");

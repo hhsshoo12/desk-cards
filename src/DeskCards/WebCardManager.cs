@@ -133,6 +133,13 @@ internal sealed class WebCardManager
         foreach (var r in _running.Values) r.Handle?.SetEditing(editing);
     }
 
+    /// <summary>눌려서 활성화된 뒤 바탕화면(Progman) 앞뒤가 흐트러졌으니 웹 카드도 맨 아래로 다시 내린다.</summary>
+    public void Restack()
+    {
+        if (_editing) return;
+        foreach (var r in _running.Values) r.Handle?.Restack();
+    }
+
     /// <summary>어두운 막 뒤로 밀린 카드를 다시 막 위로 올린다.</summary>
     public void RaiseForEdit()
     {
@@ -273,7 +280,7 @@ internal sealed class WebCardManager
 
         public double SnapScale(string id, PixelRect start, double scale) => scale;
 
-        public void Selected() { }
+        public void Selected() => Ui.Post(() => _owner._mgr.Select(null)); // 웹 카드를 누르면 폴더 카드의 선택은 풀린다
 
         public void GuidesOff() => Ui.Post(SmartGuides.Hide);
 

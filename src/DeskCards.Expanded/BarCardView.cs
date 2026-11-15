@@ -185,7 +185,18 @@ internal sealed class BarCardView : Grid
         if (_dirty || old != _iconSize) Rebuild();
     }
 
+    // 크기를 끌어 바꾸는 동안 칸을 다시 만들어도 아이콘 그림은 다시 만들지 않는다.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TileData, BitmapSource> IconCache = new();
+
     private static BitmapSource? IconOf(TileData d)
+    {
+        if (IconCache.TryGetValue(d, out var cached)) return cached;
+        var made = MakeIcon(d);
+        if (made != null) IconCache.Add(d, made);
+        return made;
+    }
+
+    private static BitmapSource? MakeIcon(TileData d)
     {
         if (d.Icon is not { Length: > 0 } px || d.IconWidth <= 0 || d.IconHeight <= 0 || px.Length < d.IconWidth * d.IconHeight * 4) return null;
         var bmp = BitmapSource.Create(d.IconWidth, d.IconHeight, 96, 96, PixelFormats.Pbgra32, null, px, d.IconWidth * 4);

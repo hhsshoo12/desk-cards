@@ -83,16 +83,23 @@ internal sealed class FolderCardWindow : DesktopCardWindow
 
     private void OnDrag(object sender, DragEventArgs e)
     {
-        bool ok = e.Data.GetDataPresent(DataFormats.FileDrop);
+        // 이 카드의 폴더에서 끌어낸 항목을 이 카드 위로 지나가도 넣을 대상이 아니다(이미 들어 있다).
+        bool ok = e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Any(p => !InThisFolder(p));
         e.Effects = ok ? DragDropEffects.Move : DragDropEffects.None;
         _view.SetDrop(ok);
         e.Handled = true;
     }
 
+    private bool InThisFolder(string path)
+    {
+        try { return string.Equals(System.IO.Path.GetDirectoryName(path), System.IO.Path.GetFullPath(_data.Folder).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase); }
+        catch (ArgumentException) { return false; }
+    }
+
     private void OnDrop(object sender, DragEventArgs e)
     {
         _view.SetDrop(false);
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length > 0) _host.AddToGroup(paths.ToList());
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Any(p => !InThisFolder(p))) _host.AddToGroup(paths.ToList());
         e.Effects = DragDropEffects.None; // 옮기기는 앱이 직접 하므로 원본 쪽에서 지우지 않게
         e.Handled = true;
     }

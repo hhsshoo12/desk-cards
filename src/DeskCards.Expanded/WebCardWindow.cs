@@ -89,6 +89,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
         s.AreDevToolsEnabled = false;
 #endif
         core.WebMessageReceived += OnWebMessage;
+        core.NavigationCompleted += (_, _) => { if (Editing) OnEditingChanged(true); }; // 편집 중에 열리거나 다시 불러와도 끌기 영역을 다시 건다
         core.ProcessFailed += (_, e) =>
         {
             if (!Dead && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
@@ -103,7 +104,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
         string host = _o.Id + ".deskcard";
         core.SetVirtualHostNameToFolderMapping(host, _o.Folder, CoreWebView2HostResourceAccessKind.Allow);
         await core.AddScriptToExecuteOnDocumentCreatedAsync(Shim);
-        core.Navigate($"https://{host}/{Uri.EscapeDataString(_o.Html).Replace("%2F", "/")}");
+        core.Navigate($"https://{host}/{Uri.EscapeDataString(_o.Html.Replace('\\', '/')).Replace("%2F", "/")}");
     }
 
     private void ShowError(string text)

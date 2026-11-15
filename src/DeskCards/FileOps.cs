@@ -195,34 +195,6 @@ internal static class FileOps
         catch { }
     }
 
-    /// <summary>항목을 끌어내는 중인지.</summary>
-    public static bool Dragging { get; private set; }
-
-    public static async Task DragOut(UIElement source, string path, PointerPoint point)
-    {
-        Dragging = true;
-        Windows.Foundation.TypedEventHandler<UIElement, DragStartingEventArgs>? starting = null;
-        try
-        {
-            IStorageItem item = Directory.Exists(path)
-                ? await StorageFolder.GetFolderFromPathAsync(path)
-                : await StorageFile.GetFileFromPathAsync(path);
-            starting = (_, e) =>
-            {
-                e.Data.RequestedOperation = DataPackageOperation.Move | DataPackageOperation.Copy | DataPackageOperation.Link;
-                e.Data.SetStorageItems(new[] { item });
-            };
-            source.DragStarting += starting;
-            await source.StartDragAsync(point);
-        }
-        catch { }
-        finally
-        {
-            if (starting != null) source.DragStarting -= starting;
-            Dragging = false;
-        }
-    }
-
     public static string Unique(string folder, string name)
     {
         string dest = Path.Combine(folder, name);

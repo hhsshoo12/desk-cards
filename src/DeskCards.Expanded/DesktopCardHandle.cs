@@ -23,6 +23,7 @@ internal abstract class DesktopCardHandle<T> : IDesktopCardHandle where T : Desk
 
     public IntPtr Hwnd => _hwnd;
     public void SetBounds(int x, int y, int width, int height) => Run(() => Window.SetBounds(x, y, width, height));
+    public void SetBoundsNow(int x, int y, int width, int height) => WpfThread.Dispatcher.Invoke(() => Window.SetBounds(x, y, width, height));
     public void SetEditing(bool editing) => Run(() => Window.SetEditing(editing));
     public void SetHighlight(bool selected, bool invalid) => Run(() => Window.SetHighlight(selected, invalid));
     public void SetVisible(bool visible) => Run(() => Window.SetVisible(visible));
