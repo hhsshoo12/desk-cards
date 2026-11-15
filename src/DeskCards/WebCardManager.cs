@@ -29,6 +29,12 @@ internal sealed class WebCardManager
         Theme.Changed += OnThemeChanged;
     }
 
+    /// <summary>카드 바 안의 웹 카드를 바 설정(BarItems)에서 가리키는 이름. 폴더 이름에는 ":"를 쓸 수 없어 그룹 이름과 겹치지 않는다.</summary>
+    public const string BarPrefix = "web:";
+    public static string BarKey(string id) => BarPrefix + id;
+    public static bool IsBarKey(string key) => key.StartsWith(BarPrefix, StringComparison.Ordinal);
+    public static string BarId(string key) => key[BarPrefix.Length..];
+
     public WebCardStore Store { get; }
 
     /// <summary>카드가 가져와졌거나 놓이거나 없어졌을 때(설정 창 갱신용).</summary>
@@ -84,7 +90,9 @@ internal sealed class WebCardManager
     /// <summary>바탕화면에 놓는다.</summary>
     public void Place(string id)
     {
-        if (Find(id) is not { } card || _running.ContainsKey(id)) return;
+        if (Find(id) is not { } card) return;
+        if (_running.TryGetValue(id, out var inBar) && inBar.BarOnly) { _mgr.RemoveBarKey(BarKey(id)); Close(id); } // 바탕화면과 카드 바 중 한 곳에만 둔다
+        if (_running.ContainsKey(id)) return;
         double k = Native.PrimaryScale();
         int w = (int)Math.Round(card.Manifest.Width * k), h = (int)Math.Round(card.Manifest.Height * k);
         var wa = Screens.Primary.WorkArea;
@@ -107,6 +115,7 @@ internal sealed class WebCardManager
     public void Uninstall(string id)
     {
         Unplace(id);
+        _mgr.RemoveBarKey(BarKey(id));
         try { Store.Remove(id); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         Changed?.Invoke();
     }
@@ -128,6 +137,31 @@ internal sealed class WebCardManager
     public void StartExe(string id) { if (_running.TryGetValue(id, out var r)) r.StartExe(); }
     public void StopExe(string id) { if (_running.TryGetValue(id, out var r)) r.StopExe(); }
     public void RestartExe(string id) { if (_running.TryGetValue(id, out var r)) r.RestartProcess(); }
+
+    // ----- 카드 바 안의 웹 카드: 화면은 바가 그리고, exe와 메시지 중계는 여기서 한다 -----
+
+    /// <summary>바가 열려 이 카드를 보여 준다. 바탕화면에 놓인 카드는 한 곳에만 두므로 먼저 내린다. toPage는 exe가 보낸 메시지를 화면으로 전한다.</summary>
+    public void BarAttach(string id, Action<string> toPage)
+    {
+        if (_shuttingDown || Find(id) is not { } card) return;
+        if (_running.TryGetValue(id, out var r)) { if (r.BarOnly) r.BarSink = toPage; return; }
+        var run = new Running(this, card, new WebCardPlacement { Shown = true }) { BarOnly = true, BarSink = toPage };
+        _running[id] = run;
+        run.Start(false);
+    }
+
+    /// <summary>바가 닫혔다. 계속 도는 카드(background)가 아니면 exe도 끝낸다.</summary>
+    public void BarDetach(string id)
+    {
+        if (!_running.TryGetValue(id, out var r) || !r.BarOnly) return;
+        r.BarSink = null;
+        if (!r.Background) Close(id);
+    }
+
+    public void BarSend(string id, string json)
+    {
+        if (_running.TryGetValue(id, out var r)) r.FromPage(json);
+    }
 
     public void Reload(string id)
     {
@@ -209,12 +243,17 @@ internal sealed class WebCardManager
 
         public IWebCardHandle? Handle { get; private set; }
 
+        /// <summary>카드 바 안에서만 도는 카드(바탕화면 창 없음).</summary>
+        public bool BarOnly { get; init; }
+        public Action<string>? BarSink { get; set; }
+        public bool Background => _card.Manifest.Background;
+
         public string Id => _card.Manifest.Id;
 
         public void Start(bool editing)
         {
             var m = _card.Manifest;
-            if (m.Html != null)
+            if (m.Html != null && !BarOnly)
             {
                 Handle = DesktopCards.OpenWeb(new WebCardOptions(Id, m.Name, _card.Directory, m.Html,
                     Path.Combine(AppPaths.LocalDataDir, "webdata"),
@@ -288,11 +327,13 @@ internal sealed class WebCardManager
         private void OnExeLine(string line)
         {
             var handle = Handle;
-            if (_disposed || handle == null) return;
+            var sink = BarSink;
+            if (_disposed || (handle == null && sink == null)) return;
             string json;
             try { using var doc = JsonDocument.Parse(line); json = line; }
             catch (JsonException) { json = JsonSerializer.Serialize(line); }
-            handle.ToPage(json);
+            handle?.ToPage(json);
+            sink?.Invoke(json);
         }
 
         // ----- IWebCardHost (WPF 창 스레드에서 불린다) -----

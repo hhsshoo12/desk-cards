@@ -12,15 +12,17 @@ internal sealed partial class BarWindow
 {
     private sealed class Entry
     {
-        public BarCardView View = null!;
+        public BarCardView? View;       // 폴더 카드
+        public BarWebCard? Web;         // 웹 카드(View와 둘 중 하나)
         public Grid Box = null!;
         public Border Frame = null!, Shield = null!, Grip = null!;
-        public ScaleTransform Scale = null!;
+        public ScaleTransform? Scale;   // 폴더 카드만(웹 카드는 칸 크기가 곧 화면 크기)
         public BarCardData Data = null!;
         public double Aspect;
     }
 
     private readonly List<Entry> _entries = new();
+    private readonly Dictionary<string, BarWebCard> _webs = new(StringComparer.OrdinalIgnoreCase); // 다시 늘어놓아도 웹 화면은 다시 불러오지 않는다
     private bool _editing;
     private string? _selected;
     private bool _guidesOn, _renaming;
@@ -29,7 +31,7 @@ internal sealed partial class BarWindow
     public void BeginRename(string group)
     {
         var en = _entries.FirstOrDefault(e => e.Data.Group == group);
-        if (en == null || _renaming) return;
+        if (en?.View == null || _renaming) return;
         _renaming = true;
         Select(group);
         Activate();
@@ -53,18 +55,33 @@ internal sealed partial class BarWindow
         if (_active != null || _renaming) { _deferred = content; return; }
         _guidesOn = content.Guides;
         _float?.SetGuides(content.Guides);
+        foreach (var w0 in _webs.Values) (w0.Parent as Panel)?.Children.Remove(w0);
         _canvas.Children.Clear();
         _entries.Clear();
         double u = U;
         foreach (var data in content.Cards)
         {
-            var view = new BarCardView(_host, data);
-            view.Apply(data, content.HoverExpand, content.HoverDelayMs);
             double w = data.W * u;
-            double aspect = view.Height / Math.Max(1, view.Width);
-            double k = w / Math.Max(1, view.Width);
-            var scale = new ScaleTransform(k, k);
-            var scaled = new Border { Child = view, LayoutTransform = scale, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            BarCardView? view = null;
+            BarWebCard? web = null;
+            ScaleTransform? scale = null;
+            UIElement body;
+            double aspect;
+            if (data.Web is { } wc)
+            {
+                aspect = wc.Aspect;
+                if (!_webs.TryGetValue(wc.Id, out web)) _webs[wc.Id] = web = new BarWebCard(_host, wc, data.Name, _o.Palette.Light);
+                body = web;
+            }
+            else
+            {
+                view = new BarCardView(_host, data);
+                view.Apply(data, content.HoverExpand, content.HoverDelayMs);
+                aspect = view.Height / Math.Max(1, view.Width);
+                double k = w / Math.Max(1, view.Width);
+                scale = new ScaleTransform(k, k);
+                body = new Border { Child = view, LayoutTransform = scale, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top };
+            }
             var frame = new Border
             {
                 BorderThickness = new Thickness(2),
@@ -75,9 +92,9 @@ internal sealed partial class BarWindow
             };
             frame.SetResourceReference(Border.BorderBrushProperty, "Accent");
             var box = new Grid { Width = w, Height = w * aspect };
-            box.Children.Add(scaled);
+            box.Children.Add(body);
             box.Children.Add(frame);
-            var entry = new Entry { View = view, Box = box, Frame = frame, Scale = scale, Data = data, Aspect = aspect };
+            var entry = new Entry { View = view, Web = web, Box = box, Frame = frame, Scale = scale, Data = data, Aspect = aspect };
 
             // 편집 중에는 카드 위를 덮개가 가려 눌러도 실행되지 않고, 끌어 옮기고 모서리로 크기를 바꾼다.
             var shield = new Border { Background = Brushes.Transparent, Cursor = Cursors.SizeAll, Visibility = Visibility.Collapsed };
@@ -96,7 +113,7 @@ internal sealed partial class BarWindow
             WireEdit(entry);
 
             // 바탕화면 카드처럼 파일·아이콘을 끌어다 놓으면 그 그룹에 넣는다. 놓을 수 있는 동안 파란 테두리.
-            box.AllowDrop = true;
+            box.AllowDrop = view != null;
             void Over(object? _, DragEventArgs a)
             {
                 bool ok = !_editing && a.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } paths &&
@@ -105,6 +122,8 @@ internal sealed partial class BarWindow
                 frame.Visibility = ok ? Visibility.Visible : (_editing && _selected == data.Group ? Visibility.Visible : Visibility.Hidden);
                 a.Handled = true;
             }
+            if (view != null)
+            {
             box.DragEnter += Over;
             box.DragOver += Over;
             box.DragLeave += (_, _) => ShowFrame(entry);
@@ -116,14 +135,32 @@ internal sealed partial class BarWindow
                 a.Effects = DragDropEffects.None;
                 a.Handled = true;
             };
+            }
             Canvas.SetLeft(box, data.X * u);
             Canvas.SetTop(box, data.Y * u);
             _canvas.Children.Add(box);
             _entries.Add(entry);
         }
+        foreach (var gone in _webs.Keys.Where(id => _entries.All(e => e.Web?.Id != id)).ToList())
+        {
+            _webs[gone].Dispose();
+            _webs.Remove(gone);
+        }
         if (_selected != null && _entries.All(e => e.Data.Group != _selected)) Select(null);
         ApplyEditState();
         UpdateEmpty();
+    }
+
+    /// <summary>exe가 보낸 메시지를 그 웹 카드 화면으로 전한다.</summary>
+    public void WebToPage(string id, string json)
+    {
+        if (_webs.TryGetValue(id, out var web)) web.ToPage(json);
+    }
+
+    private void CloseWebs()
+    {
+        foreach (var w in _webs.Values) w.Dispose();
+        _webs.Clear();
     }
 
     private void UpdateEmpty()
@@ -174,6 +211,7 @@ internal sealed partial class BarWindow
         foreach (var e in _entries)
         {
             e.Shield.Visibility = _editing ? Visibility.Visible : Visibility.Collapsed;
+            e.Web?.SetEditing(_editing);
             ShowFrame(e);
         }
     }
@@ -287,8 +325,7 @@ internal sealed partial class BarWindow
     {
         en.Box.Width = w;
         en.Box.Height = w * en.Aspect;
-        double k = w / Math.Max(1, en.View.Width);
-        en.Scale.ScaleX = en.Scale.ScaleY = k;
+        if (en.Scale != null && en.View != null) en.Scale.ScaleX = en.Scale.ScaleY = w / Math.Max(1, en.View.Width);
     }
 
     // ----- 안내선·자리 검사는 바탕화면 카드와 같은 규칙을 쓰려고 앱(SmartGuides)에 묻는다. 좌표는 화면 물리 픽셀이다. -----

@@ -91,5 +91,23 @@ internal static partial class Program
             process.Dispose();
             Check(process.HasExited);
         });
+
+        Test("web card: process reports its exit code when it ends by itself", () =>
+        {
+            string ps = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+            var codes = new System.Collections.Concurrent.BlockingCollection<int>();
+            using var process = new WebCardProcess(ps, work, "com.test.exit", Path.Combine(work, "data"), "-NoProfile -Command \"exit 7\"");
+            process.Exited += codes.Add;
+            process.Start();
+            Check(codes.TryTake(out int code, 15000) && code == 7);
+        });
+
+        Test("web card: bar key round-trips and never collides with a folder name", () =>
+        {
+            string key = WebCardManager.BarKey("com.test.a");
+            Check(key == "web:com.test.a" && WebCardManager.IsBarKey(key) && WebCardManager.BarId(key) == "com.test.a");
+            Check(!WebCardManager.IsBarKey("새 그룹"));
+            Check(Path.GetInvalidFileNameChars().Contains(':')); // 폴더 이름에는 ':'를 쓸 수 없으므로 그룹 이름과 겹치지 않는다
+        });
     }
 }

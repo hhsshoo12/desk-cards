@@ -53,6 +53,13 @@ internal sealed partial class GroupManager
         RaiseChanged();
     }
 
+    /// <summary>카드 바에서 그 키(웹 카드 "web:아이디" 등)의 카드를 뺀다.</summary>
+    public void RemoveBarKey(string key)
+    {
+        if (_cfg.BarItems.All(i => !string.Equals(i.Group, key, StringComparison.OrdinalIgnoreCase))) return;
+        SetBarItems(_cfg.BarItems.Where(i => !string.Equals(i.Group, key, StringComparison.OrdinalIgnoreCase)));
+    }
+
     private void RenameInBar(string oldName, string newName)
     {
         foreach (var item in _cfg.BarItems.Where(i => string.Equals(i.Group, oldName, StringComparison.OrdinalIgnoreCase)))

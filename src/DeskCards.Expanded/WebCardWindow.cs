@@ -88,39 +88,8 @@ internal sealed class WebCardWindow : DesktopCardWindow
             return;
         }
         if (Dead) return;
-        var core = _web.CoreWebView2;
-        var s = core.Settings;
-        s.IsWebMessageEnabled = true;
-        s.IsNonClientRegionSupportEnabled = true;
-        s.AreDefaultContextMenusEnabled = false;
-        s.IsStatusBarEnabled = false;
-        s.IsZoomControlEnabled = false;
-        s.IsPinchZoomEnabled = false;
-        s.IsSwipeNavigationEnabled = false;
-        s.AreBrowserAcceleratorKeysEnabled = false;
-        s.IsBuiltInErrorPageEnabled = false;
-#if DEBUG
-        s.AreDevToolsEnabled = true;
-#else
-        s.AreDevToolsEnabled = false;
-#endif
-        core.WebMessageReceived += OnWebMessage;
-        core.NavigationCompleted += (_, _) => { if (Editing) OnEditingChanged(true); }; // 편집 중에 열리거나 다시 불러와도 끌기 영역을 다시 건다
-        core.ProcessFailed += (_, e) =>
-        {
-            if (!Dead && e.ProcessFailedKind == CoreWebView2ProcessFailedKind.RenderProcessExited)
-                try { core.Reload(); } catch (Exception) { }
-        };
-        core.NavigationStarting += (_, e) =>
-        {
-            // 카드는 자기 폴더 주소 안에서만 움직인다(외부 사이트가 deskcard API를 쓰지 못하게).
-            if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var u) || !u.Host.EndsWith(".deskcard", StringComparison.OrdinalIgnoreCase)) e.Cancel = true;
-        };
-        core.NewWindowRequested += (_, e) => e.Handled = true; // 카드 안 링크가 새 창으로 열리지 않게
-        string host = _o.Id + ".deskcard";
-        core.SetVirtualHostNameToFolderMapping(host, _o.Folder, CoreWebView2HostResourceAccessKind.Allow);
-        await core.AddScriptToExecuteOnDocumentCreatedAsync(Shim);
-        core.Navigate($"https://{host}/{Uri.EscapeDataString(_o.Html.Replace('\\', '/')).Replace("%2F", "/")}");
+        await WebCardPage.StartAsync(_web.CoreWebView2, _o.Id, _o.Folder, _o.Html, OnWebMessage, () => Dead,
+            core => core.NavigationCompleted += (_, _) => { if (Editing) OnEditingChanged(true); }); // 편집 중에 열리거나 다시 불러와도 끌기 영역을 다시 건다
     }
 
     private void ShowError(string text)

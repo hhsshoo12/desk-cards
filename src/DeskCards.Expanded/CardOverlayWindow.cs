@@ -32,7 +32,7 @@ internal sealed class CardOverlayWindow : Window
         _folder = folder;
         _browserDir = browserDir;
         _light = light;
-        _url = $"https://{host}/{Uri.EscapeDataString(relativeUrl.Replace('\\', '/').TrimStart('/')).Replace("%2F", "/")}";
+        _url = WebCardPage.Url(host, relativeUrl);
 
         WindowStyle = WindowStyle.SingleBorderWindow;
         ResizeMode = ResizeMode.NoResize;

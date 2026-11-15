@@ -42,14 +42,21 @@ public interface IBarHost : ICardViewHost
     PixelRect PushApart(string group, PixelRect rect);
     /// <summary>안내선을 지운다.</summary>
     void GuidesOff();
+    /// <summary>바 안 웹 카드 화면이 deskcard.send로 보낸 메시지(JSON). 앱이 카드의 exe로 넘긴다.</summary>
+    void WebMessage(string id, string json);
+    /// <summary>바 안 웹 카드 위에서 우클릭했다.</summary>
+    void WebMenu(string id);
 }
 
 /// <summary>편집한 카드의 자리(바 두께를 1로 친 값).</summary>
 public sealed record BarItemData(string Group, double X, double Y, double W);
 
 /// <summary>바에 놓은 카드 하나. X·Y·W는 바 두께를 1로 친 값이고, 칸 하나의 기준 크기는 Cell(DIP)이다.</summary>
+/// <summary>바 안 웹 카드. Aspect는 세로/가로 비율이다.</summary>
+public sealed record WebBarCard(string Id, string Folder, string Html, string BrowserDataDir, double Aspect);
+
 public sealed record BarCardData(string Group, string Name, string Folder, int Cols, int Rows, double Cell,
-    double X, double Y, double W, IReadOnlyList<TileData> Items);
+    double X, double Y, double W, IReadOnlyList<TileData> Items, WebBarCard? Web = null);
 
 public sealed record BarContent(IReadOnlyList<BarCardData> Cards, bool HoverExpand, int HoverDelayMs, bool Guides = false);
 
@@ -115,6 +122,8 @@ public sealed class BarView
         public int Placement(string group, PixelRect rect) => 0;
         public PixelRect PushApart(string group, PixelRect rect) => rect;
         public void GuidesOff() { }
+        public void WebMessage(string id, string json) { }
+        public void WebMenu(string id) { }
     }
 
     public static BarView Open(IBarHost host, BarOptions options, BarContent content)
@@ -132,6 +141,9 @@ public sealed class BarView
 
     /// <summary>그 카드 아래 이름 글자를 바로 고칠 수 있게 입력칸으로 바꾼다.</summary>
     public void BeginRename(string group) => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginRename(group));
+
+    /// <summary>바 안 웹 카드 화면으로 exe가 보낸 메시지(JSON)를 전한다.</summary>
+    public void WebToPage(string id, string json) => WpfThread.Dispatcher.BeginInvoke(() => _window?.WebToPage(id, json));
 
     public void BeginEdit() => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginEdit());
 

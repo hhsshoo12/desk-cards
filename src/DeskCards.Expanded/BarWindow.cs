@@ -85,6 +85,7 @@ internal sealed partial class BarWindow : Window
         {
             if (_animating) CompositionTarget.Rendering -= OnFrame;
             _float?.Close();
+            CloseWebs();
             _host.Closed();
         };
     }

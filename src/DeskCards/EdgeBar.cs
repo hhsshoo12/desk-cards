@@ -64,12 +64,25 @@ internal static class EdgeBar
         {
             Mgr.Changed -= Push;
             Mgr.BarChanged -= Push;
+            SyncWeb(Array.Empty<string>());
             foreach (var e in _watched) e.PropertyChanged -= OnEntryChanged;
             _watched.Clear();
         }
 
         private IEnumerable<(BarItem Item, CardWindow Card)> Placed() =>
             Mgr.BarItems.Select(i => (Item: i, Card: Mgr.GroupCard(i.Group))).Where(x => x.Card != null).Select(x => (x.Item, x.Card!));
+
+        /// <summary>바에 놓은 웹 카드(화면이 있는 것만).</summary>
+        private IEnumerable<(BarItem Item, InstalledWebCard Card)> WebPlaced() =>
+            Mgr.BarItems.Where(i => WebCardManager.IsBarKey(i.Group))
+                .Select(i => (Item: i, Card: WebCardManager.Instance?.Find(WebCardManager.BarId(i.Group))))
+                .Where(x => x.Card?.Manifest.Html != null).Select(x => (x.Item, x.Card!));
+
+        private static double WebAspect(InstalledWebCard c) => (double)c.Manifest.Height / Math.Max(1, c.Manifest.Width);
+
+        /// <summary>바 안 모든 카드(폴더·웹)의 자리와 가로세로 비율.</summary>
+        private IEnumerable<(BarItem Item, double Aspect)> AllPlaced() =>
+            Placed().Select(x => (x.Item, AspectOf(x.Card))).Concat(WebPlaced().Select(x => (x.Item, WebAspect(x.Card))));
 
         public BarContent Content() => new(
             Placed().Select(x =>
@@ -78,8 +91,27 @@ internal static class EdgeBar
                 var items = ExpandedWindow.ToTiles(x.Card.Group);
                 return new BarCardData(x.Card.Group.Name, x.Card.Group.Name, x.Card.Group.Folder, layout.Cols, layout.Rows, Mgr.CellSize,
                     x.Item.X, x.Item.Y, x.Item.W, items);
-            }).ToList(),
+            }).Concat(WebPlaced().Select(x => new BarCardData(x.Item.Group, x.Card.Manifest.Name, "", 1, 1, Mgr.CellSize,
+                x.Item.X, x.Item.Y, x.Item.W, Array.Empty<TileData>(),
+                new WebBarCard(x.Card.Manifest.Id, x.Card.Directory, x.Card.Manifest.Html!, System.IO.Path.Combine(AppPaths.LocalDataDir, "webdata"), WebAspect(x.Card))))).ToList(),
             Mgr.HoverExpand, Mgr.HoverExpandDelay, Mgr.ShowGuides);
+
+        private readonly HashSet<string> _webIds = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>바에 있는 웹 카드의 exe를 켜고 빠진 카드는 끈다(화면으로 가는 메시지는 이 바의 창으로 보낸다).</summary>
+        private void SyncWeb(IEnumerable<string> ids)
+        {
+            var want = ids.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var web = WebCardManager.Instance;
+            if (web == null) { _webIds.Clear(); return; }
+            foreach (var id in _webIds.Where(i => !want.Contains(i)).ToList()) { web.BarDetach(id); _webIds.Remove(id); }
+            foreach (var id in want)
+                if (_webIds.Add(id)) web.BarAttach(id, json => View.WebToPage(id, json));
+        }
+
+        public void WebMessage(string id, string json) => Ui.Post(() => WebCardManager.Instance?.BarSend(id, json));
+
+        public void WebMenu(string id) => CardMenu(WebCardManager.BarKey(id));
 
         private void Watch()
         {
@@ -100,6 +132,7 @@ internal static class EdgeBar
                 _pushQueued = false;
                 if (Gone) return;
                 Watch();
+                SyncWeb(WebPlaced().Select(x => x.Card.Manifest.Id));
                 View.SetContent(Content());
             });
         }
@@ -118,6 +151,11 @@ internal static class EdgeBar
 
         public void CardMenu(string group) => Ui.Post(() =>
         {
+            if (WebCardManager.IsBarKey(group))
+            {
+                new FluentMenu().Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
+                return;
+            }
             if (Mgr.GroupCard(group) is not { } card) return;
             var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => { Begin(); Ui.Post(() => View.BeginRename(group)); }).Separator();
             m.Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
@@ -167,7 +205,14 @@ internal static class EdgeBar
                 var card = c;
                 menu.Item("", card.Group.Name, () => Add(card), image: card.Group.Items.FirstOrDefault()?.Icon);
             }
-            if (cards.Count > 0) menu.Separator();
+            var webs = (WebCardManager.Instance?.Store.List() ?? Array.Empty<InstalledWebCard>()).Where(c => c.Manifest.Html != null &&
+                !Mgr.BarItems.Any(i => string.Equals(i.Group, WebCardManager.BarKey(c.Manifest.Id), StringComparison.OrdinalIgnoreCase))).ToList();
+            foreach (var c in webs)
+            {
+                var web = c;
+                menu.Item("", web.Manifest.Name + " (웹 카드)", () => AddWeb(web));
+            }
+            if (cards.Count + webs.Count > 0) menu.Separator();
             menu.Item("", "카드 바에만 둘 새 그룹", () =>
             {
                 if (Mgr.NewBarGroup() is not { } card) return;
@@ -218,9 +263,9 @@ internal static class EdgeBar
             return new Native.RECT { Left = l, Top = t, Right = l + wp, Bottom = t + hp };
         }
 
-        private List<Native.RECT> OthersPx(string group) => Placed()
+        private List<Native.RECT> OthersPx(string group) => AllPlaced()
             .Where(p => !string.Equals(p.Item.Group, group, StringComparison.OrdinalIgnoreCase))
-            .Select(p => RectPx(p.Item.X, p.Item.Y, p.Item.W, AspectOf(p.Card))).ToList();
+            .Select(p => RectPx(p.Item.X, p.Item.Y, p.Item.W, p.Aspect)).ToList();
 
         private Rectangle Area()
         {
@@ -328,6 +373,19 @@ internal static class EdgeBar
             Mgr.SetBarItems(Mgr.BarItems.Append(item));
         }
 
+        /// <summary>웹 카드를 바에 넣는다. 바탕화면에 놓여 있으면 거기서는 내린다(한 곳에만 둔다).</summary>
+        private void AddWeb(InstalledWebCard card)
+        {
+            string key = WebCardManager.BarKey(card.Manifest.Id);
+            if (Mgr.BarItems.Any(i => string.Equals(i.Group, key, StringComparison.OrdinalIgnoreCase))) return;
+            WebCardManager.Instance?.Unplace(card.Manifest.Id);
+            double aspect = WebAspect(card);
+            double w = 0.8 / Math.Max(1, aspect);
+            var item = new BarItem { Group = key, W = w };
+            (item.X, item.Y) = FreeSpot(w, aspect);
+            Mgr.SetBarItems(Mgr.BarItems.Append(item));
+        }
+
         private void Remove(string group)
         {
             Mgr.SetBarItems(Mgr.BarItems.Where(i => !string.Equals(i.Group, group, StringComparison.OrdinalIgnoreCase)));
@@ -343,7 +401,7 @@ internal static class EdgeBar
             double along = Side ? w * aspect : w;     // 길이 방향 크기
             double c0 = Math.Max(0, (1 - cross) / 2); // 두께 방향 가운데
             double length = (Side ? Inner.H : Inner.W) / u;
-            var others = Placed().Select(x => (x.Item, Aspect: AspectOf(x.Card))).ToList();
+            var others = AllPlaced().ToList();
             for (double a = 0; a + along <= length + 1e-6; a += 0.05)
             {
                 var (rx, ry) = Side ? (c0, a) : (a, c0);
