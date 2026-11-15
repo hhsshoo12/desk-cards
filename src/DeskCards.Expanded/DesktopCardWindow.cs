@@ -17,7 +17,7 @@ namespace DeskCards.Expanded;
 internal abstract class DesktopCardWindow : Window
 {
     private const int Band = 12, EdgeBand = 6; // 편집 띠 두께(DIP): 바깥쪽 EdgeBand는 크기 조절, 안쪽은 끌기
-    private const int BackdropType = 2; // DWMSBT_MAINWINDOW = 미카. 폴더·웹 카드가 같은 값을 쓴다.
+    private const int BackdropType = 3; // DWMSBT_TRANSIENTWINDOW = 아크릴. 폴더·웹 카드가 같은 값을 쓴다.
 
     private readonly IDesktopCardHost _host;
     private readonly string _id;
@@ -76,8 +76,19 @@ internal abstract class DesktopCardWindow : Window
     internal void Prepare()
     {
         new WindowInteropHelper(this).EnsureHandle();
-        if (_visibleWanted) Show();
+        if (_visibleWanted) { Show(); Prime(); }
     }
+
+    /// <summary>
+    /// 아크릴은 창이 한 번도 활성화된 적 없으면 단색 회색으로 그려진다. 보일 때 한 번 활성 창으로 만든 뒤 바로 바탕화면 층으로 돌려 놓는다
+    /// (다른 창의 초점은 가져가지 않는다).
+    /// </summary>
+    private void Prime() => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+    {
+        if (Dead || Editing || !IsVisible) return;
+        SetActiveWindow(Handle);
+        SendToBottom();
+    });
 
     // ----- 파생 클래스가 정하는 것 -----
 
@@ -186,7 +197,7 @@ internal abstract class DesktopCardWindow : Window
     {
         if (Dead) return;
         _visibleWanted = visible;
-        if (visible) { if (!IsVisible) { Show(); SendToBottom(); } }
+        if (visible) { if (!IsVisible) { Show(); SendToBottom(); Prime(); } }
         else if (IsVisible) Hide();
         OnVisibilityChanged(visible);
     }
@@ -363,6 +374,7 @@ internal abstract class DesktopCardWindow : Window
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern IntPtr SetActiveWindow(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
