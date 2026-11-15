@@ -23,6 +23,7 @@ internal sealed partial class BarWindow
     private readonly List<Entry> _entries = new();
     private bool _editing;
     private string? _selected;
+    private bool _guidesOn;
     private Entry? _active;   // 지금 끌고 있는 카드
     private BarContent? _deferred;
     private static readonly Brush Invalid = MakeBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
@@ -34,6 +35,8 @@ internal sealed partial class BarWindow
     {
         if (_closing && !IsVisible) return;
         if (_active != null) { _deferred = content; return; }
+        _guidesOn = content.Guides;
+        _float?.SetGuides(content.Guides);
         _canvas.Children.Clear();
         _entries.Clear();
         double u = U;
@@ -171,6 +174,7 @@ internal sealed partial class BarWindow
     {
         if (_selected == group) return;
         _selected = group;
+        _float?.SetSelected(group);
         foreach (var e in _entries) ShowFrame(e);
         _host.SelectionChanged(group);
     }

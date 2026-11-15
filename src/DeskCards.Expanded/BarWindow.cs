@@ -101,13 +101,15 @@ internal sealed partial class BarWindow : Window
     /// <summary>창 핸들(다른 스레드에서 읽어도 안전하게 창이 만들어질 때 적어 둔다).</summary>
     public IntPtr HandleValue => _handle;
 
-    private BarFloatWindow? _float;
+    private BarMenuWindow? _float;
 
     /// <summary>바 옆 설정 버튼을 띄운다(편집 중에는 편집 막대에 설정이 있어 숨긴다).</summary>
     private void ShowFloat()
     {
         if (_o.FloatBody is not { } body || _closing) return;
-        _float ??= new BarFloatWindow(_o.Palette, _o.Edge != 3, _host.SettingsRequested, _host.EditRequested, _host.ToggleEditBar);
+        _float ??= new BarMenuWindow(_o.Palette, _host, _o.Edge == 3);
+        _float.SetGuides(_guidesOn);
+        _float.SetSelected(_selected);
         _float.SetEditing(_editing);
         _float.Enter(body, _o.Bounds, _o.Scale);
     }

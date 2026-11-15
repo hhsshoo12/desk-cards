@@ -29,10 +29,16 @@ public interface IBarHost
     void RemoveRequested(string group);
     /// <summary>바 옆 설정 버튼을 눌렀다.</summary>
     void SettingsRequested();
-    /// <summary>바 옆 알약의 연필(편집)을 눌렀다.</summary>
+    /// <summary>바 옆 메뉴의 편집을 눌렀다.</summary>
     void EditRequested();
-    /// <summary>편집 중 알약의 톱니를 눌렀다(편집 막대 펼치기·접기).</summary>
-    void ToggleEditBar();
+    /// <summary>편집 단추의 "카드 넣기"(카드를 고르는 메뉴를 연다).</summary>
+    void AddRequested();
+    /// <summary>안내선 단추를 눌렀다.</summary>
+    void GuidesChanged(bool on);
+    /// <summary>이름 바꾸기 단추(anchor는 그 단추의 화면 자리). 앱이 작은 입력 창을 띄운다.</summary>
+    void RenameRequested(string group, PixelRect anchor);
+    /// <summary>칸 수 단추(anchor는 그 단추의 화면 자리). 앱이 칸 수 고르는 창을 띄운다.</summary>
+    void GridRequested(string group, PixelRect anchor);
     /// <summary>카드를 끌 때 안내선에 맞춰 붙은 자리(앱이 안내선도 그린다). 화면 물리 픽셀.</summary>
     PixelRect SnapMove(string group, PixelRect rect);
     /// <summary>비율을 지키며 크기를 바꿀 때 안내선에 맞춘 배율(start는 바꾸기 시작할 때 자리).</summary>
@@ -52,7 +58,7 @@ public sealed record BarItemData(string Group, double X, double Y, double W);
 public sealed record BarCardData(string Group, string Name, string Folder, int Cols, int Rows, double Cell,
     double X, double Y, double W, IReadOnlyList<TileData> Items);
 
-public sealed record BarContent(IReadOnlyList<BarCardData> Cards, bool HoverExpand, int HoverDelayMs);
+public sealed record BarContent(IReadOnlyList<BarCardData> Cards, bool HoverExpand, int HoverDelayMs, bool Guides = false);
 
 /// <param name="Edge">0 = 왼쪽, 1 = 위, 2 = 오른쪽, 3 = 아래.</param>
 /// <param name="Final">다 나왔을 때 자리(물리 픽셀).</param>
@@ -107,7 +113,10 @@ public sealed class BarView
         public void RemoveRequested(string group) { }
         public void SettingsRequested() { }
         public void EditRequested() { }
-        public void ToggleEditBar() { }
+        public void AddRequested() { }
+        public void GuidesChanged(bool on) { }
+        public void RenameRequested(string group, PixelRect anchor) { }
+        public void GridRequested(string group, PixelRect anchor) { }
         public PixelRect SnapMove(string group, PixelRect rect) => rect;
         public double SnapScale(string group, PixelRect start, double scale) => scale;
         public int Placement(string group, PixelRect rect) => 0;
