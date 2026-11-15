@@ -285,7 +285,7 @@ internal sealed class EditBar : ToolWindow
         new() { Text = glyph, FontFamily = new FontFamily(IconFont), FontSize = size, VerticalAlignment = VerticalAlignment.Center };
 
     internal static Border Sep2() =>
-        new() { Width = 22, Height = 1, Margin = new Thickness(0, 4, 0, 4), HorizontalAlignment = HorizontalAlignment.Center, Background = Theme.Brush("MenuLine") };
+        new() { Height = 1, Margin = new Thickness(6, 4, 6, 4), HorizontalAlignment = HorizontalAlignment.Stretch, Background = Theme.Brush("MenuLine") };
 
     internal static Border Sep() =>
         new() { Width = 1, Height = 22, Margin = new Thickness(6, 0, 6, 0), Background = Theme.Brush("MenuLine") };
