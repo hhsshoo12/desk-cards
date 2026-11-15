@@ -109,5 +109,12 @@ internal static partial class Program
             Check(!WebCardManager.IsBarKey("새 그룹"));
             Check(Path.GetInvalidFileNameChars().Contains(':')); // 폴더 이름에는 ':'를 쓸 수 없으므로 그룹 이름과 겹치지 않는다
         });
+
+        Test("desktop card: focus is not restored into the page when not editing (activation ping-pong)", () =>
+        {
+            // 되살리면 WebView2의 늦은 MoveFocus가 맨 아래로 내린 카드를 다시 활성화해 Progman과 핑퐁하며 깜박였다.
+            Check(DeskCards.Expanded.DesktopCardRules.SwallowSetFocus(editing: false));
+            Check(!DeskCards.Expanded.DesktopCardRules.SwallowSetFocus(editing: true));
+        });
     }
 }

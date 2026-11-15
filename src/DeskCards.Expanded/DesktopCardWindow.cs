@@ -257,8 +257,24 @@ internal abstract class DesktopCardWindow : Window
             case 0x0086: // WM_NCACTIVATE: 늘 활성인 것처럼 그려서 미카가 단색으로 바뀌지 않게(실제 활성·초점은 그대로)
                 handled = true;
                 return DefWindowProc(hwnd, msg, new IntPtr(1), new IntPtr(-1));
-            case 0x0006 when !Editing && (wParam.ToInt64() & 0xFFFF) != 0: // WM_ACTIVATE: 눌려서 활성화되면 바탕화면이 카드 앞으로 나온다. 끝난 뒤 순서를 바로잡는다
-                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (Dead || Editing) return; SendToBottom(); if (!_priming) _host.Activated(); });
+            case 0x0006: // WM_ACTIVATE: 눌려서 활성화되면 바탕화면이 카드 앞으로 나온다. 끝난 뒤 순서를 바로잡는다
+            {
+                bool active = (wParam.ToInt64() & 0xFFFF) != 0, priming = _priming;
+                CardLog.Write($"카드 {(active ? "활성" : "비활성")} {Title} (상대 {ClassOf(lParam)}{(priming ? ", prime" : "")})");
+                if (active && !Editing)
+                    Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (Dead || Editing) return; SendToBottom(); if (!priming) _host.Activated(); });
+                break;
+            }
+            case 0x001C: // WM_ACTIVATEAPP
+                CardLog.Write($"카드 앱 {(wParam != IntPtr.Zero ? "활성" : "비활성")} {Title}");
+                break;
+            case 0x0007: // WM_SETFOCUS
+                CardLog.Write($"카드 초점 {Title} (이전 {ClassOf(wParam)})");
+                if (DesktopCardRules.SwallowSetFocus(Editing))
+                {
+                    handled = true; // WPF가 마지막 초점(웹 화면)을 되살리지 않게 한다. 이유는 DesktopCardRules.SwallowSetFocus
+                    return IntPtr.Zero;
+                }
                 break;
             case 0x0021: // WM_MOUSEACTIVATE: 눌러도 활성화하지 않는다
                 handled = true;
@@ -352,6 +368,15 @@ internal abstract class DesktopCardWindow : Window
     }
 
     // ----- 네이티브 -----
+
+    private static string ClassOf(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return "없음";
+        var sb = new System.Text.StringBuilder(64);
+        return GetClassName(hwnd, sb, sb.Capacity) > 0 ? sb.ToString() : "?";
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr hwnd, System.Text.StringBuilder name, int max);
 
     [StructLayout(LayoutKind.Sequential)] private struct WINDOWPOS { public IntPtr hwnd, hwndInsertAfter; public int x, y, cx, cy; public uint flags; }
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
