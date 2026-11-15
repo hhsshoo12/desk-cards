@@ -25,6 +25,12 @@ internal sealed partial class CardWindow
         finally { _movingZ = false; }
     }
 
+    /// <summary>바탕화면 층으로 다시 내린다(카드에 딸린 이름 창도 함께 따라온다).</summary>
+    public void RestackAtBottom()
+    {
+        if (!_closed && !_editing && IsVisible) SendToBottom();
+    }
+
     /// <summary>편집 중에는 어두운 막(EditDim) 위로 올라온다. 편집이 끝나면 다시 바탕화면 층으로 내려간다.</summary>
     public void RaiseForEdit()
     {

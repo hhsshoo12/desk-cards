@@ -246,6 +246,8 @@ internal sealed class WebCardManager
 
         public void GuidesOff() => Ui.Post(SmartGuides.Hide);
 
+        public void Activated() => Ui.Post(() => _owner._mgr.RestoreDesktopOrder());
+
         public void Closed() { }
 
         public void Dispose()

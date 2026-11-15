@@ -26,6 +26,13 @@ internal sealed partial class GroupManager
 
     internal void RaiseEditLayerNow() => RaiseEditLayer();
 
+    /// <summary>웹 카드가 눌려 활성화되면 Progman 앞뒤가 흐트러지고 폴더 카드 이름이 가려진다. 모든 폴더 카드를 바탕화면 층으로 다시 내린다.</summary>
+    internal void RestoreDesktopOrder()
+    {
+        if (Editing || _shuttingDown) return;
+        foreach (var c in AllCards) c.RestackAtBottom();
+    }
+
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Ui.Post(() =>
     {
         if (!_shuttingDown) RefitAll();

@@ -178,6 +178,9 @@ internal sealed class WebCardWindow : Window
             case 0x0086: // WM_NCACTIVATE: 늘 활성인 것처럼 그려서 아크릴이 단색으로 바뀌지 않게(실제 활성·초점은 그대로)
                 handled = true;
                 return DefWindowProc(hwnd, msg, new IntPtr(1), new IntPtr(-1));
+            case 0x0006 when !_editing && (wParam.ToInt64() & 0xFFFF) != 0: // WM_ACTIVATE: 눌려서 활성화되면 바탕화면이 카드 앞으로 나온다. 끝난 뒤 순서를 바로잡는다
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (_closed || _editing) return; SendToBottom(); _host.Activated(); });
+                break;
             case 0x0021: // WM_MOUSEACTIVATE: 눌러도 활성화하지 않는다
                 handled = true;
                 return new IntPtr(3);

@@ -20,6 +20,8 @@ public interface IWebCardHost
     PixelRect Snap(string id, PixelRect rect);
     /// <summary>옮기기·크기 조절이 끝났다(안내선을 지운다).</summary>
     void GuidesOff();
+    /// <summary>카드가 눌려서 활성화됐다. 바탕화면(Progman)이 카드 앞으로 나온 순서를 앱이 바로잡는다.</summary>
+    void Activated();
     /// <summary>창이 닫혔다(앱이 닫은 경우 포함).</summary>
     void Closed();
 }
