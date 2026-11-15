@@ -49,7 +49,7 @@ internal sealed class WebCardWindow : Window
     private readonly WebView2 _web;
     private readonly Border _outline;
     private readonly Grid _root;
-    private bool _editing, _closed, _movingZ, _booted;
+    private bool _dragging, _editing, _closed, _movingZ, _booted;
     private int _x, _y, _w, _h; // 내용 영역(물리 픽셀)
 
     public WebCardWindow(WebCardOptions options, IWebCardHost host)
@@ -175,7 +175,24 @@ internal sealed class WebCardWindow : Window
                 handled = true;
                 return new IntPtr(HitTest(lParam));
             }
+            case 0x0086: // WM_NCACTIVATE: 늘 활성인 것처럼 그려서 아크릴이 단색으로 바뀌지 않게(실제 활성·초점은 그대로)
+                handled = true;
+                return DefWindowProc(hwnd, msg, new IntPtr(1), lParam);
+            case 0x0231: _dragging = true; break; // WM_ENTERSIZEMOVE
+            case 0x0046 when _editing && _dragging: // 옮기는 중: 다른 카드·가장자리에 맞춘다(크기가 그대로일 때만)
+            {
+                var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+                if ((wp.flags & 0x0002) != 0 || !GetWindowRect(hwnd, out var cur) || wp.cx != cur.Right - cur.Left || wp.cy != cur.Bottom - cur.Top) break;
+                int pad = Pad;
+                var snapped = _host.Snap(_o.Id, new PixelRect(wp.x + pad, wp.y + pad, wp.x + wp.cx - pad, wp.y + wp.cy - pad));
+                wp.x = snapped.Left - pad;
+                wp.y = snapped.Top - pad;
+                Marshal.StructureToPtr(wp, lParam, false);
+                break;
+            }
             case 0x0232: // WM_EXITSIZEMOVE
+                _dragging = false;
+                _host.GuidesOff();
                 ReadBounds();
                 break;
         }

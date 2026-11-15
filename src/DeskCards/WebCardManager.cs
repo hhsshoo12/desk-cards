@@ -224,6 +224,7 @@ internal sealed class WebCardManager
         {
             _placement.X = x; _placement.Y = y; _placement.Width = width; _placement.Height = height;
             _owner._cfg.Save();
+            _owner._mgr.RaiseEditLayerNow();
         });
 
         public void Menu() => _owner.ShowMenu(Id);
