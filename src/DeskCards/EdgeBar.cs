@@ -121,7 +121,7 @@ internal static class EdgeBar
         public void CardMenu(string group) => Ui.Post(() =>
         {
             if (Mgr.GroupCard(group) is not { } card) return;
-            var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => { Begin(); RenameRequested(group, new PixelRect(FloatBody().Left, FloatBody().Top, FloatBody().Right, FloatBody().Bottom)); }).Separator();
+            var m = Menus.ForCard(card, Mgr, expand: () => ExpandFor(card, false, null), edit: Begin, rename: () => { Begin(); Ui.Post(() => View.BeginRename(group)); }).Separator();
             m.Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
         });
 
@@ -293,9 +293,9 @@ internal static class EdgeBar
 
         private Rectangle ToRect(PixelRect r) => new(r.Left, r.Top, r.Width, r.Height);
 
-        public void RenameRequested(string group, PixelRect anchor) => Ui.Post(() =>
+        public void RenameCard(string group, string name) => Ui.Post(() =>
         {
-            if (Mgr.GroupCard(group) is { } card) BarPopup.ShowRename(Mgr, card, ToRect(anchor), Edge == ScreenEdge.Right);
+            if (Mgr.GroupCard(group) is { } card) Mgr.RenameGroup(card, name);
         });
 
         public void GridRequested(string group, PixelRect anchor) => Ui.Post(() =>

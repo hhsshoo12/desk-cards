@@ -23,7 +23,23 @@ internal sealed partial class BarWindow
     private readonly List<Entry> _entries = new();
     private bool _editing;
     private string? _selected;
-    private bool _guidesOn;
+    private bool _guidesOn, _renaming;
+
+    /// <summary>카드 아래 이름 글자를 입력칸으로 바꿔 바로 고친다. Enter로 바꾸고 Esc로 그만둔다.</summary>
+    public void BeginRename(string group)
+    {
+        var en = _entries.FirstOrDefault(e => e.Data.Group == group);
+        if (en == null || _renaming) return;
+        _renaming = true;
+        Select(group);
+        Activate();
+        en.View.BeginRename(name =>
+        {
+            _renaming = false;
+            if (name != null && name.Length > 0 && name != en.Data.Name) _host.RenameCard(group, name);
+            if (_deferred != null) { var c = _deferred; _deferred = null; SetContent(c); }
+        });
+    }
     private Entry? _active;   // 지금 끌고 있는 카드
     private BarContent? _deferred;
     private static readonly Brush Invalid = MakeBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
@@ -34,7 +50,7 @@ internal sealed partial class BarWindow
     public void SetContent(BarContent content)
     {
         if (_closing && !IsVisible) return;
-        if (_active != null) { _deferred = content; return; }
+        if (_active != null || _renaming) { _deferred = content; return; }
         _guidesOn = content.Guides;
         _float?.SetGuides(content.Guides);
         _canvas.Children.Clear();
@@ -336,6 +352,7 @@ internal sealed partial class BarWindow
 
     private void HandleKey(KeyEventArgs e)
     {
+        if (_renaming) return; // 이름을 고치는 중에는 입력칸이 키를 받는다
         bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
         double step = shift ? 10 : 1;
         if (e.Key == Key.Escape)

@@ -107,7 +107,7 @@ internal sealed partial class BarWindow : Window
     private void ShowFloat()
     {
         if (_o.FloatBody is not { } body || _closing) return;
-        _float ??= new BarMenuWindow(_o.Palette, _host, _o.Edge == 3);
+        _float ??= new BarMenuWindow(_o.Palette, _host, _o.Edge == 3, BeginRename);
         _float.SetGuides(_guidesOn);
         _float.SetSelected(_selected);
         _float.SetEditing(_editing);

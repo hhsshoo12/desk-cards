@@ -35,8 +35,8 @@ public interface IBarHost
     void AddRequested();
     /// <summary>안내선 단추를 눌렀다.</summary>
     void GuidesChanged(bool on);
-    /// <summary>이름 바꾸기 단추(anchor는 그 단추의 화면 자리). 앱이 작은 입력 창을 띄운다.</summary>
-    void RenameRequested(string group, PixelRect anchor);
+    /// <summary>바 안에서 카드 이름을 직접 고쳤다.</summary>
+    void RenameCard(string group, string name);
     /// <summary>칸 수 단추(anchor는 그 단추의 화면 자리). 앱이 칸 수 고르는 창을 띄운다.</summary>
     void GridRequested(string group, PixelRect anchor);
     /// <summary>카드를 끌 때 안내선에 맞춰 붙은 자리(앱이 안내선도 그린다). 화면 물리 픽셀.</summary>
@@ -115,7 +115,7 @@ public sealed class BarView
         public void EditRequested() { }
         public void AddRequested() { }
         public void GuidesChanged(bool on) { }
-        public void RenameRequested(string group, PixelRect anchor) { }
+        public void RenameCard(string group, string name) { }
         public void GridRequested(string group, PixelRect anchor) { }
         public PixelRect SnapMove(string group, PixelRect rect) => rect;
         public double SnapScale(string group, PixelRect start, double scale) => scale;
@@ -136,6 +136,9 @@ public sealed class BarView
         });
         return view;
     }
+
+    /// <summary>그 카드 아래 이름 글자를 바로 고칠 수 있게 입력칸으로 바꾼다.</summary>
+    public void BeginRename(string group) => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginRename(group));
 
     public void BeginEdit() => WpfThread.Dispatcher.BeginInvoke(() => _window?.BeginEdit());
 

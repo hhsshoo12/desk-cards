@@ -20,7 +20,7 @@ internal sealed class BarMenuWindow : Window
 {
     public const double Cell = 52;       // 햄버거·메뉴 칸(정사각형)
     private const double Shadow = 12;    // 그림자가 잘리지 않게 두는 여백
-    private const double BtnW = 40, BtnH = 36, Pad = 6; // 편집 단추(폭 40 + 안쪽 여백 6×2 = 판 폭 52)
+    private const double BtnW = 40, BtnH = 40, Pad = 6; // 편집 단추(폭 40 + 안쪽 여백 6×2 = 판 폭 52)
 
     private readonly IBarHost _host;
     private readonly Palette _p;
@@ -40,8 +40,11 @@ internal sealed class BarMenuWindow : Window
     private IntPtr _handle;
 
     /// <param name="growUp">아래 바처럼 판이 위로 늘어나야 하면 true(햄버거가 아래에 있다).</param>
-    public BarMenuWindow(Palette palette, IBarHost host, bool growUp)
+    private readonly Action<string> _beginRename;
+
+    public BarMenuWindow(Palette palette, IBarHost host, bool growUp, Action<string> beginRename)
     {
+        _beginRename = beginRename;
         _p = palette;
         _host = host;
         _growUp = growUp;
@@ -63,11 +66,11 @@ internal sealed class BarMenuWindow : Window
         // 편집 단추: 화면 편집 막대와 같은 크기(40×36)를 세로로.
         var add = Cell0("\uE710", "카드 넣기", BtnW, BtnH, () => _host.AddRequested());
         (_guides, _guidesIcon) = Toggle0("\uE80A", "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)", () => { _guidesOn = !_guidesOn; ApplyGuides(); _host.GuidesChanged(_guidesOn); });
-        _rename = Cell0("\uE8AC", "이름 바꾸기", BtnW, BtnH, () => { if (_selected is { } g) _host.RenameRequested(g, ScreenRectOf(_rename!)); });
+        _rename = Cell0("\uE8AC", "이름 바꾸기", BtnW, BtnH, () => { if (_selected is { } g) _beginRename(g); });
         _grid = Cell0("\uECA5", "미리보기 칸 수", BtnW, BtnH, () => { if (_selected is { } g) _host.GridRequested(g, ScreenRectOf(_grid!)); });
         _remove = Cell0("\uE74D", "카드 바에서 빼기 (Delete)", BtnW, BtnH, () => { if (_selected is { } g) _host.RemoveRequested(g); });
         var settings = Cell0("\uE713", "설정", BtnW, BtnH, () => _host.SettingsRequested());
-        var done = Cell0("\uE73E", "편집 끝내기 (Esc)", BtnW, 32, () => _host.EditEnded(), accent: true);
+        var done = Cell0("\uE73E", "편집 끝내기 (Esc)", BtnW, BtnW, () => _host.EditEnded(), accent: true);
         done.Margin = new Thickness(0, 4, 0, 0);
         _editPanel.Children.Add(add);
         _editPanel.Children.Add(_guides);
@@ -118,7 +121,7 @@ internal sealed class BarMenuWindow : Window
 
     // ----- 단추 만들기 -----
 
-    private Border Cell0(string glyph, string tip, double w, double h, Action click, bool accent = false, bool chevron = false)
+    private Border Cell0(string glyph, string tip, double w, double h, Action click, bool accent = false, bool chevron = false, Func<bool>? on = null)
     {
         var icon = Glyph(glyph, w >= Cell ? 22 : 16, accent ? Brushes.White : Brush(_p.Fg));
         UIElement content = icon;
@@ -131,8 +134,10 @@ internal sealed class BarMenuWindow : Window
         var cell = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(w >= Cell ? 0 : 4), Background = Brushes.Transparent, Child = content, ToolTip = tip };
         if (accent) cell.Background = Brush(_p.Accent);
         var hover = accent ? Brush(_p.Accent) : Brush(_p.HoverBg);
-        cell.MouseEnter += (_, _) => { if (!accent) cell.Background = hover; else cell.Opacity = 0.9; };
-        cell.MouseLeave += (_, _) => { cell.Background = accent ? hover : Brushes.Transparent; cell.Opacity = cell.IsHitTestVisible ? 1 : 0.4; };
+        // 켜져 있는 토글은 마우스가 지나가도 강조색 배경을 지킨다.
+        Brush Rest() => accent || on?.Invoke() == true ? Brush(_p.Accent) : Brushes.Transparent;
+        cell.MouseEnter += (_, _) => { if (accent || on?.Invoke() == true) cell.Opacity = 0.9; else cell.Background = hover; };
+        cell.MouseLeave += (_, _) => { cell.Background = Rest(); cell.Opacity = cell.IsHitTestVisible ? 1 : 0.4; };
         cell.MouseLeftButtonDown += (_, e) => { e.Handled = true; cell.Opacity = 0.7; };
         cell.MouseLeftButtonUp += (_, e) => { e.Handled = true; cell.Opacity = 1; click(); };
         return cell;
@@ -140,7 +145,7 @@ internal sealed class BarMenuWindow : Window
 
     private (Border Cell, TextBlock Icon) Toggle0(string glyph, string tip, Action click)
     {
-        var cell = Cell0(glyph, tip, BtnW, BtnH, click);
+        var cell = Cell0(glyph, tip, BtnW, BtnH, click, on: () => _guidesOn);
         return (cell, (TextBlock)cell.Child);
     }
 

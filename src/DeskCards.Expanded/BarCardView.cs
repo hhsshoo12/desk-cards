@@ -87,6 +87,44 @@ internal sealed class BarCardView : Grid
 
     public string Group => _data.Group;
 
+    /// <summary>이름 글자 자리에 입력칸을 띄운다. 끝나면 새 이름(그만두면 null)을 알려 준다.</summary>
+    public void BeginRename(Action<string?> finish)
+    {
+        var box = new TextBox
+        {
+            Text = _data.Name,
+            FontSize = 13,
+            MaxLength = 80,
+            Margin = new Thickness(4, 3, 4, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(2, 1, 2, 1),
+            BorderThickness = new Thickness(1),
+        };
+        box.SetResourceReference(Control.ForegroundProperty, "Fg");
+        box.SetResourceReference(Control.BackgroundProperty, "CardBg");
+        box.SetResourceReference(Control.BorderBrushProperty, "Accent");
+        SetRow(box, 1);
+        _label.Visibility = Visibility.Hidden;
+        Children.Add(box);
+        bool done = false;
+        void End(bool ok)
+        {
+            if (done) return;
+            done = true;
+            Children.Remove(box);
+            _label.Visibility = Visibility.Visible;
+            finish(ok ? box.Text.Trim() : null);
+        }
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { End(true); e.Handled = true; }
+            else if (e.Key == Key.Escape) { End(false); e.Handled = true; }
+        };
+        box.LostKeyboardFocus += (_, _) => End(true);
+        box.Loaded += (_, _) => { Keyboard.Focus(box); box.SelectAll(); };
+    }
+
     /// <summary>카드 배경 판. 드롭 대상 강조 테두리는 쓰는 쪽이 여기에 칠한다.</summary>
     public Border Card { get; }
 

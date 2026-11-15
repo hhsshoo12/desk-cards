@@ -9,14 +9,14 @@ using Microsoft.UI.Xaml.Media;
 namespace DeskCards;
 
 /// <summary>
-/// 카드 바 편집 단추 옆에 잠깐 뜨는 작은 창: 이름 입력, 칸 수 고르기. 다른 곳을 누르면 닫힌다.
+/// 카드 바 편집 단추 옆에 잠깐 뜨는 작은 창: 칸 수 고르기. 다른 곳을 누르면 닫힌다.
 /// (카드 바 메뉴 자체는 WPF 라이브러리가 그리고, 키 입력과 Fluent 모양이 필요한 이 두 가지만 앱이 맡는다.)
 /// </summary>
 internal sealed class BarPopup : ToolWindow
 {
     private static BarPopup? _current;
     private Action? _onClose;
-    private bool _closed;
+    private bool _closed, _isGrid;
 
     private BarPopup(FrameworkElement content) : base("Desk Cards 카드 바", content) { }
 
@@ -43,30 +43,11 @@ internal sealed class BarPopup : ToolWindow
         Close();
     }
 
-    /// <summary>카드 이름을 바로 고친다. Enter로 바꾸고, Esc나 다른 곳을 누르면 그만둔다.</summary>
-    public static void ShowRename(GroupManager mgr, CardWindow card, Rectangle anchor, bool leftSide)
-    {
-        var box = new TextBox { Text = card.CardName, MinWidth = 220, MaxLength = 80 };
-        var root = new Border { Padding = new Thickness(10), Background = Theme.Brush("PopupBg"), Child = box };
-        BarPopup? w = null;
-        box.KeyDown += (_, e) =>
-        {
-            if (e.Key == Windows.System.VirtualKey.Enter)
-            {
-                string text = box.Text.Trim();
-                if (text.Length > 0 && text != card.CardName && mgr.Cards.Contains(card)) mgr.RenameGroup(card, text);
-                w!.Dismiss();
-                e.Handled = true;
-            }
-            else if (e.Key == Windows.System.VirtualKey.Escape) { w!.Dismiss(); e.Handled = true; }
-        };
-        w = Show(root, anchor, leftSide);
-        root.Loaded += (_, _) => { box.Focus(FocusState.Programmatic); box.SelectAll(); };
-    }
-
     /// <summary>미리보기 칸 수를 빠르게 고른다.</summary>
     public static void ShowGrid(GroupManager mgr, CardWindow card, Rectangle anchor, bool leftSide)
     {
+        // 열려 있는 칸 수 창을 단추로 다시 누르면 닫는다.
+        if (_current is { _isGrid: true, _closed: false } open) { open.Dismiss(); return; }
         var grid = new Grid { ColumnSpacing = 4, RowSpacing = 4 };
         for (int i = 0; i < 4; i++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         for (int i = 0; i < (EditBar.GridPresets.Length + 3) / 4; i++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -91,5 +72,6 @@ internal sealed class BarPopup : ToolWindow
         var hint = new TextBlock { Text = "다른 칸 수는 설정에서 고를 수 있어요", FontSize = 12, Margin = new Thickness(4, 8, 4, 0), Foreground = Theme.Brush("SubFg") };
         var root = new Border { Padding = new Thickness(10), Background = Theme.Brush("PopupBg"), Child = new StackPanel { Children = { grid, hint } } };
         w = Show(root, anchor, leftSide);
+        w._isGrid = true;
     }
 }
