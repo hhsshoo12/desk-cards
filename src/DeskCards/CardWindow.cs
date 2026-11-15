@@ -42,7 +42,7 @@ internal sealed partial class CardWindow : Window
             CardMenu = () => Menus.ForCard(this, Mgr),
             Editing = () => IsEditing,
         };
-        _root = new Grid { Background = Theme.Brush("CardSurface") };
+        _root = new Grid { Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
         _root.Children.Add(View);
         Content = _root;
         _editor = new CardEditor(this, _root);
@@ -52,7 +52,7 @@ internal sealed partial class CardWindow : Window
 
         var hwnd = Handle;
         Hwnd.MakeNoActivateTool(hwnd);
-        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.DwmAcrylic);
         AttachToDesktop(hwnd);
         InstallMessageHook(hwnd);
         Theme.Changed += OnThemeChanged;
@@ -107,7 +107,7 @@ internal sealed partial class CardWindow : Window
     private void OnThemeChanged() => Ui.Post(() =>
     {
         if (_closed || Handle == IntPtr.Zero) return;
-        Hwnd.ApplyFluent(this, Hwnd.Backdrop.Acrylic);
+        Hwnd.ApplyFluent(this, Hwnd.Backdrop.DwmAcrylic);
         UpdateBorder();
     }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
 

@@ -10,9 +10,12 @@ namespace DeskCards;
 /// <summary>여러 창이 똑같이 쓰는 Win32 창 조작(z 순서, 창 스타일, Windows 11 모양).</summary>
 internal static class Hwnd
 {
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
+
     public static readonly IntPtr Topmost = new(-1);
 
-    public enum Backdrop { None = 1, Mica = 2, Acrylic = 3 }
+    public enum Backdrop { None = 1, Mica = 2, Acrylic = 3, DwmAcrylic = 4 }
 
     /// <summary>창 핸들. 창이 아직 없으면 IntPtr.Zero.</summary>
     public static IntPtr Of(Window? w)
@@ -67,11 +70,56 @@ internal static class Hwnd
                 if (w.SystemBackdrop is ActiveBackdrop a) a.Refresh();
                 else w.SystemBackdrop = new ActiveBackdrop(acrylic: true);
                 break;
+            case Backdrop.DwmAcrylic:
+                // WinUI 컨트롤러 대신 Windows(DWM)가 직접 그리는 아크릴. WinUI 쪽은 투명하게 두고 그 밑에 DWM이 그린다(웹 카드와 같은 방식).
+                if (w.SystemBackdrop is not DwmPassthroughBackdrop) w.SystemBackdrop = new DwmPassthroughBackdrop();
+                Native.SetDwm(hwnd, Native.DWMWA_SYSTEMBACKDROP_TYPE, 3);
+                var margins = new MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+                DwmExtendFrameIntoClientArea(hwnd, ref margins);
+                break;
             case Backdrop.Mica:
                 if (w.SystemBackdrop is ActiveBackdrop m) m.Refresh();
                 else w.SystemBackdrop = new ActiveBackdrop(acrylic: false);
                 break;
         }
+    }
+}
+
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+internal struct MARGINS { public int Left, Right, Top, Bottom; }
+
+/// <summary>WinUI가 창 뒤를 그리지 않게 투명 색 하나만 붙이는 시스템 배경. 그 밑에 DWM 백드롭이 보인다.</summary>
+internal sealed class DwmPassthroughBackdrop : SystemBackdrop
+{
+    private static global::Windows.UI.Composition.Compositor? _compositor;
+    private static object? _queueController;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct DispatcherQueueOptions { public int Size, ThreadType, ApartmentType; }
+
+    [System.Runtime.InteropServices.DllImport("CoreMessaging.dll")]
+    private static extern int CreateDispatcherQueueController(DispatcherQueueOptions options, out IntPtr controller);
+
+    /// <summary>Windows.UI.Composition(시스템 컴포지터)은 시스템 DispatcherQueue가 현재 스레드에 있어야 만들 수 있다.</summary>
+    private static global::Windows.UI.Composition.Compositor Compositor()
+    {
+        if (_compositor != null) return _compositor;
+        if (global::Windows.System.DispatcherQueue.GetForCurrentThread() == null)
+        {
+            var options = new DispatcherQueueOptions { Size = System.Runtime.InteropServices.Marshal.SizeOf<DispatcherQueueOptions>(), ThreadType = 2, ApartmentType = 2 };
+            if (CreateDispatcherQueueController(options, out var controller) == 0) _queueController = controller;
+        }
+        return _compositor = new global::Windows.UI.Composition.Compositor();
+    }
+
+    protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot)
+    {
+        target.SystemBackdrop = Compositor().CreateColorBrush(global::Windows.UI.Color.FromArgb(0, 0, 0, 0));
+    }
+
+    protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
+    {
+        target.SystemBackdrop = null;
     }
 }
 
