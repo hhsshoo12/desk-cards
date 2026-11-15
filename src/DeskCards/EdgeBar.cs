@@ -284,12 +284,36 @@ internal static class EdgeBar
             return Side ? (c0, 0) : (0, c0);
         }
     }
-    /// <summary>이 카드가 지금 떠 있는 카드 바 안에 있으면 바 편집을 시작한다(설정의 "편집" 버튼용).</summary>
+    private static (string Device, ScreenEdge Edge)? _lastPlace;
+
+    /// <summary>
+    /// 이 카드가 카드 바 안 카드면 바 편집을 시작한다(설정의 "편집" 버튼용).
+    /// 설정 창으로 마우스가 옮겨 가면 바는 이미 들어가 있으므로, 그때는 마지막으로 열렸던 자리에 다시 열고 편집을 시작한다.
+    /// </summary>
     public static bool TryBeginEdit(CardWindow card)
     {
-        if (_bar is not { Gone: false } bar || bar.Mgr.BarItems.All(i => !string.Equals(i.Group, card.Group.Name, StringComparison.OrdinalIgnoreCase))) return false;
-        bar.Begin();
+        if (_mgr is not { IsShuttingDown: false } mgr || !mgr.BarEnabled) return false;
+        if (mgr.BarItems.All(i => !string.Equals(i.Group, card.Group.Name, StringComparison.OrdinalIgnoreCase))) return false;
+        if (_bar is { Gone: false, Closing: false } open) { open.Begin(); return true; }
+        if (PlaceForEdit(mgr) is not { } place) return false;
+        if (_bar is { Gone: false } closing) { closing.Gone = true; closing.End(); closing.View.CloseNow(); }
+        Reset();
+        _armed = false;
+        OpenBarOn(place.Screen, place.Edge);
+        _bar!.Begin();
+        SyncPolling();
         return true;
+    }
+
+    /// <summary>바를 다시 열 자리: 마지막으로 열렸던 디스플레이·가장자리, 없으면 바를 여는 첫 디스플레이.</summary>
+    private static (Screens.Monitor Screen, ScreenEdge Edge)? PlaceForEdit(GroupManager mgr)
+    {
+        var screens = Screens.All();
+        if (_lastPlace is { } last && screens.FirstOrDefault(s => s.DeviceName == last.Device) is { } s0 && mgr.BarEdgeFor(s0.DeviceName) == last.Edge)
+            return (s0, last.Edge);
+        foreach (var s in screens.OrderByDescending(s => s.DeviceName == Screens.Primary.DeviceName))
+            if (mgr.BarEdgeFor(s.DeviceName) is { } edge && edge != Native.TaskbarEdgeOn(s)) return (s, edge);
+        return null;
     }
 
     public static void Start(GroupManager mgr)
@@ -441,6 +465,7 @@ internal static class EdgeBar
         bar.Attach();
         bar.View = BarView.Open(bar, new BarOptions(ExpandedWindow.CurrentPalette(), (int)edge, ToPx(bar.Final), ToPx(bar.Bounds), scale), bar.Content());
         _bar = bar;
+        _lastPlace = (screen.DeviceName, edge);
     }
 
     private static PixelRect ToPx(Rectangle r) => new(r.Left, r.Top, r.Right, r.Bottom);
