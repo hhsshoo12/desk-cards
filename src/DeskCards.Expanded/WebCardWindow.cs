@@ -17,6 +17,7 @@ internal sealed class WebCardHandle : DesktopCardHandle<WebCardWindow>, IWebCard
 
     public void ToPage(string json) => Run(() => Window.ToPage(json));
     public void Reload() => Run(Window.Reload);
+    public void SetExe(bool running) => Run(() => Window.SetExe(running));
 }
 
 /// <summary>
@@ -30,7 +31,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
     private readonly WebCardOptions _o;
     private readonly IWebCardHost _host;
     private readonly WebView2 _web;
-    private bool _booted;
+    private bool _booted, _exe;
 
     public WebCardWindow(WebCardOptions options, IWebCardHost host)
         : base(host, options.Id, "Desk Cards " + options.Name, options.Palette, options.X, options.Y, options.Width, options.Height, options.Visible)
@@ -47,8 +48,18 @@ internal sealed class WebCardWindow : DesktopCardWindow
 
     protected override void OnVisibilityChanged(bool visible) => PostEvent("visibility", visible);
 
+    protected override void OnPaletteChanged(Palette palette) => PostEvent("theme", palette.Light ? "light" : "dark");
+
+    internal void SetExe(bool running)
+    {
+        if (_exe == running) return;
+        _exe = running;
+        PostEvent("exe", running);
+    }
+
     protected override void OnEditingChanged(bool editing)
     {
+        PostEvent("editing", editing);
         // 편집 중에는 페이지 전체를 끌기 영역으로 만든다(웹 화면은 그대로 그려지고, 끌면 창이 옮겨진다).
         _ = _web?.CoreWebView2?.ExecuteScriptAsync(editing
             ? "document.documentElement.style.setProperty('app-region','drag')"
@@ -125,6 +136,15 @@ internal sealed class WebCardWindow : DesktopCardWindow
     private void PostEvent(string name, object value) =>
         Post(JsonSerializer.Serialize(new Dictionary<string, object> { ["t"] = "evt", ["n"] = name, ["v"] = value }));
 
+    /// <summary>페이지가 준비되면 현재 상태를 한꺼번에 알려 준다.</summary>
+    private void PushState()
+    {
+        PushBounds();
+        PostEvent("theme", Light ? "light" : "dark");
+        PostEvent("editing", Editing);
+        PostEvent("exe", _exe);
+    }
+
     private void PushBounds()
     {
         double k = Scale;
@@ -148,7 +168,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
             {
                 case "msg": _host.FromPage(root.GetProperty("d").GetRawText()); break;
                 case "menu": _host.Menu(); break;
-                case "ready": PushBounds(); break;
+                case "ready": PushState(); break;
                 case "win": OnWindowRequest(root); break;
             }
         }
@@ -182,7 +202,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
 
     private const string Shim = """
 (()=>{const w=window.chrome.webview;
-const d=window.deskcard={bounds:null,visible:true,onmessage:null,onbounds:null,onvisibility:null,
+const d=window.deskcard={bounds:null,visible:true,theme:'light',editing:false,exe:false,onmessage:null,onbounds:null,onvisibility:null,ontheme:null,onediting:null,onexe:null,
  send:x=>w.postMessage({t:'msg',d:x}),
  window:{resize:(width,height)=>w.postMessage({t:'win',a:'resize',w:width,h:height}),
   move:(x,y)=>w.postMessage({t:'win',a:'move',x:x,y:y}),
@@ -191,7 +211,10 @@ const d=window.deskcard={bounds:null,visible:true,onmessage:null,onbounds:null,o
 w.addEventListener('message',e=>{const m=e.data;if(!m)return;
  if(m.t==='msg'){if(typeof d.onmessage==='function')d.onmessage(m.d);window.dispatchEvent(new CustomEvent('deskcard',{detail:m.d}));}
  else if(m.t==='evt'){if(m.n==='bounds'){d.bounds=m.v;if(typeof d.onbounds==='function')d.onbounds(m.v);}
-  else if(m.n==='visibility'){d.visible=m.v;if(typeof d.onvisibility==='function')d.onvisibility(m.v);}}});
+  else if(m.n==='visibility'){d.visible=m.v;if(typeof d.onvisibility==='function')d.onvisibility(m.v);}
+  else if(m.n==='theme'){d.theme=m.v;document.documentElement.dataset.theme=m.v;if(typeof d.ontheme==='function')d.ontheme(m.v);}
+  else if(m.n==='editing'){d.editing=m.v;if(typeof d.onediting==='function')d.onediting(m.v);}
+  else if(m.n==='exe'){d.exe=m.v;if(typeof d.onexe==='function')d.onexe(m.v);}}});
 window.addEventListener('contextmenu',e=>{e.preventDefault();w.postMessage({t:'menu'});},true);
 w.postMessage({t:'ready'});})();
 """;

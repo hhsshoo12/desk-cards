@@ -8,7 +8,22 @@ namespace DeskCards;
 /// <summary>웹 카드(.dard): 가져오기, 바탕화면에 놓기·내리기·지우기.</summary>
 internal sealed class WebCardsPage : SettingsPage
 {
-    public WebCardsPage(SettingsPageArgs a) : base(a) => Start();
+    private bool _rebuilding;
+
+    public WebCardsPage(SettingsPageArgs a) : base(a)
+    {
+        Start();
+        // exe가 켜지고 꺼지는 것을 목록에 바로 비춘다(한 번에 여러 번 와도 한 번만 다시 그린다).
+        Loaded += (_, _) => { if (WebCardManager.Instance is { } w) w.Changed += OnCardsChanged; };
+        Unloaded += (_, _) => { if (WebCardManager.Instance is { } w) w.Changed -= OnCardsChanged; };
+    }
+
+    private void OnCardsChanged()
+    {
+        if (_rebuilding) return;
+        _rebuilding = true;
+        Ui.Post(() => { _rebuilding = false; Rebuild(); });
+    }
 
     protected override void Build()
     {
@@ -43,8 +58,17 @@ internal sealed class WebCardsPage : SettingsPage
                 web.Uninstall(id);
                 Ui.Post(Rebuild);
             });
-            var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { toggle, remove } };
-            Row("\uE8B7", m.Name, $"{id} · {kind}", panel);
+            var panel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            string state = "";
+            if (web.ExeStatus(id) is { } running)
+            {
+                state = running ? " · 실행 중" : " · 멈춤";
+                panel.Children.Add(Btn(running ? "멈추기" : "시작", () => { if (running) web.StopExe(id); else web.StartExe(id); }));
+                if (running) panel.Children.Add(Btn("다시 시작", () => web.RestartExe(id)));
+            }
+            panel.Children.Add(toggle);
+            panel.Children.Add(remove);
+            Row("\uE8B7", m.Name, $"{id} · {kind}{state}", panel);
         }
     }
 

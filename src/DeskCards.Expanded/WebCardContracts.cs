@@ -89,6 +89,8 @@ public interface IWebCardHandle : IDesktopCardHandle
     /// <summary>exe가 보낸 메시지(JSON)를 페이지의 deskcard.onmessage로 보낸다.</summary>
     void ToPage(string json);
     void Reload();
+    /// <summary>카드의 exe가 돌기 시작했거나 끝났다(페이지의 deskcard.onexe로 알린다).</summary>
+    void SetExe(bool running);
 }
 
 public interface IFolderCardHandle : IDesktopCardHandle

@@ -108,7 +108,9 @@ internal abstract class DesktopCardWindow : Window
 
     public IntPtr Handle => new WindowInteropHelper(this).Handle;
 
-    protected double Scale => VisualTreeHelper.GetDpi(this).DpiScaleX;
+    protected bool Light => _palette.Light;
+
+    protected double Scale =>VisualTreeHelper.GetDpi(this).DpiScaleX;
 
 
     public PixelRect ContentRect => new(X, Y, X + W, Y + H);
@@ -213,7 +215,10 @@ internal abstract class DesktopCardWindow : Window
         SetDwm(hwnd, 20, palette.Light ? 0 : 1);
         SetDwm(hwnd, 38, BackdropType);
         if (Editing) SetHighlight(_hlSelected, _hlInvalid); // 강조색도 새 테마로
+        OnPaletteChanged(palette);
     }
+
+    protected virtual void OnPaletteChanged(Palette palette) { }
 
     private void ApplyResources(Palette p)
     {

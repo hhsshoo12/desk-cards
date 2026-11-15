@@ -121,6 +121,14 @@ internal sealed class WebCardManager
         Changed?.Invoke();
     }
 
+    /// <summary>카드의 exe 상태: 놓이지 않았거나 exe가 없으면 null, 아니면 지금 돌고 있는지.</summary>
+    public bool? ExeStatus(string id) =>
+        _running.TryGetValue(id, out var r) && r.HasExe ? r.ExeRunning : null;
+
+    public void StartExe(string id) { if (_running.TryGetValue(id, out var r)) r.StartExe(); }
+    public void StopExe(string id) { if (_running.TryGetValue(id, out var r)) r.StopExe(); }
+    public void RestartExe(string id) { if (_running.TryGetValue(id, out var r)) r.RestartProcess(); }
+
     public void Reload(string id)
     {
         if (_running.TryGetValue(id, out var r)) r.Handle?.Reload();
@@ -231,7 +239,13 @@ internal sealed class WebCardManager
             _process?.Dispose();
             var process = new WebCardProcess(Path.Combine(_card.Directory, exe), _card.Directory, Id, DataDir(Id));
             process.Message += OnExeLine;
-            try { process.Start(); _process = process; }
+            process.Exited += _ => Ui.Post(() =>
+            {
+                if (_disposed || _process != process) return;
+                Handle?.SetExe(false);
+                Changed();
+            });
+            try { process.Start(); _process = process; Handle?.SetExe(true); Changed(); }
             catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
             {
                 process.Dispose();
@@ -244,6 +258,31 @@ internal sealed class WebCardManager
             var p = _process;
             _process = null;
             p?.Dispose();
+            Handle?.SetExe(false);
+            Changed();
+        }
+
+        private void Changed() { if (!_disposed) _owner.Changed?.Invoke(); }
+
+        /// <summary>exe가 지금 돌고 있나.</summary>
+        public bool HasExe => _card.Manifest.Exe != null;
+
+        public bool ExeRunning => _process is { HasExited: false };
+
+        /// <summary>exe를 껐다 켠다(설정 화면의 제어).</summary>
+        public void RestartProcess()
+        {
+            var m = _card.Manifest;
+            if (m.Exe == null || _disposed) return;
+            StopProcess();
+            if (m.Background || _placement.Shown) StartProcess(m.Exe);
+        }
+
+        public void StopExe() { if (!_disposed) StopProcess(); }
+
+        public void StartExe()
+        {
+            if (_card.Manifest.Exe is { } exe && !_disposed && !ExeRunning) StartProcess(exe);
         }
 
         private void OnExeLine(string line)
