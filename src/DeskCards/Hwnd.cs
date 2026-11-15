@@ -91,7 +91,8 @@ internal sealed class ActiveBackdrop : SystemBackdrop
         _config = new SystemBackdropConfiguration { IsInputActive = true, Theme = ConfigTheme() };
         if (_acrylic)
         {
-            var c = new DesktopAcrylicController();
+            // 바탕화면이 비치도록 시스템 기본보다 색을 옅게 한다(웹 카드의 DWM 아크릴과 비슷한 정도).
+            var c = new DesktopAcrylicController { TintOpacity = 0.1f, LuminosityOpacity = 0.35f };
             c.AddSystemBackdropTarget(target);
             c.SetSystemBackdropConfiguration(_config);
             _controller = c;
