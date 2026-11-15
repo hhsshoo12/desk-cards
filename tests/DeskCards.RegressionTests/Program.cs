@@ -24,6 +24,7 @@ internal static partial class Program
         GroupFileTests(root);
         UpdateTests(root);
         FolderSwapTests(root);
+        WebCardTests(root);
         Console.WriteLine($"Failures: {_failed}");
         return _failed == 0 ? 0 : 1;
     }
