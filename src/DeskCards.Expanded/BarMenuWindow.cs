@@ -64,8 +64,8 @@ internal sealed class BarMenuWindow : Window
         var add = Cell0("\uE710", "카드 넣기", BtnW, BtnH, () => _host.AddRequested());
         (_guides, _guidesIcon) = Toggle0("\uE80A", "안내선 · 자동 맞춤 (Alt를 누르고 있으면 잠시 꺼짐)", () => { _guidesOn = !_guidesOn; ApplyGuides(); _host.GuidesChanged(_guidesOn); });
         _rename = Cell0("\uE8AC", "이름 바꾸기", BtnW, BtnH, () => { if (_selected is { } g) _host.RenameRequested(g, ScreenRectOf(_rename!)); });
-        _grid = Cell0("\uECA5", "미리보기 칸 수", BtnW, BtnH, () => { if (_selected is { } g) _host.GridRequested(g, ScreenRectOf(_grid!)); }, chevron: true);
-        _remove = Cell0("\uE738", "카드 바에서 빼기 (Delete)", BtnW, BtnH, () => { if (_selected is { } g) _host.RemoveRequested(g); });
+        _grid = Cell0("\uECA5", "미리보기 칸 수", BtnW, BtnH, () => { if (_selected is { } g) _host.GridRequested(g, ScreenRectOf(_grid!)); });
+        _remove = Cell0("\uE74D", "카드 바에서 빼기 (Delete)", BtnW, BtnH, () => { if (_selected is { } g) _host.RemoveRequested(g); });
         var settings = Cell0("\uE713", "설정", BtnW, BtnH, () => _host.SettingsRequested());
         var done = Cell0("\uE73E", "편집 끝내기 (Esc)", BtnW, 32, () => _host.EditEnded(), accent: true);
         done.Margin = new Thickness(0, 4, 0, 0);
