@@ -144,7 +144,19 @@ internal sealed class BarEditBar : ToolWindow
         int w = (int)Math.Round(_full.Width * scale), h = Math.Max(1, (int)Math.Round(_full.Height * scale * k));
         int y = _dir > 0 ? _gear.Bottom + gap : _gear.Top - gap - h;
         Resize(new Windows.Graphics.RectInt32(_gear.Left, y, w, h));
+        // 창 테두리 때문에 내용 영역이 목표보다 안쪽에 놓이므로, 보이는 자리가 알약과 딱 맞게 그만큼 당긴다.
+        var origin = new POINT();
+        if (ClientToScreen(Hwnd.Of(this), ref origin) && (origin.X != _gear.Left || origin.Y != y))
+        {
+            var pos = AppWindow.Position;
+            AppWindow.Move(new Windows.Graphics.PointInt32(pos.X - (origin.X - _gear.Left), pos.Y - (origin.Y - y)));
+        }
     }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct POINT { public int X, Y; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
 
     private void Animate(double to)
     {

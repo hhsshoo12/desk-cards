@@ -55,7 +55,7 @@ internal static class EdgeBar
         private List<ShellEntry> _watched = new();
         private bool _pushQueued;
 
-        private const double Pad = 12, Gap = 8, BarFloat = 36, PillWidth = 52;
+        private const double Pad = 12, Gap = 8, BarFloat = 52, PillWidth = 52;
         private bool Side => Edge is ScreenEdge.Left or ScreenEdge.Right;
         private double U => Math.Max(1, (Side ? Final.Width : Final.Height) / Scale - 2 * Pad);
         private (double W, double H) Inner => (Math.Max(1, Final.Width / Scale - 2 * Pad), Math.Max(1, Final.Height / Scale - 2 * Pad));

@@ -17,7 +17,7 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal sealed class BarFloatWindow : Window
 {
-    public const double Size = 36;   // 칸 높이
+    public const double Size = 52;   // 칸 높이(폭과 같은 정사각형)
     public const double PillWidth = 52; // 편집 막대(단추 40 + 안쪽 여백 6×2)와 같은 폭
     private const double Shadow = 12; // 그림자가 잘리지 않게 두는 여백
 
@@ -99,7 +99,7 @@ internal sealed class BarFloatWindow : Window
     {
         Text = glyph,
         FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
-        FontSize = 16,
+        FontSize = 22,
         Foreground = fg,
         HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Center,
