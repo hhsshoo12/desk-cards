@@ -47,6 +47,8 @@ internal sealed partial class CardWindow
             // Windows 11 아크릴 배경은 창이 비활성이면 단색으로 바뀐다. 바탕화면 카드는 거의 늘 비활성이라,
             // 창 틀을 늘 활성 상태로 그리게 해서 아크릴을 유지한다(실제 활성·초점은 그대로).
             result = Native.DefSubclassProc(hwnd, msg, new IntPtr(1), lParam);
+            // 활성 상태가 바뀔 때 DWM 백드롭이 풀리지 않게 다시 적용한다.
+            Ui.Post(() => { if (!_closed && Handle != IntPtr.Zero) Hwnd.ApplyFluent(this, Hwnd.Backdrop.DwmAcrylic); }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
             return true;
         }
         if (msg == WM_NCCALCSIZE && wParam != IntPtr.Zero)
@@ -75,7 +77,12 @@ internal sealed partial class CardWindow
         var wp = Marshal.PtrToStructure<Native.WINDOWPOS>(lParam);
         if ((wp.flags & Native.SWP_NOZORDER) != 0) return;
         if (_movingZ) wp.hwndInsertAfter = Native.HWND_BOTTOM;
-        else wp.flags |= Native.SWP_NOZORDER;
+        else
+        {
+            wp.flags |= Native.SWP_NOZORDER;
+            // 소유자(Progman)가 앞으로 나오며 우리 순서를 건너뛰면 카드만 뒤에 남아 가려진다. 끝난 뒤 맨 아래로 다시 보낸다.
+            Ui.Post(() => { if (!_closed && !_editing) SendToBottom(); }, Microsoft.UI.Dispatching.DispatcherQueuePriority.Low);
+        }
         Marshal.StructureToPtr(wp, lParam, false);
     }
 }

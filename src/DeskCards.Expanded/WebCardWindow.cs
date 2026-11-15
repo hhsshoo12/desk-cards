@@ -193,7 +193,12 @@ internal sealed class WebCardWindow : Window
                 if ((wp.flags & 0x0004) == 0)
                 {
                     if (_movingZ) wp.hwndInsertAfter = _zTarget;
-                    else if (!_editing) wp.flags |= 0x0004; // 앱이 직접 옮길 때 말고는 z 변경을 모두 막는다(폴더 카드와 같은 규칙)
+                    else if (!_editing)
+                    {
+                        wp.flags |= 0x0004; // 앱이 직접 옮길 때 말고는 z 변경을 모두 막는다(폴더 카드와 같은 규칙)
+                        // 소유자(Progman)가 앞으로 나오며 우리 순서를 건너뛰면 카드만 뒤에 남아 가려진다. 끝난 뒤 맨 아래로 다시 보낸다.
+                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () => { if (!_closed && !_editing) SendToBottom(); });
+                    }
                 }
                 if (_editing && _dragging && (wp.flags & 0x0002) == 0 && GetWindowRect(hwnd, out var cur) && wp.cx == cur.Right - cur.Left && wp.cy == cur.Bottom - cur.Top)
                 {
