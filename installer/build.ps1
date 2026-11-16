@@ -3,9 +3,15 @@
 #   DeskCards-Setup.exe: 위 zip을 품은 설치기(인터넷 없이 설치)
 # 버전은 저장소 루트의 Directory.Build.props 한 곳이다(앱·설치기·제거기 공통).
 [CmdletBinding()]
-param()
+param(
+    # 설치기에 품을 런타임 설치 도구(--nogui 지원). 기본은 형제 저장소의 릴리스 빌드.
+    [string]$RuntimeInstaller
+)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+if (-not $RuntimeInstaller) { $RuntimeInstaller = Join-Path (Split-Path $root -Parent) 'winui3-runtime-installer\target\release\winui3-runtime-installer.exe' }
+if (-not (Test-Path -LiteralPath $RuntimeInstaller)) { throw "런타임 설치 도구를 찾지 못했어요: $RuntimeInstaller (-RuntimeInstaller로 지정)" }
+$RuntimeInstaller = (Resolve-Path -LiteralPath $RuntimeInstaller).Path
 $appProject = Join-Path $root 'src\DeskCards\DeskCards.csproj'
 $setupProject = Join-Path $PSScriptRoot 'DeskCards.Setup\DeskCards.Setup.csproj'
 $dist = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'dist'))
@@ -56,7 +62,7 @@ try {
     [IO.File]::WriteAllText(($zipPath + '.sha256'), $hash, [Text.UTF8Encoding]::new($false))
 
     # 4. 설치기: 앱 zip을 품는다.
-    Build-Setup @("-p:AppPackage=$zipPath")
+    Build-Setup @("-p:AppPackage=$zipPath", "-p:RuntimeInstaller=$RuntimeInstaller")
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'DeskCards.Setup\bin\Release\net48\DeskCards-Setup.exe') -Destination (Join-Path $output 'DeskCards-Setup.exe') -Force
 } finally { Remove-BuildTemporary $publishDir; Remove-BuildTemporary $uninstallerDir; Remove-BuildTemporary $zipStage }
 

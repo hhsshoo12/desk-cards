@@ -49,7 +49,7 @@ internal static class SetupApplication
             }
             var package = EmbeddedPackage.Load();
             if (!uninstall && package == null) throw new InvalidOperationException("설치기에 앱이 들어 있지 않습니다.");
-            var engine = new SetupEngine(env, package, new WindowsAppProcesses(), new ShellShortcuts());
+            var engine = new SetupEngine(env, package, new WindowsAppProcesses(), new ShellShortcuts(), EmbeddedRuntimeInstaller.Load());
             var window = new MainWindow(env, engine, uninstall, tempCopy);
             using var stop = new ManualResetEvent(false);
             var listener = new Thread(() =>

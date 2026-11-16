@@ -21,6 +21,10 @@
   <ItemGroup Condition="'$(AppPackage)' != '' and '$(Uninstaller)' != 'true'">
     <EmbeddedResource Include="$(AppPackage)" LogicalName="DeskCards-win-x64.zip" />
   </ItemGroup>
+  <!-- -p:RuntimeInstaller=<exe>: 필요한 런타임을 nogui 모드로 설치해 주는 도구(winui3-runtime-installer.exe)를 품는다. -->
+  <ItemGroup Condition="'$(RuntimeInstaller)' != '' and '$(Uninstaller)' != 'true'">
+    <EmbeddedResource Include="$(RuntimeInstaller)" LogicalName="RuntimeInstaller.exe" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="../../src/Shared/StartupState.cs" Link="StartupState.cs" />
     <Compile Include="../../src/Shared/InstalledVersionFile.cs" Link="InstalledVersionFile.cs" />

@@ -10,7 +10,7 @@ Fences처럼 바탕화면 배경에 칸을 그어 두는 방식이 아니라, **
 ## 설치
 
 1. [DeskCards-Setup.exe](https://github.com/hhsshoo12/desk-cards/releases/latest/download/DeskCards-Setup.exe)를 받습니다. 앱이 들어 있어서 설치할 때 인터넷이 없어도 됩니다. 설치한 뒤에는 앱이 스스로 업데이트합니다.
-2. 실행해서 안내에 따라 [다음]을 누르면 됩니다. 관리자 권한은 필요 없습니다. 앱은 .NET 10 데스크톱 런타임과 Windows App SDK 런타임이 있어야 하며, 없으면 설치기가 안내합니다.
+2. 실행해서 안내에 따라 [다음]을 누르면 됩니다. 관리자 권한은 필요 없습니다. 앱은 .NET 10 데스크톱 런타임과 Windows App SDK 런타임이 있어야 하며, 없으면 설치기에 들어 있는 런타임 설치 도구가 winget으로 자동 설치합니다(인터넷 필요).
    - 설치 위치: `%LOCALAPPDATA%\Programs\Desk Cards` (고정)
    - 추가 작업: 시작 메뉴 바로가기, 바탕화면 바로가기, Windows 시작 시 자동 실행
 3. 새 버전은 앱이 스스로 받아 둡니다([정보](#정보) 참고). 설치기를 다시 실행해도 최신 버전으로 업데이트됩니다. 만들어 둔 그룹과 카드 위치·크기는 그대로 남습니다.
@@ -214,7 +214,7 @@ dotnet build src/DeskCards -c Release
 
 실행 파일은 `src/DeskCards/bin/Release/net10.0-windows/DeskCards.exe`에 생깁니다.
 
-설치 파일까지 만들려면 아래를 실행합니다. 설치기는 `net48` WPF이고, .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드됩니다. 앱은 .NET 10 런타임 미포함(framework-dependent)이라 PC에 .NET 10 데스크톱 런타임과 Windows App SDK 런타임이 있어야 합니다.
+설치 파일까지 만들려면 아래를 실행합니다. 설치기는 `net48` WPF이고, .NET Framework 4.8 개발자 팩이 없어도 Microsoft의 NuGet 참조 어셈블리로 빌드됩니다. 앱은 .NET 10 런타임 미포함(framework-dependent)이라 PC에 .NET 10 데스크톱 런타임과 Windows App SDK 런타임이 있어야 하며, 설치기는 빌드 때 `winui3-runtime-installer.exe`(기본 위치 `..\winui3-runtime-installer\target\release`, `build.ps1 -RuntimeInstaller`로 지정)를 품어 `--nogui`로 돌립니다.
 
 ```
 pwsh -File installer/build.ps1

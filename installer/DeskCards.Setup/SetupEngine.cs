@@ -14,9 +14,10 @@ internal sealed class SetupEngine
     public Registration Registration { get; }
     /// <summary>설치할 앱. 제거기 전용 빌드에서는 null.</summary>
     public IAppPackage? Package { get; }
-    public SetupEngine(SetupEnvironment env, IAppPackage? package, IAppProcesses processes, IShortcuts shortcuts)
+    private readonly IRuntimeInstaller? _runtimes;
+    public SetupEngine(SetupEnvironment env, IAppPackage? package, IAppProcesses processes, IShortcuts shortcuts, IRuntimeInstaller? runtimes = null)
     {
-        _env = env; Package = package; _processes = processes; _shortcuts = shortcuts;
+        _env = env; Package = package; _processes = processes; _shortcuts = shortcuts; _runtimes = runtimes;
         _log = new SetupLog(env); Registration = new Registration(env);
     }
 
@@ -35,6 +36,17 @@ internal sealed class SetupEngine
             Directory.CreateDirectory(temp);
             string version = Unpack(package, temp, stage, Step, token);
             token.ThrowIfCancellationRequested();
+            if (_runtimes != null)
+            {
+                Step("필요한 런타임 확인");
+                string work = Path.Combine(temp, "runtime");
+                if (!_runtimes.IsInstalled(work, token))
+                {
+                    Step("필요한 런타임 설치(몇 분 걸릴 수 있어요)");
+                    _runtimes.Install(work, token);
+                }
+                token.ThrowIfCancellationRequested();
+            }
             disableCancel();
             token.ThrowIfCancellationRequested();
             // The UI cannot cancel or close from this point through registration.

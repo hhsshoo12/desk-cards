@@ -33,6 +33,7 @@ internal static class Program
         }
         using var session = DeskCards.Testing.TestSession.Start("설치기 회귀 테스트");
         _session = session;
+        RuntimeTests();
         Test("own tile and legacy executable match exactly", f =>
         {
             Check(StartTraces.OnlyOurTiles(Tiles("W~" + f.Env.AppExe.ToUpperInvariant()), f.Env.InstallDir));
@@ -294,6 +295,36 @@ internal static class Program
         var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(bitmap)); using var output = File.Create(file); png.Save(output);
     }
     private static void Click(Button button) { button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump(); }
+    private sealed class FakeRuntimes : IRuntimeInstaller
+    {
+        public bool Present; public bool Fail; public int Installs, Checks;
+        public bool IsInstalled(string workDir, CancellationToken token) { Checks++; return Present; }
+        public void Install(string workDir, CancellationToken token) { Installs++; if (Fail) throw new SetupFailure("런타임 실패", false); }
+    }
+
+    private static void RuntimeTests()
+    {
+        Test("runtime present: install skipped", f =>
+        {
+            var r = new FakeRuntimes { Present = true };
+            new SetupEngine(f.Env, f.Payload, f.Processes, f.Shortcuts, r).Install(new InstallOptions(), _ => { }, () => { }, default);
+            Check(r.Checks == 1 && r.Installs == 0 && File.Exists(f.Env.AppExe));
+        });
+        Test("runtime missing: installed before app files", f =>
+        {
+            var r = new FakeRuntimes();
+            new SetupEngine(f.Env, f.Payload, f.Processes, f.Shortcuts, r).Install(new InstallOptions(), _ => { }, () => { }, default);
+            Check(r.Installs == 1 && File.Exists(f.Env.AppExe));
+        });
+        Test("runtime failure leaves existing app untouched", f =>
+        {
+            f.Existing();
+            var r = new FakeRuntimes { Fail = true };
+            Throws<SetupFailure>(() => new SetupEngine(f.Env, f.Payload, f.Processes, f.Shortcuts, r).Install(new InstallOptions(), _ => { }, () => { }, default));
+            f.Unchanged();
+        });
+    }
+
     private static void Pump() { var frame = new DispatcherFrame(); Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => frame.Continue = false)); Dispatcher.PushFrame(frame); }
     private static string Tiles(params string[] ids) => new JavaScriptSerializer().Serialize(ids.Select(id => new { tileId = id }).ToArray());
     internal static void Check(bool condition) { if (!condition) throw new Exception("Assertion failed"); }
