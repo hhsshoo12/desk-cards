@@ -54,7 +54,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
         PostEvent("visibility", visible);
     }
 
-    protected override void OnClosedCore() => _overlay?.Dismiss();
+    protected override void OnClosedCore() => _overlays?.Dispose();
 
     protected override void OnPaletteChanged(Palette palette) => PostEvent("theme", palette.Light ? "light" : "dark");
 
@@ -118,73 +118,11 @@ internal sealed class WebCardWindow : DesktopCardWindow
 
     // ----- 임시 창(overlay) -----
 
-    private CardOverlayWindow? _overlay;
+    private CardOverlays? _overlays;
 
-    /// <summary>카드 화면이 deskcard.overlay.open으로 요청했다. 위치(x,y)는 카드 왼쪽 위 기준 CSS 픽셀이고 카드 밖(음수·큰 값)도 된다.</summary>
-    private void OpenOverlay(JsonElement m)
-    {
-        double k = Scale;
-        double Num(string key, double fallback) => m.TryGetProperty(key, out var v) && v.TryGetDouble(out double d) && double.IsFinite(d) ? d : fallback;
-        string? url = m.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
-        if (string.IsNullOrWhiteSpace(url) || url.Contains("://") || url.Contains("..")) return; // 카드 폴더 안의 상대 주소만
-        int w = (int)Math.Round(Math.Clamp(Num("w", 320), 40, 4000) * k), h = (int)Math.Round(Math.Clamp(Num("h", 240), 40, 4000) * k);
-        int x = X + (int)Math.Round(Num("x", 0) * k), y = Y + (int)Math.Round(Num("y", 0) * k);
-        var wa = WorkAreaOf(new PixelRect(x, y, x + w, y + h));
-        x = Math.Max(wa.Left, Math.Min(x, wa.Right - w));
-        y = Math.Max(wa.Top, Math.Min(y, wa.Bottom - h));
-        CloseOverlay();
-        var o = new CardOverlayWindow(this, _o.Id + ".deskcard", _o.Folder, url, _o.BrowserDataDir, Light, new PixelRect(x, y, x + Math.Min(w, wa.Width), y + Math.Min(h, wa.Height)));
-        _overlay = o;
-        o.Present();
-    }
+    private CardOverlays Overlays => _overlays ??= new CardOverlays(_o.Id, _o.Folder, _o.BrowserDataDir, () => Light, () => (X, Y, Scale), Post, _host.FromPage);
 
-    internal void CloseOverlay()
-    {
-        var o = _overlay;
-        if (o == null) return;
-        _overlay = null;
-        o.Dismiss();
-        PostEvent("overlayclose", true);
-    }
-
-    /// <summary>임시 창이 저절로 사라졌다(다른 곳을 눌렀다 등).</summary>
-    internal void OverlayDismissed(CardOverlayWindow o)
-    {
-        if (_overlay != o) return;
-        _overlay = null;
-        o.Dismiss();
-        PostEvent("overlayclose", true);
-    }
-
-    /// <summary>임시 창 화면이 보낸 요청.</summary>
-    internal void FromOverlay(CardOverlayWindow from, string? t, JsonElement root)
-    {
-        if (_overlay != from) return;
-        switch (t)
-        {
-            case "msg": _host.FromPage(root.GetProperty("d").GetRawText()); break;
-            case "ovl":
-                switch (root.GetProperty("a").GetString())
-                {
-                    case "send": PostEvent("overlay", root.GetProperty("d")); break;
-                    case "close": CloseOverlay(); break;
-                }
-                break;
-        }
-    }
-
-    private static PixelRect WorkAreaOf(PixelRect r)
-    {
-        var rc = new RECT { Left = r.Left, Top = r.Top, Right = r.Right, Bottom = r.Bottom };
-        var mon = MonitorFromRect(ref rc, 2);
-        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-        return GetMonitorInfo(mon, ref info) ? new PixelRect(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right, info.rcWork.Bottom) : r;
-    }
-
-    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
-    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; }
-    [DllImport("user32.dll")] private static extern IntPtr MonitorFromRect(ref RECT rect, uint flags);
-    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    internal void CloseOverlay() => _overlays?.Close();
 
     /// <summary>페이지가 준비되면 현재 상태를 한꺼번에 알려 준다.</summary>
     private void PushState()
@@ -220,14 +158,7 @@ internal sealed class WebCardWindow : DesktopCardWindow
                 case "menu": _host.Menu(); break;
                 case "ready": PushState(); break;
                 case "win": OnWindowRequest(root); break;
-                case "ovl":
-                    switch (root.GetProperty("a").GetString())
-                    {
-                        case "open": OpenOverlay(root); break;
-                        case "close": CloseOverlay(); break;
-                        case "send": _overlay?.Post(Evt("overlay", root.GetProperty("d"))); break;
-                    }
-                    break;
+                case "ovl": Overlays.Handle(root); break;
             }
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException) { }

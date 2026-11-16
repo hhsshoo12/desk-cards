@@ -110,6 +110,9 @@ public static class DesktopCards
     /// <summary>앞서 보낸 창 조작이 모두 끝난 뒤에 action을 WPF 창 스레드에서 실행한다.</summary>
     public static void After(Action action) => WpfThread.Dispatcher.BeginInvoke(action);
 
+    /// <summary>카드의 임시 창(overlay)이 열려 있는지(열려 있는 동안 카드 바가 접히지 않게).</summary>
+    public static bool OverlayOpen => CardOverlays.AnyOpen;
+
     public static IWebCardHandle OpenWeb(WebCardOptions options, IWebCardHost host) => new WebCardHandle(options, host);
 
     public static IFolderCardHandle OpenFolder(FolderCardOptions options, IFolderCardHost host) => new FolderCardHandle(options, host);

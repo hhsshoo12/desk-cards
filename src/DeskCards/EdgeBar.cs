@@ -153,7 +153,12 @@ internal static class EdgeBar
         {
             if (WebCardManager.IsBarKey(group))
             {
-                new FluentMenu().Item("", "카드 바에서 빼기", () => Remove(group)).ShowAtCursor();
+                new FluentMenu()
+                    .Item("\uE70F", "카드 편집 (이동 · 크기)", Begin)
+                    .Separator()
+                    .Item("\uE74D", "카드 바에서 빼기", () => Remove(group))
+                    .Item("\uE713", "설정", () => SettingsWindow.OpenWebCards(Mgr))
+                    .ShowAtCursor();
                 return;
             }
             if (Mgr.GroupCard(group) is not { } card) return;
@@ -639,7 +644,7 @@ internal static class EdgeBar
 
     private static void CheckLeave(OpenBar bar)
     {
-        if (bar.Closing || bar.Editing || LeftButtonDown() || FluentMenu.IsOpen || ExpandedWindow.IsOpen) return;
+        if (bar.Closing || bar.Editing || LeftButtonDown() || FluentMenu.IsOpen || ExpandedWindow.IsOpen || DesktopCards.OverlayOpen) return;
         if (!Native.GetCursorPos(out var pt)) return;
         var r = bar.Final;
         var b = bar.Bounds;

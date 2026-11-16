@@ -22,6 +22,7 @@ internal sealed class BarWebCard : Grid
     private readonly bool _light;
     private readonly WebView2 _web = new() { DefaultBackgroundColor = System.Drawing.Color.Transparent };
     private readonly Border _hold;
+    private readonly CardOverlays _overlays;
     private bool _booted, _dead, _editing;
 
     public BarWebCard(IBarHost host, WebBarCard card, string name, bool light)
@@ -33,8 +34,15 @@ internal sealed class BarWebCard : Grid
         label.SetResourceReference(TextBlock.ForegroundProperty, "Fg");
         _hold = new Border { CornerRadius = new CornerRadius(8), Visibility = Visibility.Collapsed, Child = label };
         _hold.SetResourceReference(Border.BackgroundProperty, "HoverBg");
+        // 폴더 카드처럼 카드 모양(배경·테두리·둥근 모서리)을 먼저 깔고, 웹 화면은 그 안쪽에 둔다.
+        var shape = new Border { CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1) };
+        shape.SetResourceReference(Border.BackgroundProperty, "CardBg");
+        shape.SetResourceReference(Border.BorderBrushProperty, "CardBorder");
+        _web.Margin = new Thickness(1);
+        Children.Add(shape);
         Children.Add(_web);
         Children.Add(_hold);
+        _overlays = new CardOverlays(card.Id, card.Folder, card.BrowserDataDir, () => _light, ScreenOrigin, Post, json => _host.WebMessage(card.Id, json));
         Loaded += async (_, _) => await StartAsync();
         SizeChanged += (_, _) => PushBounds();
     }
@@ -44,6 +52,7 @@ internal sealed class BarWebCard : Grid
     public void SetEditing(bool editing)
     {
         _editing = editing;
+        if (editing) _overlays.Close();
         _web.Visibility = editing ? Visibility.Collapsed : Visibility.Visible;
         _hold.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         Post(WebCardWindow.Evt("editing", editing));
@@ -54,6 +63,7 @@ internal sealed class BarWebCard : Grid
     public void Dispose()
     {
         _dead = true;
+        _overlays.Dispose();
         try { _web.Dispose(); } catch (Exception) { }
     }
 
@@ -68,6 +78,13 @@ internal sealed class BarWebCard : Grid
             await WebCardPage.StartAsync(_web.CoreWebView2, _c.Id, _c.Folder, _c.Html, OnWebMessage, () => _dead);
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or WebView2RuntimeNotFoundException or ArgumentException) { }
+    }
+
+    /// <summary>카드 왼쪽 위의 화면 자리(물리 픽셀)와 배율.</summary>
+    private (int X, int Y, double Scale) ScreenOrigin()
+    {
+        var p = PointToScreen(new Point(0, 0));
+        return ((int)Math.Round(p.X), (int)Math.Round(p.Y), VisualTreeHelper.GetDpi(this).DpiScaleX);
     }
 
     private void PushBounds() =>
@@ -90,6 +107,7 @@ internal sealed class BarWebCard : Grid
             {
                 case "msg": _host.WebMessage(_c.Id, root.GetProperty("d").GetRawText()); break;
                 case "menu": _host.WebMenu(_c.Id); break;
+                case "ovl": _overlays.Handle(root); break;
                 case "ready":
                     PushBounds();
                     Post(WebCardWindow.Evt("theme", _light ? "light" : "dark"));

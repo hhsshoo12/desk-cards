@@ -19,13 +19,13 @@ namespace DeskCards.Expanded;
 /// </summary>
 internal sealed class CardOverlayWindow : Window
 {
-    private readonly WebCardWindow _owner;
+    private readonly CardOverlays _owner;
     private readonly WebView2 _web = new() { DefaultBackgroundColor = System.Drawing.Color.Transparent };
     private readonly string _host, _folder, _url, _browserDir;
     private readonly bool _light;
     private bool _closing;
 
-    public CardOverlayWindow(WebCardWindow owner, string host, string folder, string relativeUrl, string browserDir, bool light, PixelRect screen)
+    public CardOverlayWindow(CardOverlays owner, string host, string folder, string relativeUrl, string browserDir, bool light, PixelRect screen)
     {
         _owner = owner;
         _host = host;
@@ -58,7 +58,7 @@ internal sealed class CardOverlayWindow : Window
         SourceInitialized += OnSourceInitialized;
         Loaded += async (_, _) => await StartAsync();
         Deactivated += (_, _) => OnDeactivated();
-        Closed += (_, _) => { CardLog.Write("overlay 닫힘(Closed)"); try { _web.Dispose(); } catch (Exception) { } _owner.OverlayDismissed(this); };
+        Closed += (_, _) => { CardLog.Write("overlay 닫힘(Closed)"); try { _web.Dispose(); } catch (Exception) { } _owner.Dismissed(this); };
     }
 
     private readonly PixelRect _screen;
@@ -78,7 +78,7 @@ internal sealed class CardOverlayWindow : Window
             timer.Stop();
             if (_closing || IsActive || _age.ElapsedMilliseconds < 600) { CardLog.Write("overlay 활성 해제 무시"); return; }
             CardLog.Write("overlay 닫음: 다른 곳이 활성");
-            _owner.OverlayDismissed(this);
+            _owner.Dismissed(this);
         };
         timer.Start();
     }
