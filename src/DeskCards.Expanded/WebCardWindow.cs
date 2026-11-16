@@ -44,6 +44,8 @@ internal sealed class WebCardWindow : DesktopCardWindow
         Loaded += async (_, _) => await StartAsync();
     }
 
+    protected override bool HasChildHwndHost => true;
+
     protected override void OnBoundsChanged() => PushBounds();
 
     protected override void OnVisibilityChanged(bool visible)

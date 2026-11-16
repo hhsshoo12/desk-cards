@@ -22,11 +22,13 @@ internal abstract class DesktopCardWindow : Window
     private readonly IDesktopCardHost _host;
     private readonly string _id;
     private readonly Border _outline;
-    private IntPtr _zTarget;
-    private bool _dragging, _movingZ, _visibleWanted, _priming, _hlSelected, _hlInvalid;
+    private bool _dragging, _visibleWanted, _priming, _hlSelected, _hlInvalid, _focusGuardActive;
     private PixelRect _sizeStart;
     private Palette _palette;
+    private System.Windows.Threading.DispatcherTimer? _focusGuardTimer;
 
+    // WPF STA 스레드 하나에서 모든 카드를 다루며, ZOrderByOwner가 같은 Progman 소유의 형제 카드를 한꺼번에 조정하므로 static으로 공유한다.
+    private static bool _movingZ;
     private static readonly System.Collections.Generic.List<DesktopCardWindow> OpenCards = new(); // WPF 창 스레드에서만 쓴다
 
     /// <summary>열려 있는 카드를 모두 바탕화면 층(맨 아래)으로 내린다.</summary>
@@ -79,7 +81,7 @@ internal abstract class DesktopCardWindow : Window
 
         OpenCards.Add(this);
         SourceInitialized += OnSourceInitialized;
-        Closed += (_, _) => { OpenCards.Remove(this); Dead = true; OnClosedCore(); _host.Closed(); };
+        Closed += (_, _) => { ClearChildFocusGuard(); OpenCards.Remove(this); Dead = true; OnClosedCore(); _host.Closed(); };
     }
 
     /// <summary>파생 클래스의 준비가 끝난 뒤 부른다: 창을 만들고(핸들) 보여야 하면 띄운다.</summary>
@@ -107,6 +109,8 @@ internal abstract class DesktopCardWindow : Window
 
     /// <summary>크기를 비율 고정으로 바꾸는지(폴더 카드). 아니면 자유롭게 바꾼다(웹 카드).</summary>
     protected virtual bool LockAspect => false;
+    /// <summary>WebView2처럼 별도 HWND 자식을 품은 창은 클릭 시 자식이 SetFocus로 부모를 활성화할 수 있다.</summary>
+    protected virtual bool HasChildHwndHost => false;
 
     protected virtual void OnBoundsChanged() { }
     protected virtual void OnEditingChanged(bool editing) { }
@@ -183,12 +187,13 @@ internal abstract class DesktopCardWindow : Window
         if (Dead || (Editing == editing && !editing)) return;
         bool changed = Editing != editing;
         Editing = editing;
+        if (editing) ClearChildFocusGuard();
         _outline.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
         if (!editing || changed) SetHighlight(false, false);
         ApplyBounds();
         if (changed) OnEditingChanged(editing);
-        if (editing) SetZ(new IntPtr(-1)); // 어두운 막 위로
-        else SetZ(new IntPtr(1)); // HWND_BOTTOM이 최상위도 함께 푼다
+        if (editing) RaiseToTopmost(); // 어두운 막 위로
+        else SendToBottom();
     }
 
     /// <summary>편집 중 강조: 고른 카드는 강조색, 안 되는 자리는 빨강 테두리.</summary>
@@ -247,14 +252,70 @@ internal abstract class DesktopCardWindow : Window
         return b;
     }
 
-    protected void SendToBottom() => SetZ(new IntPtr(1));
-
-    private void SetZ(IntPtr after)
+    protected void SendToBottom()
     {
-        _zTarget = after;
+        var hwnd = Handle;
+        if (hwnd == IntPtr.Zero) return;
         _movingZ = true;
-        try { SetWindowPos(Handle, after, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0200); }
+        try
+        {
+            // 편집 모드(TOPMOST)에서 나올 때는 소유자(Progman)의 z를 건드리지 않도록 먼저 최상위만 푼다.
+            if ((GetWindowLongPtr(hwnd, DesktopCardRules.GwlExStyle).ToInt64() & DesktopCardRules.WsExTopmost) != 0)
+                SetWindowPos(hwnd, new IntPtr(-2), 0, 0, 0, 0, DesktopCardRules.TopmostFlags);
+            // SWP_NOOWNERZORDER를 빼야 Windows(ZOrderByOwner)가 소유자(Progman)를 카드 아래에 두고 카드가 Progman 뒤로 빠지지 않는다.
+            SetWindowPos(hwnd, new IntPtr(1), 0, 0, 0, 0, DesktopCardRules.RestackBottomFlags);
+        }
         finally { _movingZ = false; }
+    }
+
+    private void RaiseToTopmost()
+    {
+        var hwnd = Handle;
+        if (hwnd == IntPtr.Zero) return;
+        _movingZ = true;
+        try { SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, DesktopCardRules.TopmostFlags); }
+        finally { _movingZ = false; }
+    }
+
+    /// <summary>
+    /// WebView2 자식 HWND를 클릭하면 Windows가 WM_MOUSEACTIVATE 뒤에 넘긴 WM_LBUTTONDOWN 안에서
+    /// Chromium이 ::SetFocus(자식 HWND)를 불러 비활성 창까지 강제 활성화한다.
+    /// 조상 창에 WS_DISABLED 비트를 잠깐 세워 두면 win32k!xxxSetFocus가 활성화를 타지 않고 즉시 빠져나오며,
+    /// SetWindowLongPtr는 WM_ENABLE을 보내지 않아 겉모양에 영향이 없다.
+    /// </summary>
+    private void SuppressChildFocusActivation()
+    {
+        var hwnd = Handle;
+        if (hwnd == IntPtr.Zero) return;
+        long style = GetWindowLongPtr(hwnd, DesktopCardRules.GwlStyle).ToInt64();
+        if ((style & DesktopCardRules.WsDisabled) == 0)
+            SetWindowLongPtr(hwnd, DesktopCardRules.GwlStyle, new IntPtr(style | DesktopCardRules.WsDisabled));
+        _focusGuardActive = true;
+        _focusGuardTimer ??= CreateFocusGuardTimer();
+        _focusGuardTimer.Stop();
+        _focusGuardTimer.Start();
+    }
+
+    private System.Windows.Threading.DispatcherTimer CreateFocusGuardTimer()
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Send)
+        {
+            Interval = TimeSpan.FromMilliseconds(30),
+        };
+        timer.Tick += (_, _) => ClearChildFocusGuard();
+        return timer;
+    }
+
+    private void ClearChildFocusGuard()
+    {
+        _focusGuardTimer?.Stop();
+        if (!_focusGuardActive) return;
+        _focusGuardActive = false;
+        var hwnd = Handle;
+        if (hwnd == IntPtr.Zero || Dead) return;
+        long style = GetWindowLongPtr(hwnd, DesktopCardRules.GwlStyle).ToInt64();
+        if ((style & DesktopCardRules.WsDisabled) != 0)
+            SetWindowLongPtr(hwnd, DesktopCardRules.GwlStyle, new IntPtr(style & ~DesktopCardRules.WsDisabled));
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -267,13 +328,15 @@ internal abstract class DesktopCardWindow : Window
             case 0x0086: // WM_NCACTIVATE: 늘 활성인 것처럼 그려서 미카가 단색으로 바뀌지 않게(실제 활성·초점은 그대로)
                 handled = true;
                 return DefWindowProc(hwnd, msg, new IntPtr(1), new IntPtr(-1));
-            case 0x0006: // WM_ACTIVATE: 눌려서 활성화되면 바탕화면이 카드 앞으로 나온다. 끝난 뒤 순서를 바로잡는다
+            case 0x0006: // WM_ACTIVATE: 혹시라도 활성화되면 바탕화면 층으로 되돌린다
             {
                 bool active = (wParam.ToInt64() & 0xFFFF) != 0, priming = _priming;
                 CardLog.Write($"카드 {(active ? "활성" : "비활성")} {Title} (상대 {ClassOf(lParam)}{(priming ? ", prime" : "")})");
                 if (active && !Editing)
-                    // 활성화로 바탕화면(Progman)이 모든 카드 위로 올라와 카드가 가려지므로, 이 스레드의 카드를 모두 곧바로(Send) 내려서 가려지는 시간을 없앤다.
+                {
+                    if (!priming) handled = true; // DefWindowProc이 SetFocus(hwnd)를 부르지 않게
                     Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Send, () => { if (Dead || Editing) return; RestackAll(); if (!priming) _host.Activated(); });
+                }
                 break;
             }
             case 0x001C: // WM_ACTIVATEAPP
@@ -288,6 +351,8 @@ internal abstract class DesktopCardWindow : Window
                 }
                 break;
             case 0x0021: // WM_MOUSEACTIVATE: 눌러도 활성화하지 않는다
+                if (DesktopCardRules.ShouldSuppressChildFocusActivation(Editing, HasChildHwndHost))
+                    SuppressChildFocusActivation();
                 handled = true;
                 return new IntPtr(3);
             case 0x00A1 when Editing: // WM_NCLBUTTONDOWN: 편집 중 누르면 이 카드를 고른다
@@ -321,11 +386,7 @@ internal abstract class DesktopCardWindow : Window
     private void OnPosChanging(IntPtr hwnd, IntPtr lParam)
     {
         var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
-        if ((wp.flags & 0x0004) == 0)
-        {
-            if (_movingZ) wp.hwndInsertAfter = _zTarget;
-            else if (!Editing) wp.flags |= 0x0004; // 앱이 직접 옮길 때 말고는 z 변경을 모두 막는다
-        }
+        wp.flags = DesktopCardRules.FilterPosChangingFlags(wp.flags, _movingZ, Editing);
         if (Editing && _dragging && GetWindowRect(hwnd, out var cur))
         {
             bool sizing = (wp.flags & 0x0001) == 0 && (wp.cx != cur.Right - cur.Left || wp.cy != cur.Bottom - cur.Top);
